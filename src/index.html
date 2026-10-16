@@ -1,8 +1,8 @@
 <title>CGV Genome Viewer</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="CGV — быстрый просмотрщик выравниваний BAM в браузере">
+<meta name="description" content="CGV — a fast in-browser viewer for BAM alignments">
 <style>
-/* Слой данных занимает весь экран; интерфейс — одна тонкая строка сверху и выезжающие панели. */
+/* Data fills the screen; the UI is one thin bar on top plus slide-in panels. */
 :root {
   --bg: #fafbfb; --panel: #ffffff; --fg: #1b1f24; --muted: #6a717b; --line: #e2e5e9; --accent: #0b6e8a;
   --read: #b9bec6; --read-fwd: #d8a9a6; --read-rev: #9fb5d6; --cov: #a8aeb7;
@@ -32,6 +32,7 @@
   color-scheme: dark; }
 
 [hidden] { display: none !important; }
+*, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; }
 body { background: var(--bg); color: var(--fg); font: 13px/1.4 var(--sans); overflow: hidden; display: flex; flex-direction: column; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -57,7 +58,7 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 
 #stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
 #stage:active { cursor: grabbing; }
-#stage.drop::after { content: "Отпустите файлы .bam и .bai"; position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: grid; place-items: center; color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--bg) 80%, transparent); }
+#stage.drop::after { content: attr(data-drop-text); position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: grid; place-items: center; color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--bg) 80%, transparent); }
 #gl, #ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .msg { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); max-width: min(520px, calc(100% - 32px)); padding: 10px 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 6px 24px rgb(0 0 0 / .08); text-align: center; }
 .msg.err { border-color: var(--pair-large); }
@@ -76,12 +77,13 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .side h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
 .side header { display: flex; align-items: center; justify-content: space-between; }
 .side header h1 { font-size: 14px; margin: 0; }
-.field { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; margin-bottom: 10px; }
+.field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; margin-bottom: 10px; }
 .field label { font-size: 12.5px; }
 .field output { font: 11.5px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 .field input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
 .field select, .field input[type=text], .field input[type=number], .field input[type=url], .field input[type=password] { grid-column: 1 / -1; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); min-width: 0; width: 100%; }
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.field > *, .pair > * { min-width: 0; }
 .pair .field input { grid-column: 1 / -1; }
 .check { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12.5px; }
 .check input { accent-color: var(--accent); }
@@ -93,6 +95,8 @@ textarea { width: 100%; min-height: 140px; border: 1px solid var(--line); border
 .drop-zone { display: grid; place-items: center; gap: 6px; padding: 18px 12px; border: 1.5px dashed var(--line); border-radius: 8px; text-align: center; color: var(--muted); cursor: pointer; }
 .drop-zone:hover { border-color: var(--accent); color: var(--fg); }
 .drop-zone strong { color: var(--fg); }
+.drop-zone span { display: block; }
+.ref-info { color: var(--fg); margin: 0 0 8px; }
 .keys { display: grid; grid-template-columns: max-content 1fr; gap: 4px 10px; font-size: 12px; margin: 0; }
 .keys dt { font-family: var(--mono); color: var(--muted); }
 .keys dd { margin: 0; }
@@ -106,122 +110,134 @@ body.bare .side { top: 0; }
 <header class="bar">
   <span class="mark" title="Convenient, custom, genomic viewer">CGV</span>
   <div class="locus">
-    <input id="locus" type="text" spellcheck="false" autocomplete="off" aria-label="Локус: хромосома:начало-конец" placeholder="chr7:117,559,500-117,560,000">
+    <input id="locus" type="text" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
     <span id="span"></span>
   </div>
-  <select id="examples" class="btn" aria-label="Примеры в демо-данных" hidden>
-    <option value="">Примеры</option>
-    <option value="demo:11,941-12,060">SNV, гетерозигота</option>
-    <option value="demo:14,941-15,060">SNV, гомозигота</option>
-    <option value="demo:17,941-18,062">Делеция 3 п.н.</option>
-    <option value="demo:20,941-21,060">Вставка 3 п.н.</option>
-    <option value="demo:24,201-28,800">Делеция 3 т.п.н.</option>
-    <option value="demo:29,601-34,000">Сегментный повтор, MAPQ 0</option>
-    <option value="demo:21,601-22,500">Мейты на другом контиге</option>
-    <option value="demo:1-40,000">Весь контиг</option>
+  <select id="examples" class="btn" data-i18n-aria="examples" aria-label="Examples" hidden>
+    <option value="" data-i18n="examples">Examples</option>
+    <option value="demo:11,941-12,060" data-i18n="ex.hetSnv">SNV, heterozygous</option>
+    <option value="demo:14,941-15,060" data-i18n="ex.homSnv">SNV, homozygous</option>
+    <option value="demo:17,941-18,062" data-i18n="ex.del3">3 bp deletion</option>
+    <option value="demo:20,941-21,060" data-i18n="ex.ins3">3 bp insertion</option>
+    <option value="demo:24,201-28,800" data-i18n="ex.del3k">3 kb deletion</option>
+    <option value="demo:29,601-34,000" data-i18n="ex.repeat">Segmental duplication, MAPQ 0</option>
+    <option value="demo:21,601-22,500" data-i18n="ex.chim">Mates on another contig</option>
+    <option value="demo:1-40,000" data-i18n="ex.whole">Whole contig</option>
   </select>
   <span class="file" id="fileName"></span>
   <span class="status" id="status"></span>
-  <button class="btn" id="openBtn" aria-expanded="false" aria-controls="openPanel">Открыть</button>
-  <button class="btn" id="viewBtn" aria-expanded="false" aria-controls="panel">Вид</button>
+  <button class="btn" id="openBtn" aria-expanded="false" aria-controls="openPanel" data-i18n="btn.open">Open</button>
+  <button class="btn" id="viewBtn" aria-expanded="false" aria-controls="panel" data-i18n="btn.view">View</button>
 </header>
 
-<main id="stage">
+<main id="stage" data-i18n-drop="drop" data-drop-text="Drop .bam and .bai files">
   <canvas id="gl"></canvas>
   <canvas id="ov"></canvas>
   <div id="msg" class="msg" hidden></div>
   <div id="card" class="card" hidden></div>
-  <button class="btn" id="showToolbar" hidden>Панель (H)</button>
+  <button class="btn" id="showToolbar" hidden data-i18n="btn.toolbar">Toolbar (H)</button>
 
-  <aside id="openPanel" class="side" hidden aria-label="Открыть данные">
-    <header><h1>Открыть данные</h1><button class="btn ghost" data-close>Закрыть</button></header>
+  <aside id="openPanel" class="side" hidden data-i18n-aria="open.title" aria-label="Open data">
+    <header><h1 data-i18n="open.title">Open data</h1><button class="btn ghost" data-close data-i18n="btn.close">Close</button></header>
     <section>
-      <h2>С диска</h2>
-      <label class="drop-zone" for="pickFiles"><strong>Выберите .bam и .bai</strong>можно добавить .fa и .fai<br>или перетащите файлы на экран</label>
-      <input id="pickFiles" type="file" multiple accept=".bam,.bai,.fa,.fasta,.fna,.fai" hidden>
-      <p class="hint">Файлы читаются кусками прямо с диска и никуда не отправляются.</p>
+      <h2 data-i18n="open.disk">From disk</h2>
+      <label class="drop-zone" for="pickFiles"><strong data-i18n="open.pick">Choose .bam and .bai</strong><span data-i18n="open.pickSub">you can add .fa and .fai</span><span data-i18n="open.pickDrop">or drop files onto the screen</span></label>
+      <input id="pickFiles" type="file" multiple accept=".bam,.bai,.fa,.fasta,.fna,.gz,.fai,.gzi" hidden>
+      <p class="hint" data-i18n="open.diskHint">Files are read in pieces straight from disk and are never uploaded.</p>
     </section>
     <section>
-      <h2>По ссылке</h2>
-      <div class="field"><label for="urlBam">BAM</label><input id="urlBam" type="url" placeholder="https://…/sample.bam"></div>
-      <div class="field"><label for="urlBai">Индекс (если не рядом с BAM)</label><input id="urlBai" type="url" placeholder="по умолчанию: ссылка + .bai"></div>
-      <div class="field"><label for="urlFa">Референс FASTA (необязательно)</label><input id="urlFa" type="url" placeholder="https://…/genome.fa (рядом .fai)"></div>
-      <div class="field"><label for="urlAuth">Токен доступа (необязательно)</label><input id="urlAuth" type="password" autocomplete="off" placeholder="Bearer …"></div>
-      <div class="row-actions"><button class="btn primary" id="openUrl">Открыть по ссылке</button></div>
-      <p class="hint">Сервер должен разрешать CORS и Range-запросы. Токен не сохраняется. На странице claude.ai загрузка по ссылке заблокирована политикой безопасности — для ссылок откройте файл cgv.html локально.</p>
+      <h2 data-i18n="open.url">By link</h2>
+      <div class="field"><label for="urlBam" data-i18n="open.urlBam">BAM</label><input id="urlBam" type="url" placeholder="https://…/sample.bam"></div>
+      <div class="field"><label for="urlBai" data-i18n="open.urlBai">Index (if not next to the BAM)</label><input id="urlBai" type="url" data-i18n-ph="open.urlBaiPh" placeholder="default: link + .bai"></div>
+      <div class="field"><label for="urlAuth" data-i18n="open.urlAuth">Access token (optional)</label><input id="urlAuth" type="password" autocomplete="off" placeholder="Bearer …"></div>
+      <div class="row-actions"><button class="btn primary" id="openUrl" data-i18n="open.urlBtn">Open link</button></div>
+      <p class="hint" data-i18n="open.urlHint"></p>
     </section>
     <section>
-      <h2>Демо</h2>
-      <button class="btn" id="openDemo">Синтетические демо-данные</button>
-      <p class="hint">40 т.п.н. выдуманной последовательности, 30×, пять известных вариантов.</p>
+      <h2 data-i18n="ref.title">Reference</h2>
+      <p class="hint ref-info" id="refInfo"></p>
+      <label class="drop-zone" for="pickRef"><strong data-i18n="ref.pick">Choose .fa and .fai</strong><span data-i18n="ref.pickSub">for .fa.gz also choose .gzi</span></label>
+      <input id="pickRef" type="file" multiple accept=".fa,.fasta,.fna,.gz,.fai,.gzi" hidden>
+      <div class="field"><label for="refPreset" data-i18n="ref.preset">Public genome</label>
+        <select id="refPreset"><option value="" data-i18n="ref.presetNone">Choose…</option><option value="hg38">GRCh38 / hg38</option><option value="hg19">GRCh37 / hg19</option><option value="chm13">T2T-CHM13 v2.0</option></select></div>
+      <div class="field"><label for="refUrl" data-i18n="ref.url">FASTA link</label><input id="refUrl" type="url" data-i18n-ph="ref.urlPh" placeholder="https://…/genome.fa (.fai next to it)"></div>
+      <div class="row-actions"><button class="btn primary" id="loadRef" data-i18n="ref.load">Load reference</button></div>
+      <p class="hint" data-i18n="ref.presetHint"></p>
+      <p class="hint" data-i18n="ref.hint"></p>
+    </section>
+    <section>
+      <h2 data-i18n="open.demo">Demo</h2>
+      <button class="btn" id="openDemo" data-i18n="open.demoBtn">Synthetic demo data</button>
+      <p class="hint" data-i18n="open.demoHint"></p>
     </section>
   </aside>
 
-  <aside id="panel" class="side" hidden aria-label="Настройки вида">
-    <header><h1>Вид</h1><button class="btn ghost" data-close>Закрыть</button></header>
+  <aside id="panel" class="side" hidden data-i18n-aria="view.title" aria-label="View settings">
+    <header><h1 data-i18n="view.title">View</h1><button class="btn ghost" data-close data-i18n="btn.close">Close</button></header>
     <section>
-      <h2>Риды</h2>
-      <div class="field"><label for="readHeight">Высота рида</label><output id="readHeightOut"></output><input id="readHeight" type="range" min="1" max="24" step="0.5"></div>
-      <div class="field"><label for="colorBy">Раскраска</label>
-        <select id="colorBy"><option value="none">Без раскраски</option><option value="strand">Цепь</option><option value="pair">Ориентация и размер вставки пары</option><option value="tag">Значение тега</option></select></div>
-      <div class="field" id="colorTagRow"><label for="colorTag">Тег раскраски</label><input id="colorTag" type="text" maxlength="2" spellcheck="false"></div>
-      <div class="check"><input id="bqShade" type="checkbox"><label for="bqShade">Бледнее при низком качестве основания</label></div>
-      <div class="check"><input id="softClips" type="checkbox"><label for="softClips">Отмечать soft clip</label></div>
+      <h2 data-i18n="view.reads">Reads</h2>
+      <div class="field"><label for="readHeight" data-i18n="view.readHeight">Read height</label><output id="readHeightOut"></output><input id="readHeight" type="range" min="1" max="24" step="0.5"></div>
+      <div class="field"><label for="colorBy" data-i18n="view.colorBy">Color by</label>
+        <select id="colorBy"><option value="none" data-i18n="color.none"></option><option value="strand" data-i18n="color.strand"></option><option value="pair" data-i18n="color.pair"></option><option value="tag" data-i18n="color.tag"></option></select></div>
+      <div class="field" id="colorTagRow"><label for="colorTag" data-i18n="view.colorTag">Tag for color</label><input id="colorTag" type="text" maxlength="2" spellcheck="false"></div>
+      <div class="check"><input id="bqShade" type="checkbox"><label for="bqShade" data-i18n="view.bqShade"></label></div>
+      <div class="check"><input id="softClips" type="checkbox"><label for="softClips" data-i18n="view.softClips"></label></div>
     </section>
     <section>
-      <h2>Прозрачность по MAPQ</h2>
+      <h2 data-i18n="view.mq">MAPQ transparency</h2>
       <div class="pair">
-        <div class="field"><label for="mqLow">От MQ</label><input id="mqLow" type="number" min="0" max="255" step="1"></div>
-        <div class="field"><label for="mqHigh">До MQ</label><input id="mqHigh" type="number" min="0" max="255" step="1"></div>
+        <div class="field"><label for="mqLow" data-i18n="view.mqLow">From MQ</label><input id="mqLow" type="number" min="0" max="255" step="1"></div>
+        <div class="field"><label for="mqHigh" data-i18n="view.mqHigh">To MQ</label><input id="mqHigh" type="number" min="0" max="255" step="1"></div>
       </div>
-      <div class="field"><label for="mqMinAlpha">Непрозрачность при низком MQ</label><output id="mqMinAlphaOut"></output><input id="mqMinAlpha" type="range" min="0.02" max="1" step="0.01"></div>
+      <div class="field"><label for="mqMinAlpha" data-i18n="view.mqMinAlpha"></label><output id="mqMinAlphaOut"></output><input id="mqMinAlpha" type="range" min="0.02" max="1" step="0.01"></div>
       <div class="legend" id="mqLegend"></div>
       <div class="legend-labels"><span id="mqLegendLo"></span><span id="mqLegendHi"></span></div>
-      <p class="hint">Работает поверх любой раскраски.</p>
+      <p class="hint" data-i18n="view.mqHint"></p>
     </section>
     <section>
-      <h2>Группировка и сортировка</h2>
-      <div class="field"><label for="groupBy">Группировать</label>
-        <select id="groupBy"><option value="none">Не группировать</option><option value="strand">По цепи</option><option value="firstOfPair">Первый / второй в паре</option><option value="pair">По ориентации пары</option><option value="tag">По тегу</option></select></div>
-      <div class="field" id="groupTagRow"><label for="groupTag">Тег группировки</label><input id="groupTag" type="text" maxlength="2" spellcheck="false"></div>
-      <div class="field"><label for="sortBy">Сортировать ряды</label>
-        <select id="sortBy"><option value="start">По началу (без сортировки)</option><option value="base">По основанию в позиции</option><option value="mapq">По MAPQ</option><option value="strand">По цепи</option><option value="insert">По размеру вставки</option></select></div>
-      <div class="row-actions"><button class="btn" id="sortHere">Сортировать по центру экрана (S)</button></div>
+      <h2 data-i18n="view.groupSort">Group and sort</h2>
+      <div class="field"><label for="groupBy" data-i18n="view.groupBy">Group by</label>
+        <select id="groupBy"><option value="none" data-i18n="group.none"></option><option value="strand" data-i18n="group.strand"></option><option value="firstOfPair" data-i18n="group.firstOfPair"></option><option value="pair" data-i18n="group.pair"></option><option value="tag" data-i18n="group.tag"></option></select></div>
+      <div class="field" id="groupTagRow"><label for="groupTag" data-i18n="view.groupTag">Tag for grouping</label><input id="groupTag" type="text" maxlength="2" spellcheck="false"></div>
+      <div class="field"><label for="sortBy" data-i18n="view.sortBy">Sort rows</label>
+        <select id="sortBy"><option value="start" data-i18n="sort.start"></option><option value="base" data-i18n="sort.base"></option><option value="mapq" data-i18n="sort.mapq"></option><option value="strand" data-i18n="sort.strand"></option><option value="insert" data-i18n="sort.insert"></option></select></div>
+      <div class="row-actions"><button class="btn" id="sortHere" data-i18n="view.sortHere">Sort at screen center (S)</button></div>
     </section>
     <section>
-      <h2>Фильтры</h2>
-      <div class="field"><label for="minMapq">Минимальный MAPQ</label><input id="minMapq" type="number" min="0" max="255" step="1"></div>
-      <div class="check"><input id="hideDup" type="checkbox"><label for="hideDup">Скрыть дубликаты</label></div>
-      <div class="check"><input id="hideSec" type="checkbox"><label for="hideSec">Скрыть вторичные выравнивания</label></div>
-      <div class="check"><input id="hideSupp" type="checkbox"><label for="hideSupp">Скрыть дополнительные (supplementary)</label></div>
-      <div class="check"><input id="hideQc" type="checkbox"><label for="hideQc">Скрыть не прошедшие QC</label></div>
+      <h2 data-i18n="view.filters">Filters</h2>
+      <div class="field"><label for="minMapq" data-i18n="view.minMapq">Minimum MAPQ</label><input id="minMapq" type="number" min="0" max="255" step="1"></div>
+      <div class="check"><input id="hideDup" type="checkbox"><label for="hideDup" data-i18n="view.hideDup"></label></div>
+      <div class="check"><input id="hideSec" type="checkbox"><label for="hideSec" data-i18n="view.hideSec"></label></div>
+      <div class="check"><input id="hideSupp" type="checkbox"><label for="hideSupp" data-i18n="view.hideSupp"></label></div>
+      <div class="check"><input id="hideQc" type="checkbox"><label for="hideQc" data-i18n="view.hideQc"></label></div>
     </section>
     <section>
-      <h2>Покрытие</h2>
-      <div class="field"><label for="covHeight">Высота дорожки</label><output id="covHeightOut"></output><input id="covHeight" type="range" min="20" max="200" step="2"></div>
-      <div class="field"><label for="alleleThr">Подсвечивать аллели от</label><output id="alleleThrOut"></output><input id="alleleThr" type="range" min="0.02" max="0.5" step="0.01"></div>
+      <h2 data-i18n="view.coverage">Coverage</h2>
+      <div class="field"><label for="covHeight" data-i18n="view.covHeight">Track height</label><output id="covHeightOut"></output><input id="covHeight" type="range" min="20" max="200" step="2"></div>
+      <div class="field"><label for="alleleThr" data-i18n="view.alleleThr">Highlight alleles from</label><output id="alleleThrOut"></output><input id="alleleThr" type="range" min="0.02" max="0.5" step="0.01"></div>
     </section>
     <section>
-      <h2>Экран</h2>
-      <div class="check"><input id="hideToolbar" type="checkbox"><label for="hideToolbar">Скрыть верхнюю панель (H)</label></div>
+      <h2 data-i18n="view.screen">Screen</h2>
+      <div class="field"><label for="language" data-i18n="view.language">Language</label><select id="language"></select></div>
+      <div class="check"><input id="hideToolbar" type="checkbox"><label for="hideToolbar" data-i18n="view.hideToolbar"></label></div>
     </section>
     <section>
-      <h2>Профиль</h2>
-      <textarea id="profileJson" spellcheck="false" aria-label="Профиль отображения в JSON"></textarea>
-      <div class="row-actions"><button class="btn" id="copyProfile">Копировать</button><button class="btn" id="applyProfile">Применить из поля</button><button class="btn ghost" id="resetProfile">Сбросить</button></div>
-      <p class="hint">Профиль — обычный JSON: вставьте чужой и нажмите «Применить».</p>
+      <h2 data-i18n="view.profile">Profile</h2>
+      <textarea id="profileJson" spellcheck="false" data-i18n-aria="view.profileAria" aria-label="Display profile as JSON"></textarea>
+      <div class="row-actions"><button class="btn" id="copyProfile" data-i18n="view.copy">Copy</button><button class="btn" id="applyProfile" data-i18n="view.apply">Apply from field</button><button class="btn ghost" id="resetProfile" data-i18n="view.reset">Reset</button></div>
+      <p class="hint" data-i18n="view.profileHint"></p>
     </section>
     <section>
-      <h2>Управление</h2>
+      <h2 data-i18n="view.controls">Controls</h2>
       <dl class="keys">
-        <dt>перетаскивание</dt><dd>сдвиг по геному и прокрутка ридов</dd>
-        <dt>колесо</dt><dd>прокрутка ридов; Shift — сдвиг</dd>
-        <dt>Ctrl + колесо</dt><dd>масштаб (на трекпаде — щипок)</dd>
-        <dt>двойной клик</dt><dd>приблизить</dd>
-        <dt>← → ↑ ↓  + −</dt><dd>сдвиг, прокрутка, масштаб</dd>
-        <dt>S</dt><dd>сортировать по центру</dd>
-        <dt>H</dt><dd>скрыть/показать панель</dd>
-        <dt>клик по риду</dt><dd>карточка рида</dd>
+        <dt data-i18n="keys.drag"></dt><dd data-i18n="keys.dragD"></dd>
+        <dt data-i18n="keys.wheel"></dt><dd data-i18n="keys.wheelD"></dd>
+        <dt data-i18n="keys.ctrlWheel"></dt><dd data-i18n="keys.ctrlWheelD"></dd>
+        <dt data-i18n="keys.dbl"></dt><dd data-i18n="keys.dblD"></dd>
+        <dt data-i18n="keys.arrows"></dt><dd data-i18n="keys.arrowsD"></dd>
+        <dt>S</dt><dd data-i18n="keys.s"></dd>
+        <dt>H</dt><dd data-i18n="keys.h"></dd>
+        <dt data-i18n="keys.click"></dt><dd data-i18n="keys.clickD"></dd>
       </dl>
     </section>
   </aside>
@@ -230,6 +246,7 @@ body.bare .side { top: 0; }
 
 <script>
 /*DEMO*/
+/*I18N*/
 /*CORE*/
 /*APP*/
 </script>

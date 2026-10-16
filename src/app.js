@@ -1,10 +1,10 @@
-// CGV app: состояние, загрузка, WebGL-рендер ридов, Canvas2D для линейки/покрытия, интерфейс.
+// CGV app: state, loading, WebGL read rendering, Canvas2D for ruler/coverage, UI.
 'use strict';
 
-// ======================= Профиль отображения =======================
+// ======================= Display profile =======================
 const DEFAULT_PROFILE = {
   version: 1,
-  readHeight: 10,                // px, плавно 1–24
+  readHeight: 10,                // px, smooth 1–24
   colorBy: 'pair',               // none | strand | pair | tag
   colorTag: 'HP',
   groupBy: 'none',               // none | strand | pair | tag | firstOfPair
@@ -18,6 +18,7 @@ const DEFAULT_PROFILE = {
   maxReads: 300000,
   maxLoadBp: 3000000,
   hideToolbar: false,
+  language: 'en',                // en | ru
 };
 const PROFILE_KEY = 'cgv.profile.v1';
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -33,9 +34,9 @@ function mergeProfile(base, over) {
 let P = DEFAULT_PROFILE;
 try { const s = localStorage.getItem(PROFILE_KEY); if (s) P = mergeProfile(DEFAULT_PROFILE, JSON.parse(s)); } catch (e) { P = clone(DEFAULT_PROFILE); }
 if (P === DEFAULT_PROFILE) P = clone(DEFAULT_PROFILE);
-function saveProfile() { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* хранилище недоступно — профиль живёт до перезагрузки */ } }
+function saveProfile() { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable: the profile lives until reload */ } }
 
-// ======================= Состояние =======================
+// ======================= State =======================
 const S = {
   bam: null, fasta: null, bamName: '', isDemo: false,
   view: { refId: 0, start: 0, bpPerPx: 1 },
@@ -52,13 +53,13 @@ const $ = id => document.getElementById(id);
 const stage = $('stage'), glCanvas = $('gl'), ov = $('ov'), ctx = ov.getContext('2d');
 let W = 0, H = 0, DPR = 1;
 
-// геометрия дорожек (CSS px)
+// track geometry (CSS px)
 const RULER_H = 26, REF_H = 14;
 function covTop() { return RULER_H + REF_H + 4; }
 function readsTop() { return covTop() + P.coverage.height + 6; }
 function groupGap() { return P.groupBy === 'none' ? 0 : 20; }
 
-// ======================= Цвета (из CSS-токенов) =======================
+// ======================= Colors (from CSS tokens) =======================
 let COL = {};
 function hexToRgb(h) {
   h = h.trim();
@@ -95,7 +96,7 @@ function initGL() {
   uniform vec2 u_size;
   out vec4 v_color;
   void main() {
-    // minpx < 0: одиночное несовпадение — гаснет при отдалении
+    // minpx < 0: an isolated mismatch that fades when zoomed out
     float minpx = abs(a_y.z);
     float fade = a_y.z < 0.0 ? clamp(u_mmFade / u_bpPerPx, 0.0, 1.0) : 1.0;
     float px0 = (a_x.x - u_viewStart) / u_bpPerPx;
@@ -135,7 +136,7 @@ function initGL() {
 }
 const GL_OK = (() => { try { return initGL(); } catch (e) { console.error(e); return false; } })();
 
-// ======================= Буфер экземпляров =======================
+// ======================= Instance buffer =======================
 class InstBuf {
   constructor(cap) { this.f = new Float32Array(cap * 7); this.c = new Uint8Array(cap * 4); this.n = 0; }
   grow() { const f = new Float32Array(this.f.length * 2); f.set(this.f); this.f = f; const c = new Uint8Array(this.c.length * 2); c.set(this.c); this.c = c; }
@@ -148,7 +149,7 @@ class InstBuf {
   }
 }
 
-// ======================= Производные данные =======================
+// ======================= Derived data =======================
 function mapqAlpha(m) {
   const { low, high, minAlpha } = P.mapqAlpha;
   if (high <= low) return m >= high ? 1 : minAlpha;
@@ -177,10 +178,10 @@ function readColor(rec) {
 
 function groupKey(rec) {
   switch (P.groupBy) {
-    case 'strand': return rec.flag & F_REV ? 'Обратная цепь (−)' : 'Прямая цепь (+)';
-    case 'firstOfPair': return rec.flag & F_R1 ? 'Первый в паре' : rec.flag & F_R2 ? 'Второй в паре' : 'Без пары';
-    case 'pair': { const o = pairOrientation(rec); return { FR: 'FR (норма)', RF: 'RF', FF: 'FF', RR: 'RR', other: 'Мейт на другой хромосоме', mateUnmapped: 'Мейт не выровнен', unpaired: 'Без пары' }[o]; }
-    case 'tag': { const v = recTags(rec)[P.groupTag]; return v === undefined ? P.groupTag + ': нет' : P.groupTag + ': ' + v; }
+    case 'strand': return rec.flag & F_REV ? t('g.rev') : t('g.fwd');
+    case 'firstOfPair': return rec.flag & F_R1 ? t('g.first') : rec.flag & F_R2 ? t('g.second') : t('g.unpaired');
+    case 'pair': { const o = pairOrientation(rec); return { FR: t('g.FR'), RF: 'RF', FF: 'FF', RR: 'RR', other: t('g.other'), mateUnmapped: t('g.mateUnmapped'), unpaired: t('g.unpaired') }[o]; }
+    case 'tag': { const v = recTags(rec)[P.groupTag]; return v === undefined ? t('g.tagNone', { tag: P.groupTag }) : P.groupTag + ': ' + v; }
     default: return '';
   }
 }
@@ -188,23 +189,23 @@ function groupKey(rec) {
 function refAtFactory() { const d = S.data; return p => { const j = p - d.start; return j >= 0 && j < d.refArr.length ? d.refArr[j] : 0; }; }
 function feats(rec) { if (!rec.feats) rec.feats = computeFeatures(rec, refAtFactory()); return rec.feats; }
 
-// Полная пересборка: фильтры → прореживание → покрытие → группы → раскладка → сортировка → экземпляры.
+// Full rebuild: filters → downsampling → coverage → groups → layout → sort → instances.
 function rebuild() {
   const d = S.data; if (!d) { S.shown = null; GL.n = 0; return; }
   const t0 = performance.now();
   let reads = d.reads.filter(r => passFilters(r, P.filters));
   const covReads = reads;
   let sampled = false;
-  if (reads.length > P.maxReads) { // равномерное прореживание с фиксированным шагом — детерминированно
+  if (reads.length > P.maxReads) { // even downsampling with a fixed step, deterministic
     const step = reads.length / P.maxReads, out = [];
     for (let i = 0; i < P.maxReads; i++) out.push(reads[Math.floor(i * step)]);
     reads = out; sampled = true;
   }
   const cov = computeCoverage(covReads, d.start, d.end - d.start);
-  // группы
+  // groups
   const gmap = new Map();
   for (const r of reads) { const k = groupKey(r); if (!gmap.has(k)) gmap.set(k, []); gmap.get(k).push(r); }
-  const keys = [...gmap.keys()].sort((a, b) => a.localeCompare(b, 'ru'));
+  const keys = [...gmap.keys()].sort((a, b) => a.localeCompare(b, LANG));
   const groups = []; let rowCursor = 0;
   for (const k of keys) {
     const rows = packRows(gmap.get(k), 3);
@@ -212,13 +213,13 @@ function rebuild() {
     groups.push({ key: k, rows, start: rowCursor, count: gmap.get(k).length });
     rowCursor += rows.length;
   }
-  // экземпляры: тела → линии → признаки (поверх)
+  // instances: bodies → lines → features on top
   const ib = new InstBuf(Math.max(1024, reads.length * 3));
   const bodies = [], marks = [];
   groups.forEach((g, gi) => g.rows.forEach((row, ri) => { const R = g.start + ri; for (const rec of row) { bodies.push([rec, R, gi]); } }));
   for (const [rec, R, gi] of bodies) {
     const col = readColor(rec), a = mapqAlpha(rec.mapq);
-    // тела по блокам выравнивания, разрывы на D/N
+    // bodies per aligned block, broken at D/N
     let r = rec.pos, segStart = rec.pos;
     for (const c of rec.cigar) {
       const op = c & 15, n = c >>> 4;
@@ -251,7 +252,7 @@ function rebuild() {
   clampScroll();
 }
 
-// Позиция, где не-референсные аллели проходят порог (то же правило, что подсветка покрытия).
+// A position where non-reference alleles pass the threshold (same rule as the coverage highlight).
 function flaggedPos(cov, d, pos) {
   const j = (pos - d.start) * 6, refc = d.refArr[pos - d.start];
   if (j < 0 || j >= cov.length || !refc) return false;
@@ -280,7 +281,7 @@ function sortRows(rows) {
   for (let i = 0; i < rows.length; i++) rows[i] = keyed[i][1];
 }
 
-// ======================= Вид =======================
+// ======================= View =======================
 function refLen() { return S.bam ? S.bam.refs[S.view.refId].len : 0; }
 function viewEnd() { return S.view.start + W * S.view.bpPerPx; }
 function viewCenter() { return S.view.start + W * S.view.bpPerPx / 2; }
@@ -308,7 +309,7 @@ function zoomAt(px, factor) {
 }
 function pan(dpx) { S.view.start += dpx * S.view.bpPerPx; clampView(); requestLoad(); draw(); syncLocus(); }
 
-// ======================= Загрузка =======================
+// ======================= Loading =======================
 let loadTimer = 0;
 function requestLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(ensureData, 120); }
 async function ensureData() {
@@ -319,7 +320,7 @@ async function ensureData() {
   const span = ve - vs;
   if (span > P.maxLoadBp && !S.forceLoad) {
     S.data = null; S.shown = null; GL.n = 0;
-    S.msg = { text: `Окно ${fmtBp(span)} — риды не загружены автоматически. Приблизьте или загрузите всё окно.`, action: 'Загрузить ' + fmtBp(span) };
+    S.msg = { text: t('wide', { span: fmtBp(span) }), action: t('wide.btn', { span: fmtBp(span) }) };
     draw(); return;
   }
   S.forceLoad = false;
@@ -339,26 +340,27 @@ async function ensureData() {
     rebuild(); draw();
   } catch (e) {
     if (token !== S.loadToken) return;
-    S.loading = false; S.msg = { text: e.message || String(e), error: true }; draw();
+    S.loading = false; S.msg = { text: errText(e), error: true }; draw();
   }
 }
 
-// ======================= Отрисовка =======================
+// ======================= Rendering =======================
 let raf = 0;
 function draw() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
 function fmtBp(n) {
-  if (n >= 1e6) return (n / 1e6).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' млн п.н.';
-  if (n >= 1e3) return (n / 1e3).toLocaleString('ru-RU', { maximumFractionDigits: 1 }) + ' т.п.н.';
-  return Math.round(n) + ' п.н.';
+  const L = NUM_LOCALE[LANG];
+  if (n >= 1e6) return (n / 1e6).toLocaleString(L, { maximumFractionDigits: 2 }) + ' ' + t('unit.mb');
+  if (n >= 1e3) return (n / 1e3).toLocaleString(L, { maximumFractionDigits: 1 }) + ' ' + t('unit.kb');
+  return Math.round(n) + ' ' + t('unit.bp');
 }
-function fmtInt(n) { return Math.round(n).toLocaleString('ru-RU'); }
+function fmtInt(n) { return Math.round(n).toLocaleString(NUM_LOCALE[LANG]); }
 
 function render() {
   const t0 = performance.now();
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, W, H);
   const rt = readsTop();
-  // ---- риды (WebGL) ----
+  // ---- reads (WebGL) ----
   if (GL_OK) {
     gl.viewport(0, 0, glCanvas.width, glCanvas.height);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
@@ -405,7 +407,7 @@ function drawRuler() {
   }
   ctx.moveTo(0, RULER_H + 0.5); ctx.lineTo(W, RULER_H + 0.5);
   ctx.stroke();
-  // позиция сортировки
+  // sort position
   if (S.sortPos != null && P.sortBy !== 'start') {
     const x0 = (S.sortPos - S.view.start) / bpp, x1 = (S.sortPos + 1 - S.view.start) / bpp;
     ctx.strokeStyle = COL.css.accent; ctx.setLineDash([3, 3]);
@@ -469,14 +471,14 @@ function drawReadsOverlay(rt) {
   const sh = S.shown; if (!sh) return;
   ctx.save(); ctx.beginPath(); ctx.rect(0, rt, W, H - rt); ctx.clip();
   const rh = P.readHeight, gg = groupGap(), bpp = S.view.bpPerPx, ppb = 1 / bpp, d = S.data;
-  // подписи групп
+  // group labels
   if (gg) sh.groups.forEach((g, gi) => {
     const y = rt + g.start * rh + gi * gg - S.scroll + gg;
     ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, Math.round(y - gg + 3) + 0.5); ctx.lineTo(W, Math.round(y - gg + 3) + 0.5); ctx.stroke();
     ctx.font = '600 11px ' + SANS; ctx.textAlign = 'left'; ctx.fillStyle = COL.css.fg;
     ctx.fillText(g.key + '  ·  ' + fmtInt(g.count), 8, y - 6);
   });
-  // буквы несовпадений и длины вставок при сильном увеличении
+  // mismatch letters and insertion lengths when zoomed in
   if (ppb >= 7 && rh >= 9) {
     ctx.font = '600 ' + Math.min(12, rh - 1) + 'px ' + MONO; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const vs = S.view.start, ve = viewEnd();
@@ -497,7 +499,7 @@ function drawReadsOverlay(rt) {
     });
     ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
   }
-  // выделенный рид
+  // selected read
   if (S.selected) {
     const L = S.selected;
     const y = rt + gg + L.row * rh + L.gi * gg - S.scroll;
@@ -509,7 +511,7 @@ function drawReadsOverlay(rt) {
 
 function drawMessage() {
   const el = $('msg');
-  if (S.loading) { el.hidden = false; el.className = 'msg'; el.innerHTML = '<span class="spin"></span>Загрузка…'; return; }
+  if (S.loading) { el.hidden = false; el.className = 'msg'; el.innerHTML = '<span class="spin"></span>' + esc(t('loading')); return; }
   if (!S.bam) { el.hidden = true; return; }
   if (S.msg) {
     el.hidden = false; el.className = 'msg' + (S.msg.error ? ' err' : '');
@@ -523,12 +525,12 @@ function drawMessage() {
 function updateStatus() {
   const st = S.stats, sh = S.shown;
   let s = '';
-  if (sh) s = `${fmtInt(st.reads)} ридов` + (sh.sampled ? ` (показано ${fmtInt(sh.reads.length)})` : '') + ` · загрузка ${Math.round(st.loadMs)} мс · сборка ${Math.round(st.buildMs)} мс · кадр ${st.drawMs.toFixed(1)} мс`;
-  if (S.refFromMD && sh) s += ' · референс из MD';
+  if (sh) s = t('status', { reads: fmtInt(st.reads), sampled: sh.sampled ? t('status.sampled', { n: fmtInt(sh.reads.length) }) : '', load: Math.round(st.loadMs), build: Math.round(st.buildMs), frame: st.drawMs.toFixed(1) });
+  if (S.refFromMD && sh) s += ' · ' + t('ref.fromMd');
   $('status').textContent = s;
 }
 
-// ======================= Локус =======================
+// ======================= Locus =======================
 function syncLocus() {
   if (!S.bam || document.activeElement === $('locus')) return;
   const s = Math.max(0, Math.round(S.view.start)), e = Math.min(refLen(), Math.round(viewEnd()));
@@ -539,7 +541,7 @@ function parseLocus(str) {
   str = str.trim().replace(/[  \s]/g, '').replace(/[–—]/g, '-');
   const m = str.match(/^([^:]+?)(?::([\d,.]+)(?:-([\d,.]+))?)?$/);
   if (!m) return null;
-  const id = S.bam.refId(m[1]); if (id < 0) return { error: 'Нет последовательности «' + m[1] + '» в файле' };
+  const id = S.bam.refId(m[1]); if (id < 0) return { error: t('locus.noContig', { name: m[1] }) };
   const num = x => parseInt(x.replace(/[,.]/g, ''), 10);
   const L = S.bam.refs[id].len;
   if (!m[2]) return { id, s: 0, e: L };
@@ -548,7 +550,7 @@ function parseLocus(str) {
   return { id, s: a, e: num(m[3]) };
 }
 
-// ======================= Ввод =======================
+// ======================= Input =======================
 let drag = null;
 stage.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !S.bam) return;
@@ -603,24 +605,24 @@ function onClick(x, y) {
   S.selected = h; showCard(h.rec, x, y); draw();
 }
 
-const FLAG_NAMES = [[1, 'парный'], [2, 'правильная пара'], [4, 'не выровнен'], [8, 'мейт не выровнен'], [16, 'обратная цепь'], [32, 'мейт на обратной'], [64, 'первый в паре'], [128, 'второй в паре'], [256, 'вторичное'], [512, 'не прошёл QC'], [1024, 'дубликат'], [2048, 'дополнительное']];
+const FLAG_BITS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048];
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function cardText(rec) {
-  const refs = S.bam.refs, t = recTags(rec);
+  const refs = S.bam.refs, tags = recTags(rec);
   const lines = [
-    ['Имя', rec.name], ['Позиция', `${refs[rec.refID].name}:${fmtInt(rec.pos + 1)}-${fmtInt(rec.end)}`], ['CIGAR', cigarString(rec)],
-    ['MAPQ', rec.mapq], ['Флаг', `${rec.flag} (${FLAG_NAMES.filter(f => rec.flag & f[0]).map(f => f[1]).join(', ') || '—'})`],
-    ['Длина', rec.lseq + ' п.н.'],
+    [t('card.name'), rec.name], [t('card.pos'), `${refs[rec.refID].name}:${fmtInt(rec.pos + 1)}-${fmtInt(rec.end)}`], ['CIGAR', cigarString(rec)],
+    ['MAPQ', rec.mapq], [t('card.flag'), `${rec.flag} (${FLAG_BITS.filter(b => rec.flag & b).map(b => t('flag.' + b)).join(', ') || '—'})`],
+    [t('card.len'), rec.lseq + ' ' + t('unit.bp')],
   ];
-  if (rec.flag & 1) lines.push(['Мейт', rec.mateRef >= 0 ? `${refs[rec.mateRef].name}:${fmtInt(rec.matePos + 1)}` : 'не выровнен'], ['Вставка (TLEN)', rec.tlen]);
-  for (const k of Object.keys(t)) lines.push([k, Array.isArray(t[k]) ? t[k].join(',') : t[k]]);
+  if (rec.flag & 1) lines.push([t('card.mate'), rec.mateRef >= 0 ? `${refs[rec.mateRef].name}:${fmtInt(rec.matePos + 1)}` : t('card.mateUnmapped')], [t('card.tlen'), rec.tlen]);
+  for (const k of Object.keys(tags)) lines.push([k, Array.isArray(tags[k]) ? tags[k].join(',') : tags[k]]);
   return lines;
 }
 function showCard(rec, x, y) {
   const c = $('card');
   const rows = cardText(rec).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
   const mate = (rec.flag & 1) && rec.mateRef >= 0;
-  c.innerHTML = `<dl>${rows}</dl><div class="card-actions">${mate ? '<button class="btn" id="toMate">К мейту</button>' : ''}<button class="btn" id="copyRead">Копировать</button><button class="btn ghost" id="closeCard" aria-label="Закрыть">Закрыть</button></div>`;
+  c.innerHTML = `<dl>${rows}</dl><div class="card-actions">${mate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button><button class="btn ghost" id="closeCard">${esc(t('btn.close'))}</button></div>`;
   c.hidden = false;
   const r = stage.getBoundingClientRect(), cw = c.offsetWidth, ch = c.offsetHeight;
   c.style.left = Math.max(8, Math.min(r.width - cw - 8, x + 14)) + 'px';
@@ -628,7 +630,7 @@ function showCard(rec, x, y) {
   $('closeCard').onclick = () => { S.selected = null; hideCard(); draw(); };
   $('copyRead').onclick = () => {
     const txt = cardText(rec).map(([k, v]) => k + '\t' + v).join('\n');
-    navigator.clipboard.writeText(txt).then(() => toast('Скопировано'), () => toast('Не удалось скопировать — выделите текст в карточке'));
+    navigator.clipboard.writeText(txt).then(() => toast(t('copied')), () => toast(t('copyFail')));
   };
   if (mate) $('toMate').onclick = () => { hideCard(); S.selected = null; goto(rec.mateRef, rec.matePos - 150, rec.matePos + 300); };
 }
@@ -643,7 +645,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowDown') { S.scroll += 60; clampScroll(); draw(); }
   else if (e.key === '+' || e.key === '=') zoomAt(W / 2, 0.5);
   else if (e.key === '-' || e.key === '_') zoomAt(W / 2, 2);
-  else if (e.key === 's' || e.key === 'ы') sortHere();
+  else if (e.key === 's' || e.key === 'ы') sortHere(); // 'ы' / 'р': same keys on a Russian layout
   else if (e.key === 'h' || e.key === 'р') { P.hideToolbar = !P.hideToolbar; applyChrome(); saveProfile(); }
   else if (e.key === 'Escape') { hideCard(); closePanels(); S.selected = null; draw(); }
   else return;
@@ -656,7 +658,7 @@ function sortHere() {
   rebuild(); draw();
 }
 
-// ======================= Размер =======================
+// ======================= Size =======================
 function resize() {
   const r = stage.getBoundingClientRect();
   DPR = Math.min(window.devicePixelRatio || 1, 3);
@@ -667,15 +669,16 @@ function resize() {
 }
 new ResizeObserver(resize).observe(stage);
 
-// ======================= Открытие данных =======================
+// ======================= Opening data =======================
 async function openBam(bamSrc, baiSrc, faSrc, faiSrc, opts) {
   opts = opts || {};
   S.loadToken++; S.loading = true; S.msg = null; draw();
   try {
     const bam = await new BamFile(bamSrc, baiSrc).open();
     let fasta = null;
-    if (faSrc && faiSrc) { try { fasta = await new IndexedFasta(faSrc, faiSrc).open(); } catch (e) { toast('Референс не открыт: ' + e.message); } }
-    S.bam = bam; S.fasta = fasta; S.data = null; S.shown = null; GL.n = 0; S.isDemo = !!opts.demo; S.sortPos = null;
+    if (faSrc && faiSrc) { try { fasta = await new IndexedFasta(faSrc, faiSrc, opts.gzi).open(); } catch (e) { toast(t('ref.failed', { msg: errText(e) })); } }
+    const keep = opts.keepRef && S.fasta && bam.refs.some(r => S.fasta.has(r.name));
+    S.bam = bam; if (fasta || !keep) S.fasta = fasta; updateRefInfo(); S.data = null; S.shown = null; GL.n = 0; S.isDemo = !!opts.demo; S.sortPos = null;
     S.bamName = bamSrc.name; $('fileName').textContent = bamSrc.name + (bam.samples.length ? ' · ' + bam.samples.join(', ') : '');
     $('examples').hidden = !S.isDemo;
     S.loading = false;
@@ -683,7 +686,7 @@ async function openBam(bamSrc, baiSrc, faSrc, faiSrc, opts) {
     if (loc && !loc.error) goto(loc.id, loc.s, loc.e);
     else { const L = bam.refs[0].len; goto(0, 0, Math.min(L, 20000)); }
   } catch (e) {
-    S.loading = false; S.msg = { text: e.message || String(e), error: true }; draw();
+    S.loading = false; S.msg = { text: errText(e), error: true }; draw();
   }
 }
 
@@ -698,29 +701,78 @@ function openDemo() {
 function openLocalFiles(files) {
   const by = ext => [...files].find(f => f.name.toLowerCase().endsWith(ext));
   const cram = by('.cram');
-  if (cram) { toast('CRAM появится на следующем шаге. Сейчас откройте BAM.'); return; }
-  const bam = by('.bam'), bai = by('.bai') || by('.bam.bai');
-  if (by('.csi') && !bai) { toast('Индекс CSI пока не поддерживается — нужен .bai'); return; }
-  if (!bam || !bai) { toast('Выберите сразу два файла: .bam и его индекс .bai'); return; }
-  const fa = by('.fa') || by('.fasta') || by('.fna'), fai = by('.fai');
-  const fai2 = fai && !fai.name.toLowerCase().endsWith('.bam.bai') ? fai : null;
-  openBam(new FileSource(bam), new FileSource(bai), fa && fai2 ? new FileSource(fa) : null, fa && fai2 ? new FileSource(fai2) : null, {});
+  if (cram) { toast(t('files.cram')); return; }
+  const bam = by('.bam'), bai = by('.bai');
+  const ref = pickRefFiles(files);
+  if (!bam && ref) { openReference(ref.fa, ref.fai, ref.gzi); return; }
+  if (by('.csi') && !bai) { toast(t('files.csi')); return; }
+  if (!bam || !bai) { toast(t('files.needPair')); return; }
+  openBam(new FileSource(bam), new FileSource(bai), ref ? ref.fa : null, ref ? ref.fai : null, { gzi: ref && ref.gzi, keepRef: true });
   closePanels();
 }
 
 function openUrls() {
-  const u = $('urlBam').value.trim(); if (!u) { toast('Вставьте ссылку на BAM'); return; }
-  if (/\.cram(\?|$)/i.test(u)) { toast('CRAM появится на следующем шаге. Сейчас — BAM.'); return; }
+  const u = $('urlBam').value.trim(); if (!u) { toast(t('url.need')); return; }
+  if (/\.cram(\?|$)/i.test(u)) { toast(t('files.cram')); return; }
   const idx = $('urlBai').value.trim() || addSuffix(u, '.bai');
   const auth = $('urlAuth').value.trim();
   const headers = auth ? { Authorization: /^bearer\s/i.test(auth) ? auth : 'Bearer ' + auth } : {};
-  const fa = $('urlFa').value.trim();
-  openBam(new UrlSource(u, headers), new UrlSource(idx, headers), fa ? new UrlSource(fa, headers) : null, fa ? new UrlSource(addSuffix(fa, '.fai'), headers) : null, {});
+  openBam(new UrlSource(u, headers), new UrlSource(idx, headers), null, null, { keepRef: true });
   closePanels();
 }
 function addSuffix(url, sfx) { try { const x = new URL(url); x.pathname += sfx; return x.toString(); } catch (e) { return url + sfx; } }
 
-// ======================= Панели и настройки =======================
+
+// ======================= Reference =======================
+// Public assemblies hosted by the IGV team on S3 (CORS enabled); same list igv.js uses.
+const REF_PRESETS = {
+  hg38: { label: 'GRCh38 / hg38', fa: 'https://igv-genepattern-org.s3.amazonaws.com/genomes/seq/hg38/hg38.fa' },
+  hg19: { label: 'GRCh37 / hg19', fa: 'https://igv-genepattern-org.s3.amazonaws.com/genomes/seq/hg19/hg19.fasta' },
+  chm13: { label: 'T2T-CHM13 v2.0', fa: 'https://s3.amazonaws.com/igv.org.genomes/chm13v2.0/chm13v2.0.fa' },
+};
+function pickRefFiles(files) {
+  const L = f => f.name.toLowerCase();
+  const fa = [...files].find(f => /\.(fa|fasta|fna)(\.gz)?$/.test(L(f)));
+  if (!fa) return null;
+  const fai = [...files].find(f => L(f).endsWith('.fai')) || null;
+  const gzi = [...files].find(f => L(f).endsWith('.gzi')) || null;
+  if (!fai) return null;
+  return { fa: new FileSource(fa), fai: new FileSource(fai), gzi: gzi ? new FileSource(gzi) : null };
+}
+async function openReference(faSrc, faiSrc, gziSrc) {
+  if (!S.bam) { toast(t('ref.needBam')); return; }
+  try {
+    const fasta = await new IndexedFasta(faSrc, faiSrc, gziSrc).open();
+    if (!S.bam.refs.some(r => fasta.has(r.name))) { toast(t('ref.mismatch')); return; }
+    S.fasta = fasta; S.data = null; S.shown = null; GL.n = 0; updateRefInfo(); closePanels();
+    toast(t('ref.loaded', { name: faSrc.name })); ensureData();
+  } catch (e) { toast(t('ref.failed', { msg: errText(e) })); }
+}
+function updateRefInfo() {
+  const el = $('refInfo'); if (!el) return;
+  el.textContent = S.fasta ? t('ref.current', { name: S.fasta.name }) : t('ref.none');
+}
+$('pickRef').onchange = e => { const r = pickRefFiles(e.target.files); e.target.value = ''; if (!r) { toast(t('ref.failed', { msg: t('err.fai') })); return; } openReference(r.fa, r.fai, r.gzi); };
+$('refPreset').onchange = e => { const p = REF_PRESETS[e.target.value]; if (p) $('refUrl').value = p.fa; };
+$('loadRef').onclick = () => {
+  const u = $('refUrl').value.trim(); if (!u) return;
+  const gz = /\.gz(\?|$)/i.test(u);
+  openReference(new UrlSource(u), new UrlSource(addSuffix(u, '.fai')), gz ? new UrlSource(addSuffix(u, '.gzi')) : null);
+};
+
+// ======================= Language =======================
+function buildLanguageSelect() {
+  const sel = $('language');
+  sel.innerHTML = LANGS.map(([code, name]) => `<option value="${code}">${esc(name)}</option>`).join('');
+}
+function applyLanguage() {
+  LANG = STRINGS[P.language] ? P.language : 'en';
+  applyI18n(); updateRefInfo(); syncPanel(); syncLocus();
+  if (S.data) rebuild(); draw();
+  if (S.selected) { hideCard(); S.selected = null; }
+}
+
+// ======================= Panels and settings =======================
 function closePanels() { $('panel').hidden = true; $('openPanel').hidden = true; $('viewBtn').setAttribute('aria-expanded', 'false'); $('openBtn').setAttribute('aria-expanded', 'false'); }
 function togglePanel(id, btn) { const el = $(id), was = el.hidden; closePanels(); el.hidden = !was; btn.setAttribute('aria-expanded', String(was)); if (id === 'panel' && was) syncPanel(); }
 $('viewBtn').onclick = () => togglePanel('panel', $('viewBtn'));
@@ -736,13 +788,13 @@ stage.addEventListener('drop', e => { e.preventDefault(); stage.classList.remove
 $('locus').addEventListener('keydown', e => {
   if (e.key !== 'Enter' || !S.bam) return;
   const l = parseLocus(e.target.value);
-  if (!l) { toast('Не понял локус. Пример: chr7:117,559,500-117,560,000'); return; }
+  if (!l) { toast(t('locus.bad')); return; }
   if (l.error) { toast(l.error); return; }
   e.target.blur(); goto(l.id, l.s, l.e);
 });
 $('examples').onchange = e => { const v = e.target.value; e.target.value = ''; if (!v || !S.bam) return; const l = parseLocus(v); if (l && !l.error) goto(l.id, l.s, l.e); };
 
-// элементы управления профилем: id → [путь в профиле, тип, что пересчитать]
+// profile controls: id → [profile path, type, what to recompute]
 const CONTROLS = [
   ['readHeight', 'readHeight', 'num', 'draw'],
   ['colorBy', 'colorBy', 'str', 'rebuild'], ['colorTag', 'colorTag', 'str', 'rebuild'],
@@ -753,7 +805,7 @@ const CONTROLS = [
   ['minMapq', 'filters.minMapq', 'num', 'rebuild'], ['hideDup', 'filters.hideDuplicates', 'bool', 'rebuild'],
   ['hideSec', 'filters.hideSecondary', 'bool', 'rebuild'], ['hideSupp', 'filters.hideSupplementary', 'bool', 'rebuild'], ['hideQc', 'filters.hideQcFail', 'bool', 'rebuild'],
   ['covHeight', 'coverage.height', 'num', 'draw'], ['alleleThr', 'coverage.alleleThreshold', 'num', 'rebuild'],
-  ['hideToolbar', 'hideToolbar', 'bool', 'chrome'],
+  ['hideToolbar', 'hideToolbar', 'bool', 'chrome'], ['language', 'language', 'str', 'lang'],
 ];
 const getPath = (o, p) => p.split('.').reduce((a, k) => a[k], o);
 const setPath = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k], o)[last] = v; };
@@ -781,30 +833,32 @@ for (const [id, path, type, effect] of CONTROLS) {
     setPath(P, path, v); saveProfile(); syncPanel();
     if (effect === 'draw') { clampScroll(); draw(); }
     else if (effect === 'chrome') applyChrome();
+    else if (effect === 'lang') applyLanguage();
     else { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => { if (id === 'sortBy' && S.sortPos == null) S.sortPos = Math.floor(viewCenter()); rebuild(); draw(); }, 30); }
   });
 }
 $('sortHere').onclick = sortHere;
-$('copyProfile').onclick = () => navigator.clipboard.writeText(JSON.stringify(P, null, 2)).then(() => toast('Профиль скопирован'), () => { $('profileJson').select(); toast('Выделил текст — скопируйте вручную'); });
+$('copyProfile').onclick = () => navigator.clipboard.writeText(JSON.stringify(P, null, 2)).then(() => toast(t('profile.copied')), () => { $('profileJson').select(); toast(t('copyFail')); });
 $('applyProfile').onclick = () => {
-  try { P = mergeProfile(DEFAULT_PROFILE, JSON.parse($('profileJson').value)); saveProfile(); syncPanel(); applyChrome(); rebuild(); draw(); toast('Профиль применён'); }
-  catch (e) { toast('В профиле ошибка JSON: ' + e.message); }
+  try { P = mergeProfile(DEFAULT_PROFILE, JSON.parse($('profileJson').value)); saveProfile(); applyLanguage(); syncPanel(); applyChrome(); rebuild(); draw(); toast(t('profile.applied')); }
+  catch (e) { toast(t('profile.bad', { msg: e.message })); }
 };
-$('resetProfile').onclick = () => { P = clone(DEFAULT_PROFILE); saveProfile(); syncPanel(); applyChrome(); rebuild(); draw(); toast('Профиль сброшен'); };
+$('resetProfile').onclick = () => { P = clone(DEFAULT_PROFILE); saveProfile(); applyLanguage(); syncPanel(); applyChrome(); rebuild(); draw(); toast(t('profile.reset')); };
 $('showToolbar').onclick = () => { P.hideToolbar = false; saveProfile(); applyChrome(); };
 function applyChrome() { document.body.classList.toggle('bare', P.hideToolbar); $('showToolbar').hidden = !P.hideToolbar; requestAnimationFrame(resize); }
 
 let toastTimer = 0;
-function toast(t) { const el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 3500); }
+function toast(msg) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 3500); }
 
-// ======================= Тема =======================
+// ======================= Theme =======================
 function onTheme() { readColors(); if (S.data) rebuild(); draw(); updateMqLegend(); }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme);
 new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-// ======================= Старт =======================
+// ======================= Start =======================
 const SANS = getComputedStyle(document.documentElement).getPropertyValue('--sans') || 'system-ui, sans-serif';
 const MONO = getComputedStyle(document.documentElement).getPropertyValue('--mono') || 'ui-monospace, monospace';
-readColors(); syncPanel(); applyChrome();
-if (!GL_OK) { $('msg').hidden = false; $('msg').className = 'msg err'; $('msg').textContent = 'В этом браузере нет WebGL2 — отрисовка ридов недоступна. Обновите браузер или включите аппаратное ускорение.'; }
+LANG = STRINGS[P.language] ? P.language : 'en';
+buildLanguageSelect(); applyI18n(); readColors(); syncPanel(); applyChrome(); updateRefInfo();
+if (!GL_OK) { $('msg').hidden = false; $('msg').className = 'msg err'; $('msg').textContent = t('nowebgl'); }
 openDemo();

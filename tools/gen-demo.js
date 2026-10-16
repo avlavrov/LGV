@@ -1,5 +1,6 @@
-// Генератор синтетических демо-данных CGV: демо-референс, пары ридов с известными вариантами,
-// BAM (BGZF) + BAI + FASTA + FAI. Только встроенные модули Node.
+// Synthetic demo data for CGV: a made-up reference, read pairs with known variants,
+// BAM (BGZF) + BAI + FASTA + FAI. Node built-in modules only.
+// CGV_L=<length> sets the main contig length (default 40000).
 'use strict';
 const zlib = require('zlib');
 const fs = require('fs');
@@ -8,7 +9,7 @@ const path = require('path');
 const OUT = process.argv[2] || path.join(__dirname, '..', 'demo');
 fs.mkdirSync(OUT, { recursive: true });
 
-// ---------- детерминированный генератор случайных чисел ----------
+// ---------- deterministic random numbers ----------
 let seed = 20261016;
 function rnd() { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
 function rint(a, b) { return a + Math.floor(rnd() * (b - a + 1)); }
@@ -18,14 +19,14 @@ function randBase() { return BASES[Math.floor(rnd() * 4)]; }
 function otherBase(b) { let x; do { x = randBase(); } while (x === b); return x; }
 function revcomp(s) { const m = { A: 'T', C: 'G', G: 'C', T: 'A', N: 'N' }; let o = ''; for (let i = s.length - 1; i >= 0; i--) o += m[s[i]]; return o; }
 
-// ---------- референс ----------
+// ---------- reference ----------
 const L = +(process.env.CGV_L || 40000), L2 = 2000;
 let ref = ''; for (let i = 0; i < L; i++) ref += randBase();
-// сегментный повтор: 30000–30600 копируется в 33000–33600 → риды там получают низкий MAPQ
+// segmental duplication: 30000–30600 is copied to 33000–33600, so reads there get low MAPQ
 ref = ref.slice(0, 33000) + ref.slice(30000, 30600) + ref.slice(33600);
 let ref2 = ''; for (let i = 0; i < L2; i++) ref2 += randBase();
 
-// ---------- варианты (0-based координаты) ----------
+// ---------- variants (0-based coordinates) ----------
 const V = {
   hetSnv: { pos: 12000 }, homSnv: { pos: 15000 },
   hetDel: { pos: 18000, len: 3 }, hetIns: { pos: 21000, seq: 'TGA' },
@@ -34,7 +35,7 @@ const V = {
 V.hetSnv.alt = otherBase(ref[V.hetSnv.pos]);
 V.homSnv.alt = otherBase(ref[V.homSnv.pos]);
 
-// гаплотип = последовательность + карта позиций гаплотипа на референс (-1 = вставка)
+// haplotype = sequence + map from haplotype positions to reference (-1 = insertion)
 function buildHap(h) {
   let seq = [], map = [];
   for (let i = 0; i < L; i++) {
@@ -50,8 +51,8 @@ function buildHap(h) {
 }
 const haps = [buildHap(0), buildHap(1)];
 
-// ---------- выравнивание участка гаплотипа на референс ----------
-// возвращает {pos, cigar:[[op,len]], seq} ; op: M I D S
+// ---------- align a haplotype segment to the reference ----------
+// returns {pos, cigar:[[op,len]], seq}; op: M I D S
 function alignSegment(hap, a, len) {
   const ops = []; let pos = -1, prev = -1;
   const push = (op, n) => { if (ops.length && ops[ops.length - 1][0] === op) ops[ops.length - 1][1] += n; else ops.push([op, n]); };
@@ -62,17 +63,17 @@ function alignSegment(hap, a, len) {
     else if (r > prev + 1) push('D', r - prev - 1);
     push('M', 1); prev = r;
   }
-  // вставка в самом начале → soft clip
+  // an insertion at either end becomes a soft clip
   if (ops[0][0] === 'I') ops[0][0] = 'S';
   if (ops[ops.length - 1][0] === 'I') ops[ops.length - 1][0] = 'S';
-  // крупная делеция → как у реального выравнивателя: короткую сторону обрезаем soft clip
+  // a large deletion: like a real aligner, soft-clip the shorter side
   for (let i = 0; i < ops.length; i++) {
     if (ops[i][0] === 'D' && ops[i][1] > 50) {
       const left = ops.slice(0, i).reduce((s, o) => s + (o[0] !== 'D' ? o[1] : 0), 0);
       const right = ops.slice(i + 1).reduce((s, o) => s + (o[0] !== 'D' ? o[1] : 0), 0);
       if (left >= right) { ops.splice(i, ops.length - i, ['S', right]); }
       else {
-        // позиция сдвигается на правую сторону
+        // the read now starts on the right side
         let rp = pos; for (let j = 0; j < i; j++) if (ops[j][0] === 'M' || ops[j][0] === 'D') rp += ops[j][1];
         rp += ops[i][1]; pos = rp;
         ops.splice(0, i + 1, ['S', left]);
@@ -83,11 +84,12 @@ function alignSegment(hap, a, len) {
   return { pos, cigar: ops, seq: hap.seq.slice(a, a + len) };
 }
 
-// ---------- генерация пар ----------
+// ---------- read pairs ----------
 const RL = 150;
 const reads = [];
 let pairId = 0;
-function qualFor(isErr) { return isErr ? rint(5, 12) : (rnd() < 0.08 ? rint(15, 25) : rint(30, 40)); }
+// Binned qualities (2, 12, 23, 37), like current Illumina instruments: realistic and compress well.
+function qualFor(isErr) { return isErr ? 12 : (rnd() < 0.08 ? 23 : 37); }
 function makeRead(al, rev, contig, extra) {
   let s = al.seq.split(''); const q = [];
   for (let i = 0; i < s.length; i++) { const err = rnd() < 0.003; if (err) s[i] = otherBase(s[i]); q.push(qualFor(err)); }
@@ -106,17 +108,17 @@ for (let n = 0; n < nPairs; n++) {
   let mq = 60;
   if (inRepeat(r1.pos, e1) || inRepeat(r2.pos, e2)) mq = [0, 0, 0, 1, 3][rint(0, 4)];
   else if (rnd() < 0.05) mq = rint(15, 45);
-  const swap = rnd() < 0.5; // какой из ридов первый в паре
+  const swap = rnd() < 0.5; // which read is first in pair
   const A = makeRead(r1, false, 0, { name, mapq: mq, hp: h + 1, first: !swap });
   const B = makeRead(r2, true, 0, { name, mapq: mq, hp: h + 1, first: swap });
   A.mate = B; B.mate = A; reads.push(A, B);
-  if (rnd() < 0.03) { // дубликат ПЦР
+  if (rnd() < 0.03) { // PCR duplicate
     const nm = 'dup_' + pairId;
     const C = Object.assign({}, A, { name: nm, dup: true }), D = Object.assign({}, B, { name: nm, dup: true });
     C.mate = D; D.mate = C; reads.push(C, D);
   }
 }
-// химерные пары: риды у позиции 22000 с мейтами на demo2
+// chimeric pairs: reads near 22000 with mates on demo2
 for (let n = 0; n < 24; n++) {
   const a = rint(21700, 22200);
   const r1 = alignSegment(haps[0], a, RL);
@@ -125,11 +127,11 @@ for (let n = 0; n < 24; n++) {
   const name = 'chim_' + n;
   const A = makeRead(r1, false, 0, { name, mapq: 60, hp: 1, first: true });
   const B = makeRead(r2, true, 1, { name, mapq: 60, hp: 1, first: false });
-  B.seq = ref2.slice(b, b + RL); // хранится в ориентации референса
+  B.seq = ref2.slice(b, b + RL); // stored in reference orientation
   A.mate = B; B.mate = A; reads.push(A, B);
 }
 
-// ---------- кодирование BAM ----------
+// ---------- BAM encoding ----------
 const CODE = { '=': 0, A: 1, C: 2, M: 3, G: 4, R: 5, S: 6, V: 7, T: 8, W: 9, Y: 10, H: 11, K: 12, D: 13, B: 14, N: 15 };
 const OPC = { M: 0, I: 1, D: 2, N: 3, S: 4, H: 5, P: 6, '=': 7, X: 8 };
 const refs = [ref, ref2];

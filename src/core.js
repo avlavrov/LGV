@@ -1,9 +1,9 @@
-// CGV core: источники данных, BGZF, BAI, BAM, FASTA, модель (покрытие, раскладка).
-// Без внешних зависимостей. Распаковка — встроенный DecompressionStream('deflate-raw').
+// CGV core: data sources, BGZF, BAI, BAM, FASTA, model (coverage, layout).
+// No external dependencies. Decompression uses the browser's built-in DecompressionStream('deflate-raw').
 'use strict';
 
-// ======================= Источники данных =======================
-// Единый интерфейс: read(start, len) -> Uint8Array, readAll() -> Uint8Array.
+// ======================= Data sources =======================
+// One interface: read(start, len) -> Uint8Array, readAll() -> Uint8Array.
 class FileSource {
   constructor(blob, name) { this.blob = blob; this.name = name || blob.name || 'file'; this.bytes = 0; }
   async read(start, len) {
@@ -25,17 +25,17 @@ class UrlSource {
     if (range) h.Range = range;
     let r;
     try { r = await fetch(this.url, { headers: h, credentials: 'omit', mode: 'cors' }); }
-    catch (e) { throw new CgvError('Нет доступа к ' + this.name + '. Проверьте ссылку и что сервер разрешает CORS и Range-запросы.', 'network'); }
-    if (r.status === 401 || r.status === 403) throw new CgvError('Доступ запрещён (' + r.status + '): ' + this.name + '. Ссылка устарела или нужен токен.', 'auth');
-    if (r.status === 404) throw new CgvError('Файл не найден (404): ' + this.name, 'notfound');
-    if (!r.ok) throw new CgvError('Сервер ответил ' + r.status + ' на ' + this.name, 'http');
+    catch (e) { throw new CgvError('network', { name: this.name }); }
+    if (r.status === 401 || r.status === 403) throw new CgvError('auth', { status: r.status, name: this.name });
+    if (r.status === 404) throw new CgvError('notfound', { name: this.name });
+    if (!r.ok) throw new CgvError('http', { status: r.status, name: this.name });
     return r;
   }
   async read(start, len) {
     const r = await this._fetch('bytes=' + start + '-' + (start + len - 1));
     const buf = new Uint8Array(await r.arrayBuffer());
     this.bytes += buf.length;
-    if (r.status === 200) { // сервер проигнорировал Range — вернул весь файл
+    if (r.status === 200) { // server ignored Range and sent the whole file
       this.noRange = true;
       return buf.subarray(start, Math.min(start + len, buf.length));
     }
@@ -44,7 +44,22 @@ class UrlSource {
   async readAll() { const r = await this._fetch(null); const b = new Uint8Array(await r.arrayBuffer()); this.bytes += b.length; return b; }
 }
 
-class CgvError extends Error { constructor(msg, kind) { super(msg); this.kind = kind; } }
+// Errors carry a code and values; the UI turns them into text in the chosen language.
+const CGV_ERR_EN = {
+  network: 'Cannot reach {name}. Check the link and that the server allows CORS and Range requests.',
+  auth: 'Access denied ({status}): {name}. The link has expired or a token is needed.',
+  notfound: 'File not found (404): {name}', http: 'The server answered {status} for {name}',
+  bgzf: 'The file is damaged or not BGZF (offset {offset})', bsize: 'A BGZF block has no BSIZE field',
+  notBai: 'This is not a BAI index (.bai)', notBam: 'This is not a BAM file (no BAM signature)', header: 'Could not read the BAM header',
+  headerCut: 'The BAM header is cut short — the file is incomplete', headerBig: 'The BAM header is too large',
+  fai: 'Empty or invalid FASTA index (.fai)', gzi: 'Invalid .gzi index', needGzi: 'A compressed .fa.gz needs its .gzi index',
+};
+class CgvError extends Error {
+  constructor(code, vars) {
+    super((CGV_ERR_EN[code] || code).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? vars[k] : m)));
+    this.code = code; this.vars = vars || {};
+  }
+}
 
 // ======================= BGZF =======================
 async function inflateRaw(u8) {
@@ -57,7 +72,7 @@ async function inflateRaw(u8) {
 function parseBgzfBlocks(buf, baseCoff) {
   const blocks = []; let p = 0;
   while (p + 18 <= buf.length) {
-    if (buf[p] !== 31 || buf[p + 1] !== 139) throw new CgvError('Файл повреждён или это не BGZF (смещение ' + (baseCoff + p) + ')', 'format');
+    if (buf[p] !== 31 || buf[p + 1] !== 139) throw new CgvError('bgzf', { offset: baseCoff + p });
     const xlen = buf[p + 10] | (buf[p + 11] << 8);
     let q = p + 12, bsize = -1; const xend = p + 12 + xlen;
     while (q + 4 <= xend) {
@@ -65,7 +80,7 @@ function parseBgzfBlocks(buf, baseCoff) {
       if (buf[q] === 66 && buf[q + 1] === 67) bsize = buf[q + 4] | (buf[q + 5] << 8);
       q += 4 + slen;
     }
-    if (bsize < 0) throw new CgvError('В блоке BGZF нет поля BSIZE', 'format');
+    if (bsize < 0) throw new CgvError('bsize');
     const total = bsize + 1;
     if (p + total > buf.length) break;
     blocks.push({ coff: baseCoff + p, cstart: p + 12 + xlen, clen: total - xlen - 20 });
@@ -74,7 +89,7 @@ function parseBgzfBlocks(buf, baseCoff) {
   return blocks;
 }
 
-// Читает и распаковывает блоки с cStart до блока cLast включительно.
+// Reads and inflates the blocks from cStart through the block starting at cLast.
 async function readBgzf(source, cStart, cLast) {
   const raw = await source.read(cStart, cLast - cStart + 65536);
   const blocks = parseBgzfBlocks(raw, cStart).filter(b => b.coff <= cLast);
@@ -87,7 +102,7 @@ async function readBgzf(source, cStart, cLast) {
 }
 
 // ======================= BAI =======================
-// Виртуальное смещение BGZF как число: coffset * 65536 + uoffset (точно до ~137 ГБ файла).
+// BGZF virtual offset as a Number: coffset * 65536 + uoffset (exact for files up to ~137 GB).
 function voffNum(dv, o) { const lo = dv.getUint32(o, true), hi = dv.getUint32(o + 4, true); return (hi * 65536 + (lo >>> 16)) * 65536 + (lo & 0xffff); }
 
 function reg2bins(beg, end) {
@@ -102,7 +117,7 @@ function reg2bins(beg, end) {
 
 class BaiIndex {
   constructor(u8) {
-    if (u8.length < 8 || u8[0] !== 66 || u8[1] !== 65 || u8[2] !== 73 || u8[3] !== 1) throw new CgvError('Это не индекс BAI (.bai)', 'format');
+    if (u8.length < 8 || u8[0] !== 66 || u8[1] !== 65 || u8[2] !== 73 || u8[3] !== 1) throw new CgvError('notBai');
     this.dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
     const nref = this.dv.getInt32(4, true);
     this.refs = []; let p = 8; const dv = this.dv;
@@ -143,7 +158,7 @@ class BaiIndex {
     const merged = [];
     for (const c of cs) {
       const last = merged[merged.length - 1];
-      // объединяем, если разрыв меньше 64 КБ сжатых данных: один запрос дешевле двух
+      // merge when the gap is under 64 KB of compressed data: one request is cheaper than two
       if (last && Math.floor(c[0] / 65536) <= Math.floor(last[1] / 65536) + 65536) { if (c[1] > last[1]) last[1] = c[1]; }
       else merged.push([c[0], c[1]]);
     }
@@ -168,16 +183,16 @@ class BamFile {
     for (let attempt = 0; attempt < 12; attempt++) {
       const raw = await this.src.read(0, size);
       const blocks = parseBgzfBlocks(raw, 0);
-      if (!blocks.length) throw new CgvError('Не удалось прочитать заголовок BAM', 'format');
+      if (!blocks.length) throw new CgvError('header');
       const parts = await Promise.all(blocks.map(b => inflateRaw(raw.subarray(b.cstart, b.cstart + b.clen))));
       let total = 0; parts.forEach(p => total += p.length);
       const d = new Uint8Array(total); let o = 0; for (const p of parts) { d.set(p, o); o += p.length; }
       const h = tryParseBamHeader(d);
       if (h) { Object.assign(this, h); return; }
-      if (raw.length < size) throw new CgvError('Заголовок BAM обрывается — файл неполный', 'format');
+      if (raw.length < size) throw new CgvError('headerCut');
       size *= 2;
     }
-    throw new CgvError('Слишком большой заголовок BAM', 'format');
+    throw new CgvError('headerBig');
   }
   refId(name) {
     if (this.refIndex.has(name)) return this.refIndex.get(name);
@@ -186,7 +201,7 @@ class BamFile {
     if (name === 'chrM' || name === 'M') { for (const n of ['MT', 'chrMT']) if (this.refIndex.has(n)) return this.refIndex.get(n); }
     return -1;
   }
-  // Риды, перекрывающие [beg, end) на refId. onChunk — прогресс.
+  // Reads overlapping [beg, end) on refId.
   async fetch(refId, beg, end) {
     const chunks = this.index.chunks(refId, beg, end);
     const results = await Promise.all(chunks.map(c => this._readChunk(c, refId, beg, end)));
@@ -219,7 +234,7 @@ class BamFile {
 
 function tryParseBamHeader(d) {
   if (d.length < 12) return null;
-  if (d[0] !== 66 || d[1] !== 65 || d[2] !== 77 || d[3] !== 1) throw new CgvError('Это не BAM-файл (нет сигнатуры BAM)', 'format');
+  if (d[0] !== 66 || d[1] !== 65 || d[2] !== 77 || d[3] !== 1) throw new CgvError('notBam');
   const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
   const lText = dv.getInt32(4, true); let p = 8 + lText;
   if (p + 4 > d.length) return null;
@@ -299,10 +314,10 @@ function recTags(rec) {
   return (rec._tags = out);
 }
 
-// Восстанавливает базы референса по тегу MD: заполняет refArr (индексы от winStart).
+// Rebuilds reference bases from the MD tag into refArr (indexed from winStart).
 function fillRefFromMD(rec, refArr, winStart) {
   const md = recTags(rec).MD; if (typeof md !== 'string') return;
-  // последовательность выровненных позиций: [refPos, queryPos | -1 для D]
+  // aligned positions in order: refPos, and queryPos or -1 for deletions
   const rp = [], qp = []; let r = rec.pos, q = 0;
   for (const c of rec.cigar) {
     const op = c & 15, n = c >>> 4;
@@ -323,7 +338,7 @@ function fillRefFromMD(rec, refArr, winStart) {
   }
 }
 
-// Признаки рида для отрисовки: несовпадения, вставки, делеции, пропуски, soft clip.
+// Read features to draw: mismatches, insertions, deletions, skips, soft clips.
 // t: 0=mismatch 1=ins 2=del 3=skip(N) 4=softclip-left 5=softclip-right
 function computeFeatures(rec, refAt) {
   const f = []; let r = rec.pos, q = 0; const nc = rec.cigar.length;
@@ -346,7 +361,7 @@ function computeFeatures(rec, refAt) {
   return f;
 }
 
-// База рида в позиции референса (код символа) или 0 — нет покрытия, 45 ('-') — делеция.
+// Read base at a reference position (char code); 0 = not covered, 45 ('-') = deletion.
 function baseAtRefPos(rec, pos) {
   if (pos < rec.pos || pos >= rec.end) return 0;
   let r = rec.pos, q = 0;
@@ -360,33 +375,58 @@ function baseAtRefPos(rec, pos) {
 }
 
 // ======================= FASTA =======================
+// Plain FASTA + .fai, or bgzip-compressed FASTA + .fai + .gzi.
 class IndexedFasta {
-  constructor(faSource, faiSource) { this.src = faSource; this.faiSrc = faiSource; }
+  constructor(faSource, faiSource, gziSource) { this.src = faSource; this.faiSrc = faiSource; this.gziSrc = gziSource || null; this.name = faSource.name; }
   async open() {
+    if (/\.gz$/i.test(this.src.name || '') && !this.gziSrc) throw new CgvError('needGzi');
     const t = new TextDecoder().decode(await this.faiSrc.readAll());
     this.idx = new Map();
     for (const line of t.split('\n')) {
       const f = line.split('\t'); if (f.length < 5) continue;
       this.idx.set(f[0], { len: +f[1], off: +f[2], lb: +f[3], lw: +f[4] });
     }
-    if (!this.idx.size) throw new CgvError('Пустой или неверный индекс FASTA (.fai)', 'format');
+    if (!this.idx.size) throw new CgvError('fai');
+    if (this.gziSrc) {
+      const g = await this.gziSrc.readAll(), dv = new DataView(g.buffer, g.byteOffset, g.byteLength);
+      if (g.length < 8) throw new CgvError('gzi');
+      const n = dv.getUint32(0, true) + dv.getUint32(4, true) * 4294967296;
+      if (g.length < 8 + n * 16) throw new CgvError('gzi');
+      this.gzi = [[0, 0]];
+      for (let i = 0; i < n; i++) { const o = 8 + i * 16; this.gzi.push([dv.getUint32(o, true) + dv.getUint32(o + 4, true) * 4294967296, dv.getUint32(o + 8, true) + dv.getUint32(o + 12, true) * 4294967296]); }
+    }
     return this;
   }
-  entry(name) { return this.idx.get(name) || this.idx.get(name.startsWith('chr') ? name.slice(3) : 'chr' + name); }
-  // Возвращает Uint8Array кодов символов (верхний регистр) для [beg, end).
+  entry(name) {
+    const alts = [name, name.startsWith('chr') ? name.slice(3) : 'chr' + name];
+    if (/^(chr)?(M|MT)$/.test(name)) alts.push('chrM', 'MT', 'M', 'chrMT');
+    for (const a of alts) if (this.idx.has(a)) return this.idx.get(a);
+    return null;
+  }
+  has(name) { return !!this.entry(name); }
+  // Uncompressed bytes [u0, u1) of the FASTA file.
+  async _bytes(u0, u1) {
+    if (!this.gzi) return this.src.read(u0, u1 - u0);
+    const g = this.gzi; let lo = 0, hi = g.length - 1;
+    const find = u => { let a = 0, b = g.length - 1, r = 0; while (a <= b) { const m = (a + b) >> 1; if (g[m][1] <= u) { r = m; a = m + 1; } else b = m - 1; } return r; };
+    lo = find(u0); hi = find(Math.max(u0, u1 - 1));
+    const { data } = await readBgzf(this.src, g[lo][0], g[hi][0]);
+    return data.subarray(u0 - g[lo][1], u1 - g[lo][1]);
+  }
+  // Char codes (upper case) for [beg, end), or null if the contig is absent.
   async fetch(name, beg, end) {
     const e = this.entry(name); if (!e) return null;
     beg = Math.max(0, beg); end = Math.min(e.len, end); if (end <= beg) return new Uint8Array(0);
     const o0 = e.off + Math.floor(beg / e.lb) * e.lw + (beg % e.lb);
     const o1 = e.off + Math.floor(end / e.lb) * e.lw + (end % e.lb);
-    const raw = await this.src.read(o0, o1 - o0);
+    const raw = await this._bytes(o0, o1);
     const out = new Uint8Array(end - beg); let j = 0;
     for (let i = 0; i < raw.length && j < out.length; i++) { const c = raw[i]; if (c === 10 || c === 13) continue; out[j++] = c & ~32; }
     return out;
   }
 }
 
-// ======================= Модель =======================
+// ======================= Model =======================
 const F_PAIRED = 1, F_PROPER = 2, F_REV = 16, F_MREV = 32, F_R1 = 64, F_R2 = 128, F_SECONDARY = 256, F_QCFAIL = 512, F_DUP = 1024, F_SUPP = 2048;
 
 function passFilters(rec, flt) {
@@ -398,7 +438,7 @@ function passFilters(rec, flt) {
   return true;
 }
 
-// Покрытие: 6 счётчиков на позицию (A C G T N del).
+// Coverage: 6 counters per position (A C G T N del).
 const BASE_IDX = new Int8Array(128).fill(4);
 BASE_IDX[65] = 0; BASE_IDX[67] = 1; BASE_IDX[71] = 2; BASE_IDX[84] = 3;
 function computeCoverage(reads, winStart, winLen) {
@@ -418,7 +458,7 @@ function computeCoverage(reads, winStart, winLen) {
   return cov;
 }
 
-// Ориентация пары для библиотеки FR: 'FR' норма, 'RF', 'FF', 'RR', 'other' (мейт на другой хромосоме), 'unpaired', 'mateUnmapped'
+// Pair orientation for an FR library: 'FR' normal, 'RF', 'FF', 'RR', 'other' (mate on another contig), 'unpaired', 'mateUnmapped'
 function pairOrientation(rec) {
   if (!(rec.flag & F_PAIRED)) return 'unpaired';
   if (rec.flag & 8) return 'mateUnmapped';
@@ -430,7 +470,7 @@ function pairOrientation(rec) {
   return leftRev ? 'RR' : 'FF';
 }
 
-// Порог «необычного» размера вставки по загруженным данным (как в IGV: перцентили).
+// Bounds of an unusual insert size from the loaded data (percentiles, as in IGV).
 function insertSizeBounds(reads) {
   const v = [];
   for (const r of reads) if ((r.flag & F_PROPER) && r.tlen > 0) v.push(r.tlen);
@@ -439,7 +479,7 @@ function insertSizeBounds(reads) {
   return { lo: v[Math.floor(v.length * 0.005)], hi: v[Math.floor(v.length * 0.995)] };
 }
 
-// Плотная раскладка по рядам: куча (min по концу ряда).
+// Dense row packing with a min-heap on row end.
 function packRows(reads, padBp) {
   const rows = []; const heap = []; // [end, row]
   const less = (a, b) => a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);

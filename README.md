@@ -1,71 +1,81 @@
 # CGV — Convenient, custom, genomic viewer
 
-Быстрый, лёгкий и безопасный просмотрщик выравниваний (BAM) для генетики человека.
-Работает в браузере, без сервера и без внешних зависимостей.
+A fast, light and secure viewer for read alignments (BAM) in human genetics.
+It runs in the browser with no server and no third-party dependencies.
 
-**Статус:** этап 0 — технический прототип. См. документ «CGV — видение и спецификация MVP».
+**Status:** stage 0, technical prototype.
 
-## Запуск
+## Run
 
-Откройте `dist/cgv.html` в Chrome, Edge, Firefox или Safari. Страница открывается
-на синтетических демо-данных. Свои данные — кнопка «Открыть»:
+Open `dist/cgv.html` in Chrome, Edge, Firefox or Safari. It starts on synthetic demo
+data. To view your own data, press **Open**:
 
-- **с диска**: выберите `.bam` и `.bai` (и при желании `.fa` + `.fai`) или перетащите
-  файлы в окно. Файлы читаются кусками прямо с диска и никуда не отправляются;
-- **по ссылке**: HTTPS-ссылка на BAM; сервер должен разрешать CORS и Range-запросы.
-  Можно указать токен доступа — он не сохраняется.
+- **From disk**: choose a `.bam` and its `.bai` (you can add `.fa` + `.fai`), or drop the
+  files onto the window. Files are read in pieces straight from disk and never uploaded.
+- **By link**: an HTTPS link to a BAM. The server must allow CORS and Range requests.
+  An access token can be given; it is not saved.
+- **Reference**: add a FASTA at any time, separately from the BAM — `.fa` + `.fai`, or
+  bgzip-compressed `.fa.gz` + `.fai` + `.gzi`, from disk or by link. Public GRCh38, GRCh37
+  and T2T-CHM13 v2.0 copies (hosted by the IGV team on Amazon S3) are offered as presets.
+  Without a reference, CGV rebuilds reference bases from MD tags where reads cover them.
 
-## Что умеет этап 0
+The interface is in English; Russian is available under **View → Screen → Language**.
+More languages are one dictionary in `src/i18n.js`.
 
-| Требование спецификации | Состояние |
+## Stage 0 coverage of the MVP spec
+
+| Requirement | State |
 | --- | --- |
-| Ф1 BAM по HTTPS-ссылке (Range) | есть; CRAM — следующий шаг |
-| Ф2 Локальные BAM + BAI | есть, в т.ч. перетаскиванием |
-| Ф3 Референс FASTA + FAI | есть; без FASTA референс восстанавливается из тегов MD |
-| Ф4 Токен доступа / presigned URL | есть |
-| Ф5 Переход по координате | есть; гены — вместе с треком генов |
-| Ф6 Без жёсткого лимита окна | окно до 3 млн п.н. грузится сразу, больше — по кнопке; одиночные ошибки гаснут при отдалении |
-| Ф8 Покрытие с подсветкой аллелей | есть, порог настраивается |
-| Ф9 Плавная высота рида | есть, 1–24 px |
-| Ф10 Раскраска + MAPQ градиентом прозрачности | цепь, пара (ориентация и размер вставки), тег; MAPQ — поверх любой |
-| Ф11 Группировка и сортировка | группы: цепь, первый/второй, ориентация пары, тег; сортировка: основание, MAPQ, цепь, вставка |
-| Ф12 Фильтры | MAPQ, дубликаты, вторичные, supplementary, QC-fail |
-| Ф13 Мейт | карточка рида + переход к мейту; несколько регионов — следующий шаг |
-| Ф14 Карточка рида | все поля и теги, копирование |
-| Ф18 Профиль в JSON | сохраняется в браузере, копируется и применяется |
-| Ф23 Максимум экрана под данные | одна строка интерфейса, скрывается клавишей H |
+| F1 BAM by HTTPS link (Range) | done; CRAM is the next step |
+| F2 Local BAM + BAI | done, including drag and drop |
+| F3 Reference (GRCh38, GRCh37, T2T-CHM13) | done: files or link, plain or bgzip, public presets |
+| F4 Access token / presigned URL | done |
+| F5 Go to coordinate | done; gene names come with the gene track |
+| F6 No hard window limit | windows up to 3 Mb load at once, larger on request; isolated sequencing errors fade when zoomed out |
+| F8 Coverage with allele highlight | done, threshold adjustable |
+| F9 Smooth read height | done, 1–24 px |
+| F10 Coloring + MAPQ as a transparency gradient | strand, pair (orientation and insert size), tag; MAPQ works on top of any of them |
+| F11 Group and sort | groups: strand, first/second, pair orientation, tag; sort: base, MAPQ, strand, insert size |
+| F12 Filters | MAPQ, duplicates, secondary, supplementary, QC fail |
+| F13 Mate | read details + go to mate; several regions on screen is the next step |
+| F14 Read details | all fields and tags, copy |
+| F18 Display profile as JSON | kept in the browser, copied and applied as JSON |
+| F23 Screen space for data | one bar of controls, hidden with H |
 
-## Устройство
-
-```
-src/core.js    источники данных (файл, URL), BGZF, BAI, BAM, FASTA, покрытие, раскладка
-src/app.js     WebGL2-рендер ридов, Canvas2D для линейки и покрытия, интерфейс, профиль
-src/index.html разметка и стили
-tools/         генератор демо-данных, сборка, тесты
-```
-
-Распаковка BGZF — встроенный в браузер `DecompressionStream('deflate-raw')`. Сторонних
-библиотек нет: меньше поверхность атаки и нечего обновлять.
-
-## Разработка
+## How it is built
 
 ```
-node tools/gen-demo.js          # демо-данные в demo/
-node tools/test-core.js         # проверки ядра на демо-данных
-node tools/build.js             # dist/cgv.html и dist/artifact.html
-CGV_L=1000000 node tools/gen-demo.js big   # 1 млн п.н. для замеров скорости
+src/core.js    data sources (file, URL), BGZF, BAI, BAM, FASTA (+ .gzi), coverage, layout
+src/app.js     WebGL2 read rendering, Canvas2D ruler and coverage, UI, display profile
+src/i18n.js    interface strings: English base, Russian overlay
+src/index.html markup and styles
+tools/         demo data generator, build, tests
 ```
 
-## Замеры (синтетика 30×, Node / headless Chromium без GPU)
+BGZF is inflated with the browser's built-in `DecompressionStream('deflate-raw')`. There are
+no third-party libraries: a smaller attack surface and nothing to keep patched. The local
+build (`dist/cgv.html`) carries a strict Content Security Policy: no remote scripts, styles
+or fonts, and network access only for data the user points to.
 
-| Регион | Ридов | Чтение | Сборка вида |
+## Development
+
+```
+node tools/gen-demo.js                      # demo data in demo/
+node tools/test-core.js                     # core checks on the demo data
+node tools/build.js                         # dist/cgv.html and dist/artifact.html
+CGV_L=1000000 node tools/gen-demo.js big    # 1 Mb at 30× for speed tests
+```
+
+## Measurements (synthetic 30×, local disk, headless Chromium without a GPU)
+
+| Region | Reads | Read | Build view |
 | --- | --- | --- | --- |
-| 2 т.п.н. | 1 339 | 26 мс | 7 мс |
-| 50 т.п.н. | 30 063 | 175 мс | 143 мс |
-| 1 млн п.н. | 200 024 | 1 034 мс | 801 мс |
+| 2 kb | 1,339 | 26 ms | 7 ms |
+| 50 kb | 30,063 | 175 ms | 143 ms |
+| 1 Mb | 200,024 | 1,034 ms | 801 ms |
 
-Чтение с локального диска; по сети добавится задержка сервера.
+Over a network, the server's latency adds to the read time.
 
-## Лицензия
+## License
 
-Не выбрана — см. открытый вопрос в спецификации.
+Not chosen yet.
