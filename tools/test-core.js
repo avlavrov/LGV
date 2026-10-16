@@ -14,14 +14,14 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
   const fa = await new C.IndexedFasta(new C.FileSource(blob('demo.fa')), new C.FileSource(blob('demo.fa.fai'))).open();
 
   let t = Date.now();
-  const all = await bam.fetch(0, 0, 40000);
-  const all2 = await bam.fetch(1, 0, 2000);
+  const all = (await bam.fetch(0, 0, 40000)).reads;
+  const all2 = (await bam.fetch(1, 0, 2000)).reads;
   ok(all.length + all2.length === truth.reads, `all reads: ${all.length}+${all2.length} = ${truth.reads} (${Date.now() - t} ms)`);
   ok(new Set(all.map(r => r.name + (r.flag & 64))).size === all.length, 'no duplicates after merging chunks');
 
-  const at = await bam.fetch(0, 12000, 12001);
+  const at = (await bam.fetch(0, 12000, 12001)).reads;
   ok(at.length === truth.overlap_12000_12001, `overlapping 12000: ${at.length} = ${truth.overlap_12000_12001}`);
-  const at2 = await bam.fetch(1, 1000, 1200);
+  const at2 = (await bam.fetch(1, 1000, 1200)).reads;
   ok(at2.length === truth.overlap_demo2_1000_1200, `demo2:1000-1200: ${at2.length} = ${truth.overlap_demo2_1000_1200}`);
 
   // MD-rebuilt reference matches FASTA
@@ -110,6 +110,21 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     // lines of different lengths in the middle of a contig: clear error
     let code = null; try { await new C.IndexedFasta(new C.FileSource(new Blob(['>x\nACGT\nAC\nACGT\n']), 'bad.fa')).openUnindexed(17); } catch (e) { code = e.code; }
     ok(code === 'faIrregular', 'irregular line lengths give a clear error');
+  }
+  // streaming fetch: coverage counts every read, downsampling caps reads per window
+  {
+    const flt = { minMapq: 0, hideDuplicates: true, hideSecondary: true, hideSupplementary: false, hideQcFail: true };
+    const full = await bam.fetch(0, 11000, 13000, { filters: flt });
+    const ref = C.computeCoverage(full.reads, 11000, 2000);
+    ok(full.cov.every((v, i) => v === ref[i]), 'coverage from the stream equals coverage from records');
+    const ds = await bam.fetch(0, 11000, 13000, { filters: flt, downsample: { max: 5, window: 50 } });
+    const perWin = {}; for (const r of ds.reads) { const w = Math.floor(r.pos / 50); perWin[w] = (perWin[w] || 0) + 1; }
+    ok(Math.max(...Object.values(perWin)) <= 5 && ds.total === full.total && ds.sampled.length > 0, `downsampling: ${ds.reads.length} of ${ds.total} kept, ${ds.sampled.length} windows sampled, max ${Math.max(...Object.values(perWin))} per window`);
+    ok(ds.cov.every((v, i) => v === full.cov[i]), 'coverage is the same with downsampling');
+    ok(ds.reads.every((r, i) => !i || ds.reads[i - 1].pos <= r.pos), 'downsampled reads stay sorted');
+    const again = await bam.fetch(0, 11000, 13000, { filters: flt });
+    ok(again.reads.length === full.reads.length && again.total === full.total, 'second fetch through the block cache gives the same reads');
+    ok(['demo', 'Demo', 'DEMO'].every(n => bam.refId(n) === 0) && C.contigKey('Chr7') === C.contigKey('7') && C.contigKey('chrM') === C.contigKey('MT'), 'contig names are case-insensitive, chr prefix and M/MT optional');
   }
   console.log(fails ? `\n${fails} FAILED` : '\nAll checks passed');
   process.exit(fails ? 1 : 0);

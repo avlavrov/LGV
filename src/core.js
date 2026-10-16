@@ -173,7 +173,7 @@ const SEQ_CODES = '=ACMGRSVTWYHKDBN';
 const CIGAR_OPS = 'MIDNSHP=X';
 
 class BamFile {
-  constructor(bamSource, baiSource) { this.src = bamSource; this.baiSrc = baiSource; }
+  constructor(bamSource, baiSource) { this.src = bamSource; this.baiSrc = baiSource; this.maxSpan = 0; }
   async open() {
     const [idx] = await Promise.all([this.baiSrc.readAll(), this._readHeader()]);
     this.index = new BaiIndex(idx);
@@ -197,39 +197,146 @@ class BamFile {
   }
   refId(name) {
     if (this.refIndex.has(name)) return this.refIndex.get(name);
-    const alt = name.startsWith('chr') ? name.slice(3) : 'chr' + name;
-    if (this.refIndex.has(alt)) return this.refIndex.get(alt);
-    if (name === 'chrM' || name === 'M') { for (const n of ['MT', 'chrMT']) if (this.refIndex.has(n)) return this.refIndex.get(n); }
-    return -1;
+    if (!this._keys) { this._keys = new Map(); this.refs.forEach((r, i) => { const k = contigKey(r.name); if (!this._keys.has(k)) this._keys.set(k, i); }); }
+    const id = this._keys.get(contigKey(name));
+    return id === undefined ? -1 : id;
   }
   // Reads overlapping [beg, end) on refId.
-  async fetch(refId, beg, end) {
-    const chunks = this.index.chunks(refId, beg, end);
-    const results = await Promise.all(chunks.map(c => this._readChunk(c, refId, beg, end)));
-    const reads = [];
-    for (const r of results) for (const x of r) reads.push(x);
-    return reads;
-  }
-  async _readChunk(c, refId, beg, end) {
-    const cBeg = Math.floor(c[0] / 65536), uBeg = c[0] % 65536, cEnd = Math.floor(c[1] / 65536), uEnd = c[1] % 65536;
-    const { data, offs } = await readBgzf(this.src, cBeg, cEnd);
-    const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    let p = (offs.get(cBeg) || 0) + uBeg;
-    const stop = offs.has(cEnd) ? offs.get(cEnd) + uEnd : data.length;
-    const out = [];
-    while (p + 4 <= data.length && p < stop) {
-      const bs = dv.getInt32(p, true);
-      if (bs < 32 || p + 4 + bs > data.length) break;
-      const refID = dv.getInt32(p + 4, true), pos = dv.getInt32(p + 8, true);
-      if (refID !== refId) { if (refID > refId || refID < 0) break; p += 4 + bs; continue; }
-      if (pos >= end) break;
-      const rec = parseBamRecord(data, dv, p);
-      p += 4 + bs;
-      if (rec.flag & 4) continue;
-      if (rec.end <= beg) continue;
-      out.push(rec);
-    }
+  // opts.filters: load-time filters (flag bits, MAPQ). opts.downsample: { max, window } — keep at most
+  // `max` reads starting in each `window` bp, as IGV does; coverage still counts every read that passes
+  // the filters. Returns { reads, cov (6 counters per bp over [beg, end)), total, sampled: [[s, e]...] }.
+  async fetch(refId, beg, end, opts) {
+    opts = opts || {};
+    const flt = opts.filters || null;
+    const ds = opts.downsample && opts.downsample.max > 0 && opts.downsample.window > 0 ? opts.downsample : null;
+    const covLen = Math.max(0, end - beg), cov = new Uint32Array(covLen * 6);
+    const out = { reads: [], cov, total: 0, sampled: [] };
+    let win = -1, n = 0, kept = [], rng = 1;
+    const flush = () => {
+      if (kept.length) { kept.sort((a, b) => a.pos - b.pos); for (const r of kept) out.reads.push(r); }
+      if (ds && n > ds.max) out.sampled.push([win * ds.window, (win + 1) * ds.window]);
+      kept = []; n = 0;
+    };
+    const visit = (buf, dv, p, pos) => {
+      const s = p + 4, flag = dv.getUint16(s + 14, true), mapq = buf[s + 9];
+      if (flag & 4) return;
+      const lrn = buf[s + 8], ncig = dv.getUint16(s + 12, true), cig = s + 32 + lrn;
+      let refLen = 0;
+      for (let i = 0; i < ncig; i++) { const c = dv.getUint32(cig + 4 * i, true), op = c & 15; if (op === 0 || op === 2 || op === 3 || op === 7 || op === 8) refLen += c >>> 4; }
+      if (refLen > this.maxSpan) this.maxSpan = refLen;
+      if (pos + Math.max(refLen, 1) <= beg) return;
+      if (flt && !passFlags(flag, mapq, flt)) return;
+      out.total++;
+      addCoverage(buf, dv, p, cov, beg, covLen);
+      if (!ds) { out.reads.push(parseBamRecord(buf, dv, p)); return; }
+      const w = Math.floor(pos / ds.window);
+      if (w !== win) { flush(); win = w; rng = (Math.imul(w + 1, 2654435761) >>> 0) || 1; }
+      n++;
+      if (kept.length < ds.max) kept.push(parseBamRecord(buf, dv, p));
+      else { rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0; const j = rng % n; if (j < ds.max) kept[j] = parseBamRecord(buf, dv, p); }
+    };
+    // chunks are disjoint and in file order, so reads arrive sorted by position
+    for (const c of this.index.chunks(refId, beg, end)) await this._scanChunk(c, refId, beg, end, visit);
+    flush();
     return out;
+  }
+  // Streams one index chunk in slabs, calling visit(buf, dv, p, pos) for records of refId that start
+  // before `end`. Stops as soon as reads pass `end`, so the rest of the chunk is never read.
+  // Remembers where records start in BGZF blocks, so later queries can skip ahead.
+  async _scanChunk(c, refId, beg, end, visit) {
+    let c0 = Math.floor(c[0] / 65536), u0 = c[0] % 65536;
+    const cEnd = Math.floor(c[1] / 65536), uEnd = c[1] % 65536;
+    const jump = this._jump(refId, beg, c0, u0, cEnd);
+    if (jump) { c0 = jump.coff; u0 = jump.uoff; }
+    if (!this.blocks) this.blocks = new Map();
+    let carry = new Uint8Array(0), coff = c0, first = true;
+    const SLAB = 1 << 20;
+    for (;;) {
+      const raw = await this.src.read(coff, SLAB);
+      const blocks = raw.length ? parseBgzfBlocks(raw, coff) : [];
+      if (!blocks.length) return;
+      const use = blocks.filter(b => b.coff <= cEnd);
+      const parts = await Promise.all(use.map(b => inflateRaw(raw.subarray(b.cstart, b.cstart + b.clen))));
+      for (let i = 0; i < use.length; i++) {
+        const bcoff = use[i].coff, shift = first ? u0 : 0;
+        let part = shift ? parts[i].subarray(shift) : parts[i];
+        first = false;
+        let buf = part;
+        if (carry.length) { buf = new Uint8Array(carry.length + part.length); buf.set(carry); buf.set(part, carry.length); }
+        const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength), cl = carry.length;
+        let p = 0, cached = this.blocks.has(bcoff);
+        while (p + 4 <= buf.length) {
+          const bs = dv.getInt32(p, true);
+          if (bs < 32 || p + 4 + bs > buf.length) break;
+          const inBlock = p - cl; // >= 0: the record starts in this block, at uoff inBlock + shift
+          if (bcoff === cEnd && inBlock >= 0 && inBlock + shift >= uEnd) return;
+          const refID = dv.getInt32(p + 4, true), pos = dv.getInt32(p + 8, true);
+          if (!cached && inBlock >= 0) { this.blocks.set(bcoff, { refID, pos, uoff: inBlock + shift }); cached = true; }
+          if (refID !== refId) { if (refID > refId || refID < 0) return; p += 4 + bs; continue; }
+          if (pos >= end) return;
+          visit(buf, dv, p, pos);
+          p += 4 + bs;
+        }
+        carry = buf.slice(p);
+      }
+      if (use.length < blocks.length) return;
+      const last = blocks[blocks.length - 1];
+      coff += last.cstart + last.clen + 8;
+    }
+  }
+  // Compressed bytes the index points to for [beg, end): a cheap estimate of the work before reading.
+  estimateBytes(refId, beg, end) {
+    let n = 0;
+    for (const c of this.index.chunks(refId, beg, end)) n += Math.floor(c[1] / 65536) - Math.floor(c[0] / 65536) + 65536;
+    return n;
+  }
+  // Latest remembered record start in [c0, cEnd] that is safely left of `beg`
+  // (further left than the longest alignment seen in this file).
+  _jump(refId, beg, c0, u0, cEnd) {
+    if (!this.blocks) return null;
+    const limit = beg - Math.max(this.maxSpan, 1000) - 1;
+    let best = null;
+    for (const [coff, b] of this.blocks) {
+      if (coff < c0 || coff > cEnd || b.refID !== refId || b.pos > limit) continue;
+      if (coff === c0 && b.uoff <= u0) continue;
+      if (!best || coff > best.coff) best = { coff, uoff: b.uoff };
+    }
+    return best;
+  }
+}
+
+// Case-insensitive contig key: Chr1, chr1, CHR1 and 1 match; M and MT are the same contig.
+function contigKey(name) {
+  const k = String(name).toLowerCase().replace(/^chr/, '');
+  return k === 'm' ? 'mt' : k;
+}
+
+function passFlags(flag, mapq, flt) {
+  if (mapq < flt.minMapq) return false;
+  if (flt.hideDuplicates && flag & 1024) return false;
+  if (flt.hideSecondary && flag & 256) return false;
+  if (flt.hideSupplementary && flag & 2048) return false;
+  if (flt.hideQcFail && flag & 512) return false;
+  return true;
+}
+
+// Adds one record to coverage straight from the BAM buffer, without building an object.
+const NIB_IDX = new Uint8Array([4, 0, 1, 4, 2, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4]);
+function addCoverage(buf, dv, p, cov, cs, clen) {
+  const s = p + 4, lrn = buf[s + 8], ncig = dv.getUint16(s + 12, true), lseq = dv.getInt32(s + 16, true);
+  const cig = s + 32 + lrn, seq = cig + 4 * ncig;
+  let r = dv.getInt32(s + 4, true), q = 0;
+  for (let i = 0; i < ncig; i++) {
+    const c = dv.getUint32(cig + 4 * i, true), op = c & 15, n = c >>> 4;
+    if (op === 0 || op === 7 || op === 8) {
+      for (let k = 0; k < n; k++) {
+        const j = r + k - cs;
+        if (j >= 0 && j < clen) { const qi = q + k; const code = lseq ? (qi & 1 ? buf[seq + (qi >> 1)] & 15 : buf[seq + (qi >> 1)] >> 4) : 15; cov[j * 6 + NIB_IDX[code]]++; }
+      }
+      r += n; q += n;
+    } else if (op === 2) { for (let k = 0; k < n; k++) { const j = r + k - cs; if (j >= 0 && j < clen) cov[j * 6 + 5]++; } r += n; }
+    else if (op === 3) r += n;
+    else if (op === 1 || op === 4) q += n;
   }
 }
 
@@ -491,10 +598,9 @@ class IndexedFasta {
     return this;
   }
   entry(name) {
-    const alts = [name, name.startsWith('chr') ? name.slice(3) : 'chr' + name];
-    if (/^(chr)?(M|MT)$/.test(name)) alts.push('chrM', 'MT', 'M', 'chrMT');
-    for (const a of alts) if (this.idx.has(a)) return this.idx.get(a);
-    return null;
+    if (this.idx.has(name)) return this.idx.get(name);
+    if (!this._keys) { this._keys = new Map(); for (const [n, e] of this.idx) { const k = contigKey(n); if (!this._keys.has(k)) this._keys.set(k, e); } }
+    return this._keys.get(contigKey(name)) || null;
   }
   has(name) { return !!this.entry(name); }
   // Uncompressed bytes [u0, u1) of the FASTA file.
@@ -585,4 +691,4 @@ function packRows(reads, padBp) {
   return rows;
 }
 
-if (typeof module !== 'undefined') module.exports = { FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

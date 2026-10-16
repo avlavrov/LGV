@@ -15,8 +15,9 @@ const DEFAULT_PROFILE = {
   filters: { minMapq: 0, hideDuplicates: true, hideSecondary: true, hideSupplementary: false, hideQcFail: true },
   showSoftClips: true,
   coverage: { height: 56, alleleThreshold: 0.2 },
+  downsample: { enabled: true, maxReads: 100, window: 50 }, // like IGV: reads kept per window; coverage counts all
   maxReads: 300000,
-  maxLoadBp: 3000000,
+  maxLoadMB: 64,                 // windows with more compressed alignment data ask before loading
   hideToolbar: false,
   language: 'en',                // en | ru
 };
@@ -193,15 +194,15 @@ function feats(rec) { if (!rec.feats) rec.feats = computeFeatures(rec, refAtFact
 function rebuild() {
   const d = S.data; if (!d) { S.shown = null; GL.n = 0; return; }
   const t0 = performance.now();
-  let reads = d.reads.filter(r => passFilters(r, P.filters));
-  const covReads = reads;
-  let sampled = false;
+  // reads are already filtered (and downsampled) while loading; coverage came with them
+  let reads = d.reads;
+  let sampled = reads.length < d.total;
   if (reads.length > P.maxReads) { // even downsampling with a fixed step, deterministic
     const step = reads.length / P.maxReads, out = [];
     for (let i = 0; i < P.maxReads; i++) out.push(reads[Math.floor(i * step)]);
     reads = out; sampled = true;
   }
-  const cov = computeCoverage(covReads, d.start, d.end - d.start);
+  const cov = d.cov;
   // groups
   const gmap = new Map();
   for (const r of reads) { const k = groupKey(r); if (!gmap.has(k)) gmap.set(k, []); gmap.get(k).push(r); }
@@ -241,14 +242,14 @@ function rebuild() {
       else if ((f.t === 4 || f.t === 5) && P.showSoftClips && f.len >= 1) ib.add(f.pos - d.start, f.pos - d.start, R, gi, 0, 1, 1.5, COL.clip, Math.max(a, 0.7));
     }
   }
-  S.shown = { reads, cov, groups, totalRows: rowCursor, sampled, total: covReads.length };
+  S.shown = { reads, cov, groups, totalRows: rowCursor, sampled, total: d.total };
   if (GL_OK) {
     gl.bindBuffer(gl.ARRAY_BUFFER, GL.fbuf); gl.bufferData(gl.ARRAY_BUFFER, ib.f.subarray(0, ib.n * 7), gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, GL.cbuf); gl.bufferData(gl.ARRAY_BUFFER, ib.c.subarray(0, ib.n * 4), gl.STATIC_DRAW);
     GL.n = ib.n;
   }
   S.stats.buildMs = performance.now() - t0;
-  S.stats.reads = covReads.length;
+  S.stats.reads = d.total;
   clampScroll();
 }
 
@@ -317,24 +318,32 @@ async function ensureData() {
   const vs = Math.max(0, Math.floor(S.view.start)), ve = Math.min(refLen(), Math.ceil(viewEnd()));
   const d = S.data;
   if (d && d.refId === S.view.refId && vs >= d.start && ve <= d.end) return;
-  const span = ve - vs;
-  if (span > P.maxLoadBp && !S.forceLoad) {
+  const span = ve - vs, margin = Math.round(Math.min(span, 20000) / 2);
+  const ls = Math.max(0, vs - margin), le = Math.min(refLen(), ve + margin);
+  // decide by the amount of data the index points to, not by window length: 30x WGS and a
+  // 3000x panel differ a hundredfold for the same window
+  const est = S.bam.estimateBytes(S.view.refId, ls, le);
+  if (est > P.maxLoadMB * 1048576 && !S.forceLoad) {
     S.data = null; S.shown = null; GL.n = 0;
-    S.msg = { text: t('wide', { span: fmtBp(span) }), action: t('wide.btn', { span: fmtBp(span) }) };
+    const size = fmtBytes(est);
+    S.msg = { text: t('wide', { span: fmtBp(span), size }), action: t('wide.btn', { size }) };
     draw(); return;
   }
   S.forceLoad = false;
-  const ls = Math.max(0, vs - Math.min(span, 50000)), le = Math.min(refLen(), ve + Math.min(span, 50000));
   const token = ++S.loadToken; S.loading = true; S.msg = null; draw();
   const t0 = performance.now(); const b0 = S.bam.src.bytes;
   try {
-    const reads = await S.bam.fetch(S.view.refId, ls, le);
+    const res = await S.bam.fetch(S.view.refId, ls, le, {
+      filters: P.filters,
+      downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null,
+    });
+    const reads = res.reads;
     let refArr = null;
     const refName = S.bam.refs[S.view.refId].name;
     if (S.fasta) { try { refArr = await S.fasta.fetch(refName, ls, le); } catch (e) { refArr = null; } }
     if (token !== S.loadToken) return;
     if (!refArr || refArr.length !== le - ls) { refArr = new Uint8Array(le - ls); for (const r of reads) fillRefFromMD(r, refArr, ls); S.refFromMD = true; } else S.refFromMD = false;
-    S.data = { refId: S.view.refId, start: ls, end: le, reads, refArr, insert: insertSizeBounds(reads) };
+    S.data = { refId: S.view.refId, start: ls, end: le, reads, refArr, insert: insertSizeBounds(reads), cov: res.cov, total: res.total, sampled: res.sampled };
     S.stats.loadMs = performance.now() - t0; S.stats.bytes = S.bam.src.bytes - b0;
     S.loading = false; S.selected = null; hideCard();
     rebuild(); draw();
@@ -343,6 +352,9 @@ async function ensureData() {
     S.loading = false; S.msg = { text: errText(e), error: true }; draw();
   }
 }
+
+// Filters and downsampling act while reading, so changing them re-reads the window.
+function reloadData() { if (!S.bam) return; S.data = null; S.shown = null; GL.n = 0; S.selected = null; hideCard(); ensureData(); }
 
 // ======================= Rendering =======================
 let raf = 0;
@@ -353,6 +365,7 @@ function fmtBp(n) {
   if (n >= 1e3) return (n / 1e3).toLocaleString(L, { maximumFractionDigits: 1 }) + ' ' + t('unit.kb');
   return Math.round(n) + ' ' + t('unit.bp');
 }
+function fmtBytes(n) { return n >= 1 << 30 ? (n / (1 << 30)).toLocaleString(NUM_LOCALE[LANG], { maximumFractionDigits: 1 }) + ' GB' : Math.max(1, Math.round(n / (1 << 20))) + ' MB'; }
 function fmtInt(n) { return Math.round(n).toLocaleString(NUM_LOCALE[LANG]); }
 
 function render() {
@@ -498,6 +511,16 @@ function drawReadsOverlay(rt) {
       }
     });
     ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
+  }
+  // where reads were left out by downsampling (IGV draws the same marks)
+  if (d.sampled && d.sampled.length) {
+    ctx.fillStyle = COL.css.fg; ctx.globalAlpha = 0.55;
+    for (const [a, b] of d.sampled) {
+      if (b < S.view.start || a > viewEnd()) continue;
+      const x0 = (a - S.view.start) * ppb, x1 = (b - S.view.start) * ppb;
+      ctx.fillRect(x0 + (x1 - x0 > 3 ? 0.5 : 0), rt + 0, Math.max(1, x1 - x0 - (x1 - x0 > 3 ? 1 : 0)), 3);
+    }
+    ctx.globalAlpha = 1;
   }
   // selected read
   if (S.selected) {
@@ -687,7 +710,7 @@ async function openBam(bamSrc, baiSrc, faSrc, faiSrc, opts) {
     S.loading = false;
     const loc = opts.locus ? parseLocus(opts.locus) : null;
     if (loc && !loc.error) goto(loc.id, loc.s, loc.e);
-    else { const L = bam.refs[0].len; goto(0, 0, Math.min(L, 20000)); }
+    else { const L = bam.refs[0].len; goto(0, 0, Math.min(L, 10000)); }
   } catch (e) {
     S.loading = false; S.msg = { text: errText(e), error: true }; draw();
   }
@@ -822,8 +845,9 @@ const CONTROLS = [
   ['sortBy', 'sortBy', 'str', 'rebuild'],
   ['mqLow', 'mapqAlpha.low', 'num', 'rebuild'], ['mqHigh', 'mapqAlpha.high', 'num', 'rebuild'], ['mqMinAlpha', 'mapqAlpha.minAlpha', 'num', 'rebuild'],
   ['bqShade', 'baseQualityShading', 'bool', 'rebuild'], ['softClips', 'showSoftClips', 'bool', 'rebuild'],
-  ['minMapq', 'filters.minMapq', 'num', 'rebuild'], ['hideDup', 'filters.hideDuplicates', 'bool', 'rebuild'],
-  ['hideSec', 'filters.hideSecondary', 'bool', 'rebuild'], ['hideSupp', 'filters.hideSupplementary', 'bool', 'rebuild'], ['hideQc', 'filters.hideQcFail', 'bool', 'rebuild'],
+  ['minMapq', 'filters.minMapq', 'num', 'reload'], ['hideDup', 'filters.hideDuplicates', 'bool', 'reload'],
+  ['hideSec', 'filters.hideSecondary', 'bool', 'reload'], ['hideSupp', 'filters.hideSupplementary', 'bool', 'reload'], ['hideQc', 'filters.hideQcFail', 'bool', 'reload'],
+  ['dsOn', 'downsample.enabled', 'bool', 'reload'], ['dsMax', 'downsample.maxReads', 'num', 'reload'], ['dsWin', 'downsample.window', 'num', 'reload'],
   ['covHeight', 'coverage.height', 'num', 'draw'], ['alleleThr', 'coverage.alleleThreshold', 'num', 'rebuild'],
   ['hideToolbar', 'hideToolbar', 'bool', 'chrome'], ['language', 'language', 'str', 'lang'],
 ];
@@ -854,6 +878,7 @@ for (const [id, path, type, effect] of CONTROLS) {
     if (effect === 'draw') { clampScroll(); draw(); }
     else if (effect === 'chrome') applyChrome();
     else if (effect === 'lang') applyLanguage();
+    else if (effect === 'reload') { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(reloadData, 250); }
     else { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => { if (id === 'sortBy' && S.sortPos == null) S.sortPos = Math.floor(viewCenter()); rebuild(); draw(); }, 30); }
   });
 }

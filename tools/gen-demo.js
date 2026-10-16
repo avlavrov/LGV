@@ -96,7 +96,8 @@ function makeRead(al, rev, contig, extra) {
   return Object.assign({ contig, pos: al.pos, cigar: al.cigar, seq: s.join(''), qual: q, rev }, extra);
 }
 function inRepeat(p, e) { return (p < 30600 && e > 30000) || (p < 33600 && e > 33000); }
-const nPairs = Math.round(30 * L / (2 * RL));
+const DEPTH = +(process.env.CGV_DEPTH || 30); // CGV_DEPTH=<x> for deep targeted-panel style data
+const nPairs = Math.round(DEPTH * L / (2 * RL));
 for (let n = 0; n < nPairs; n++) {
   const h = rnd() < 0.5 ? 0 : 1, hap = haps[h];
   let frag = Math.round(350 + 40 * gauss()); frag = Math.max(220, Math.min(600, frag));

@@ -210,6 +210,12 @@ body.bare .side { top: 0; }
       <div class="check"><input id="hideSec" type="checkbox"><label for="hideSec" data-i18n="view.hideSec"></label></div>
       <div class="check"><input id="hideSupp" type="checkbox"><label for="hideSupp" data-i18n="view.hideSupp"></label></div>
       <div class="check"><input id="hideQc" type="checkbox"><label for="hideQc" data-i18n="view.hideQc"></label></div>
+      <div class="check"><input id="dsOn" type="checkbox"><label for="dsOn" data-i18n="view.downsample"></label></div>
+      <div class="pair">
+        <div class="field"><label for="dsMax" data-i18n="view.dsMax">Reads per window</label><input id="dsMax" type="number" min="1" max="100000" step="1"></div>
+        <div class="field"><label for="dsWin" data-i18n="view.dsWin">Window, bp</label><input id="dsWin" type="number" min="1" max="100000" step="1"></div>
+      </div>
+      <p class="hint" data-i18n="view.dsHint"></p>
     </section>
     <section>
       <h2 data-i18n="view.coverage">Coverage</h2>
