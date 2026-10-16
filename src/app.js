@@ -136,6 +136,20 @@ function initGL() {
   return true;
 }
 const GL_OK = (() => { try { return initGL(); } catch (e) { console.error(e); return false; } })();
+// Which GPU path the browser uses: a software renderer is the usual cause of slow frames.
+const GL_RENDERER = (() => { if (!GL_OK) return ''; try { const d = gl.getExtension('WEBGL_debug_renderer_info'); return String(gl.getParameter(d ? d.UNMASKED_RENDERER_WEBGL : gl.RENDERER)); } catch (e) { return ''; } })();
+const GL_SOFTWARE = /swiftshader|llvmpipe|softpipe|basic render|software|microsoft basic/i.test(GL_RENDERER);
+// Drivers compile shaders lazily on the first draw, which can freeze one frame for hundreds of ms.
+// Draw one invisible instance during start-up so that cost is paid before any data arrives.
+function warmUpGL() {
+  if (!GL_OK) return;
+  gl.bindBuffer(gl.ARRAY_BUFFER, GL.fbuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 1, 0, 0, 0, 1, 1]), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, GL.cbuf); gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array([0, 0, 0, 0]), gl.STATIC_DRAW);
+  gl.useProgram(GL.prog); gl.bindVertexArray(GL.vao);
+  gl.uniform2f(GL.u.u_size, 1, 1); gl.uniform1f(GL.u.u_bpPerPx, 1); gl.uniform1f(GL.u.u_rowH, 1);
+  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+}
 
 // ======================= Instance buffer =======================
 class InstBuf {
@@ -368,8 +382,9 @@ function fmtBp(n) {
 function fmtBytes(n) { return n >= 1 << 30 ? (n / (1 << 30)).toLocaleString(NUM_LOCALE[LANG], { maximumFractionDigits: 1 }) + ' GB' : Math.max(1, Math.round(n / (1 << 20))) + ' MB'; }
 function fmtInt(n) { return Math.round(n).toLocaleString(NUM_LOCALE[LANG]); }
 
+const frameTimes = [];
 function render() {
-  const t0 = performance.now();
+  const t0 = performance.now(), tp = {};
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, W, H);
   const rt = readsTop();
@@ -394,12 +409,14 @@ function render() {
       gl.disable(gl.SCISSOR_TEST);
     }
   }
-  drawRuler();
-  drawRefTrack();
-  drawCoverage();
-  drawReadsOverlay(rt);
-  drawMessage();
+  let tl = performance.now(); tp.reads = tl - t0;
+  const part = (k, f) => { f(); const n = performance.now(); tp[k] = n - tl; tl = n; };
+  part('ruler', () => { drawRuler(); drawRefTrack(); });
+  part('coverage', drawCoverage);
+  part('labels', () => { drawReadsOverlay(rt); drawMessage(); });
   S.stats.drawMs = performance.now() - t0;
+  S.stats.parts = tp;
+  frameTimes.push(S.stats.drawMs); if (frameTimes.length > 15) frameTimes.shift();
   updateStatus();
 }
 
@@ -548,9 +565,13 @@ function drawMessage() {
 function updateStatus() {
   const st = S.stats, sh = S.shown;
   let s = '';
-  if (sh) s = t('status', { reads: fmtInt(st.reads), sampled: sh.sampled ? t('status.sampled', { n: fmtInt(sh.reads.length) }) : '', load: Math.round(st.loadMs), build: Math.round(st.buildMs), frame: st.drawMs.toFixed(1) });
+  // median of recent frames: one slow frame (first draw, a busy moment) does not stick in the status
+  const med = frameTimes.length ? [...frameTimes].sort((a, b) => a - b)[frameTimes.length >> 1] : 0;
+  if (sh) s = t('status', { reads: fmtInt(st.reads), sampled: sh.sampled ? t('status.sampled', { n: fmtInt(sh.reads.length) }) : '', load: Math.round(st.loadMs), build: Math.round(st.buildMs), frame: med.toFixed(1) });
+  if (sh && med > 40 && st.parts) s += ' (' + Object.entries(st.parts).map(([k, v]) => t('part.' + k) + ' ' + Math.round(v)).join(', ') + ')';
   if (S.refFromMD && sh) s += ' · ' + t('ref.fromMd');
-  $('status').textContent = s;
+  const el = $('status'); el.textContent = s;
+  el.title = 'WebGL: ' + (GL_RENDERER || '—') + (GL_SOFTWARE ? ' · ' + t('gl.software') : '');
 }
 
 // ======================= Locus =======================
@@ -906,4 +927,5 @@ const MONO = getComputedStyle(document.documentElement).getPropertyValue('--mono
 LANG = STRINGS[P.language] ? P.language : 'en';
 buildLanguageSelect(); applyI18n(); readColors(); syncPanel(); applyChrome(); updateRefInfo();
 if (!GL_OK) { $('msg').hidden = false; $('msg').className = 'msg err'; $('msg').textContent = t('nowebgl'); }
+else { warmUpGL(); if (GL_SOFTWARE) setTimeout(() => toast(t('gl.software')), 1500); }
 openDemo();
