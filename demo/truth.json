@@ -1,0 +1,29 @@
+{
+ "reads": 8270,
+ "variants": {
+  "hetSnv": [
+   12000,
+   "C",
+   "G"
+  ],
+  "homSnv": [
+   15000,
+   "A",
+   "C"
+  ],
+  "hetDel": {
+   "pos": 18000,
+   "len": 3
+  },
+  "hetIns": {
+   "pos": 21000,
+   "seq": "TGA"
+  },
+  "bigDel": {
+   "pos": 25000,
+   "len": 3000
+  }
+ },
+ "overlap_12000_12001": 35,
+ "overlap_demo2_1000_1200": 24
+}

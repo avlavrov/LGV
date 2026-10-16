@@ -1,0 +1,235 @@
+<title>CGV Genome Viewer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="CGV — быстрый просмотрщик выравниваний BAM в браузере">
+<style>
+/* Слой данных занимает весь экран; интерфейс — одна тонкая строка сверху и выезжающие панели. */
+:root {
+  --bg: #fafbfb; --panel: #ffffff; --fg: #1b1f24; --muted: #6a717b; --line: #e2e5e9; --accent: #0b6e8a;
+  --read: #b9bec6; --read-fwd: #d8a9a6; --read-rev: #9fb5d6; --cov: #a8aeb7;
+  --del: #2a2e34; --ins: #7a3fd0; --clip: #d23f8a;
+  --pair-large: #d0453c; --pair-small: #3b6fd4; --pair-rf: #3d9a5c; --pair-ff: #1e9aa3; --pair-unmapped: #d49a1a;
+  --base-a: #1e9a4e; --base-c: #2a5fd6; --base-g: #d48a0f; --base-t: #d0362f;
+  --cat-1: #d0453c; --cat-2: #3b6fd4; --cat-3: #3d9a5c; --cat-4: #b05fc7; --cat-5: #d49a1a; --cat-6: #1e9aa3; --cat-7: #8a6a4a; --cat-8: #c95f8f;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --bar-h: 40px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121417; --panel: #1a1d21; --fg: #e3e6ea; --muted: #959ca6; --line: #2a2f35; --accent: #4cb4d4;
+  --read: #4e555e; --read-fwd: #7d5654; --read-rev: #4d6283; --cov: #69717b;
+  --del: #dfe3e8; --ins: #a77bf0; --clip: #ec6aac;
+  --pair-large: #e8665d; --pair-small: #6d96ec; --pair-rf: #5cbf7c; --pair-ff: #3cc0c8; --pair-unmapped: #e8b542;
+  --base-a: #3cc06e; --base-c: #5a89f0; --base-g: #f0a73a; --base-t: #f0605a;
+  --cat-1: #e8665d; --cat-2: #6d96ec; --cat-3: #5cbf7c; --cat-4: #c98ae0; --cat-5: #e8b542; --cat-6: #3cc0c8; --cat-7: #b8916b; --cat-8: #e486b1;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121417; --panel: #1a1d21; --fg: #e3e6ea; --muted: #959ca6; --line: #2a2f35; --accent: #4cb4d4;
+  --read: #4e555e; --read-fwd: #7d5654; --read-rev: #4d6283; --cov: #69717b;
+  --del: #dfe3e8; --ins: #a77bf0; --clip: #ec6aac;
+  --pair-large: #e8665d; --pair-small: #6d96ec; --pair-rf: #5cbf7c; --pair-ff: #3cc0c8; --pair-unmapped: #e8b542;
+  --base-a: #3cc06e; --base-c: #5a89f0; --base-g: #f0a73a; --base-t: #f0605a;
+  --cat-1: #e8665d; --cat-2: #6d96ec; --cat-3: #5cbf7c; --cat-4: #c98ae0; --cat-5: #e8b542; --cat-6: #3cc0c8; --cat-7: #b8916b; --cat-8: #e486b1;
+  color-scheme: dark; }
+
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 13px/1.4 var(--sans); overflow: hidden; display: flex; flex-direction: column; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.bar { height: var(--bar-h); flex: none; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line);
+  padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px)); background: var(--bg); min-width: 0; }
+body.bare .bar { display: none; }
+.mark { font: 700 13px/1 var(--mono); letter-spacing: .06em; color: var(--accent); flex: none; }
+.locus { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 330px; }
+#locus { width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#span { color: var(--muted); font: 11.5px var(--mono); white-space: nowrap; }
+.btn { height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; white-space: nowrap; }
+.btn:hover { border-color: var(--muted); }
+.btn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+select.btn { padding-right: 4px; flex: none; max-width: 170px; }
+.file { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
+.status { color: var(--muted); font: 11px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; font-variant-numeric: tabular-nums; }
+@media (max-width: 900px) { .status, .file { display: none; } }
+@media (max-width: 560px) { #span, #examples { display: none; } .locus { flex-basis: 200px; } }
+
+#stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+#stage:active { cursor: grabbing; }
+#stage.drop::after { content: "Отпустите файлы .bam и .bai"; position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: grid; place-items: center; color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--bg) 80%, transparent); }
+#gl, #ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.msg { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); max-width: min(520px, calc(100% - 32px)); padding: 10px 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 6px 24px rgb(0 0 0 / .08); text-align: center; }
+.msg.err { border-color: var(--pair-large); }
+.spin { display: inline-block; width: 11px; height: 11px; margin-right: 8px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: s .8s linear infinite; vertical-align: -1px; }
+@keyframes s { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+.card { position: absolute; z-index: 5; width: min(360px, calc(100% - 16px)); max-height: calc(100% - 16px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px rgb(0 0 0 / .14); padding: 10px 12px; cursor: auto; user-select: text; -webkit-user-select: text; }
+.card dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 0; font-size: 12px; }
+.card dt { color: var(--muted); }
+.card dd { margin: 0; font-family: var(--mono); font-size: 11.5px; word-break: break-all; min-width: 0; }
+.card-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+
+.side { position: absolute; z-index: 10; top: var(--bar-h); right: 0; bottom: 0; width: min(330px, 100%); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 28px rgb(0 0 0 / .08); overflow: auto;
+  padding-block: 12px 24px; padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 18px; }
+.side h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+.side header { display: flex; align-items: center; justify-content: space-between; }
+.side header h1 { font-size: 14px; margin: 0; }
+.field { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; margin-bottom: 10px; }
+.field label { font-size: 12.5px; }
+.field output { font: 11.5px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.field input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.field select, .field input[type=text], .field input[type=number], .field input[type=url], .field input[type=password] { grid-column: 1 / -1; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); min-width: 0; width: 100%; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pair .field input { grid-column: 1 / -1; }
+.check { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12.5px; }
+.check input { accent-color: var(--accent); }
+.legend { height: 10px; border-radius: 3px; border: 1px solid var(--line); }
+.legend-labels { display: flex; justify-content: space-between; font: 10.5px var(--mono); color: var(--muted); margin-top: 3px; }
+.hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+textarea { width: 100%; min-height: 140px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font: 11px/1.45 var(--mono); padding: 8px; resize: vertical; }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.drop-zone { display: grid; place-items: center; gap: 6px; padding: 18px 12px; border: 1.5px dashed var(--line); border-radius: 8px; text-align: center; color: var(--muted); cursor: pointer; }
+.drop-zone:hover { border-color: var(--accent); color: var(--fg); }
+.drop-zone strong { color: var(--fg); }
+.keys { display: grid; grid-template-columns: max-content 1fr; gap: 4px 10px; font-size: 12px; margin: 0; }
+.keys dt { font-family: var(--mono); color: var(--muted); }
+.keys dd { margin: 0; }
+
+.toast { position: fixed; z-index: 20; left: 50%; bottom: max(18px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 12.5px; max-width: calc(100% - 32px); }
+#showToolbar { position: absolute; z-index: 6; top: max(6px, env(safe-area-inset-top, 0px)); right: max(6px, env(safe-area-inset-right, 0px)); opacity: .7; }
+#showToolbar:hover { opacity: 1; }
+body.bare .side { top: 0; }
+</style>
+
+<header class="bar">
+  <span class="mark" title="Convenient, custom, genomic viewer">CGV</span>
+  <div class="locus">
+    <input id="locus" type="text" spellcheck="false" autocomplete="off" aria-label="Локус: хромосома:начало-конец" placeholder="chr7:117,559,500-117,560,000">
+    <span id="span"></span>
+  </div>
+  <select id="examples" class="btn" aria-label="Примеры в демо-данных" hidden>
+    <option value="">Примеры</option>
+    <option value="demo:11,941-12,060">SNV, гетерозигота</option>
+    <option value="demo:14,941-15,060">SNV, гомозигота</option>
+    <option value="demo:17,941-18,062">Делеция 3 п.н.</option>
+    <option value="demo:20,941-21,060">Вставка 3 п.н.</option>
+    <option value="demo:24,201-28,800">Делеция 3 т.п.н.</option>
+    <option value="demo:29,601-34,000">Сегментный повтор, MAPQ 0</option>
+    <option value="demo:21,601-22,500">Мейты на другом контиге</option>
+    <option value="demo:1-40,000">Весь контиг</option>
+  </select>
+  <span class="file" id="fileName"></span>
+  <span class="status" id="status"></span>
+  <button class="btn" id="openBtn" aria-expanded="false" aria-controls="openPanel">Открыть</button>
+  <button class="btn" id="viewBtn" aria-expanded="false" aria-controls="panel">Вид</button>
+</header>
+
+<main id="stage">
+  <canvas id="gl"></canvas>
+  <canvas id="ov"></canvas>
+  <div id="msg" class="msg" hidden></div>
+  <div id="card" class="card" hidden></div>
+  <button class="btn" id="showToolbar" hidden>Панель (H)</button>
+
+  <aside id="openPanel" class="side" hidden aria-label="Открыть данные">
+    <header><h1>Открыть данные</h1><button class="btn ghost" data-close>Закрыть</button></header>
+    <section>
+      <h2>С диска</h2>
+      <label class="drop-zone" for="pickFiles"><strong>Выберите .bam и .bai</strong>можно добавить .fa и .fai<br>или перетащите файлы на экран</label>
+      <input id="pickFiles" type="file" multiple accept=".bam,.bai,.fa,.fasta,.fna,.fai" hidden>
+      <p class="hint">Файлы читаются кусками прямо с диска и никуда не отправляются.</p>
+    </section>
+    <section>
+      <h2>По ссылке</h2>
+      <div class="field"><label for="urlBam">BAM</label><input id="urlBam" type="url" placeholder="https://…/sample.bam"></div>
+      <div class="field"><label for="urlBai">Индекс (если не рядом с BAM)</label><input id="urlBai" type="url" placeholder="по умолчанию: ссылка + .bai"></div>
+      <div class="field"><label for="urlFa">Референс FASTA (необязательно)</label><input id="urlFa" type="url" placeholder="https://…/genome.fa (рядом .fai)"></div>
+      <div class="field"><label for="urlAuth">Токен доступа (необязательно)</label><input id="urlAuth" type="password" autocomplete="off" placeholder="Bearer …"></div>
+      <div class="row-actions"><button class="btn primary" id="openUrl">Открыть по ссылке</button></div>
+      <p class="hint">Сервер должен разрешать CORS и Range-запросы. Токен не сохраняется. На странице claude.ai загрузка по ссылке заблокирована политикой безопасности — для ссылок откройте файл cgv.html локально.</p>
+    </section>
+    <section>
+      <h2>Демо</h2>
+      <button class="btn" id="openDemo">Синтетические демо-данные</button>
+      <p class="hint">40 т.п.н. выдуманной последовательности, 30×, пять известных вариантов.</p>
+    </section>
+  </aside>
+
+  <aside id="panel" class="side" hidden aria-label="Настройки вида">
+    <header><h1>Вид</h1><button class="btn ghost" data-close>Закрыть</button></header>
+    <section>
+      <h2>Риды</h2>
+      <div class="field"><label for="readHeight">Высота рида</label><output id="readHeightOut"></output><input id="readHeight" type="range" min="1" max="24" step="0.5"></div>
+      <div class="field"><label for="colorBy">Раскраска</label>
+        <select id="colorBy"><option value="none">Без раскраски</option><option value="strand">Цепь</option><option value="pair">Ориентация и размер вставки пары</option><option value="tag">Значение тега</option></select></div>
+      <div class="field" id="colorTagRow"><label for="colorTag">Тег раскраски</label><input id="colorTag" type="text" maxlength="2" spellcheck="false"></div>
+      <div class="check"><input id="bqShade" type="checkbox"><label for="bqShade">Бледнее при низком качестве основания</label></div>
+      <div class="check"><input id="softClips" type="checkbox"><label for="softClips">Отмечать soft clip</label></div>
+    </section>
+    <section>
+      <h2>Прозрачность по MAPQ</h2>
+      <div class="pair">
+        <div class="field"><label for="mqLow">От MQ</label><input id="mqLow" type="number" min="0" max="255" step="1"></div>
+        <div class="field"><label for="mqHigh">До MQ</label><input id="mqHigh" type="number" min="0" max="255" step="1"></div>
+      </div>
+      <div class="field"><label for="mqMinAlpha">Непрозрачность при низком MQ</label><output id="mqMinAlphaOut"></output><input id="mqMinAlpha" type="range" min="0.02" max="1" step="0.01"></div>
+      <div class="legend" id="mqLegend"></div>
+      <div class="legend-labels"><span id="mqLegendLo"></span><span id="mqLegendHi"></span></div>
+      <p class="hint">Работает поверх любой раскраски.</p>
+    </section>
+    <section>
+      <h2>Группировка и сортировка</h2>
+      <div class="field"><label for="groupBy">Группировать</label>
+        <select id="groupBy"><option value="none">Не группировать</option><option value="strand">По цепи</option><option value="firstOfPair">Первый / второй в паре</option><option value="pair">По ориентации пары</option><option value="tag">По тегу</option></select></div>
+      <div class="field" id="groupTagRow"><label for="groupTag">Тег группировки</label><input id="groupTag" type="text" maxlength="2" spellcheck="false"></div>
+      <div class="field"><label for="sortBy">Сортировать ряды</label>
+        <select id="sortBy"><option value="start">По началу (без сортировки)</option><option value="base">По основанию в позиции</option><option value="mapq">По MAPQ</option><option value="strand">По цепи</option><option value="insert">По размеру вставки</option></select></div>
+      <div class="row-actions"><button class="btn" id="sortHere">Сортировать по центру экрана (S)</button></div>
+    </section>
+    <section>
+      <h2>Фильтры</h2>
+      <div class="field"><label for="minMapq">Минимальный MAPQ</label><input id="minMapq" type="number" min="0" max="255" step="1"></div>
+      <div class="check"><input id="hideDup" type="checkbox"><label for="hideDup">Скрыть дубликаты</label></div>
+      <div class="check"><input id="hideSec" type="checkbox"><label for="hideSec">Скрыть вторичные выравнивания</label></div>
+      <div class="check"><input id="hideSupp" type="checkbox"><label for="hideSupp">Скрыть дополнительные (supplementary)</label></div>
+      <div class="check"><input id="hideQc" type="checkbox"><label for="hideQc">Скрыть не прошедшие QC</label></div>
+    </section>
+    <section>
+      <h2>Покрытие</h2>
+      <div class="field"><label for="covHeight">Высота дорожки</label><output id="covHeightOut"></output><input id="covHeight" type="range" min="20" max="200" step="2"></div>
+      <div class="field"><label for="alleleThr">Подсвечивать аллели от</label><output id="alleleThrOut"></output><input id="alleleThr" type="range" min="0.02" max="0.5" step="0.01"></div>
+    </section>
+    <section>
+      <h2>Экран</h2>
+      <div class="check"><input id="hideToolbar" type="checkbox"><label for="hideToolbar">Скрыть верхнюю панель (H)</label></div>
+    </section>
+    <section>
+      <h2>Профиль</h2>
+      <textarea id="profileJson" spellcheck="false" aria-label="Профиль отображения в JSON"></textarea>
+      <div class="row-actions"><button class="btn" id="copyProfile">Копировать</button><button class="btn" id="applyProfile">Применить из поля</button><button class="btn ghost" id="resetProfile">Сбросить</button></div>
+      <p class="hint">Профиль — обычный JSON: вставьте чужой и нажмите «Применить».</p>
+    </section>
+    <section>
+      <h2>Управление</h2>
+      <dl class="keys">
+        <dt>перетаскивание</dt><dd>сдвиг по геному и прокрутка ридов</dd>
+        <dt>колесо</dt><dd>прокрутка ридов; Shift — сдвиг</dd>
+        <dt>Ctrl + колесо</dt><dd>масштаб (на трекпаде — щипок)</dd>
+        <dt>двойной клик</dt><dd>приблизить</dd>
+        <dt>← → ↑ ↓  + −</dt><dd>сдвиг, прокрутка, масштаб</dd>
+        <dt>S</dt><dd>сортировать по центру</dd>
+        <dt>H</dt><dd>скрыть/показать панель</dd>
+        <dt>клик по риду</dt><dd>карточка рида</dd>
+      </dl>
+    </section>
+  </aside>
+</main>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script>
+/*DEMO*/
+/*CORE*/
+/*APP*/
+</script>
