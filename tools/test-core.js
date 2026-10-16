@@ -76,6 +76,41 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     let threw = false; try { await new C.IndexedFasta(new C.FileSource(new Blob([Buffer.concat(blocks)]), 'demo.fa.gz'), new C.FileSource(blob('demo.fa.fai'))).open(); } catch (e) { threw = e.code === 'needGzi'; }
     ok(threw, '.fa.gz without .gzi gives a clear error');
   }
+  // FASTA without .fai: the index built in the browser matches the .fai file
+  {
+    const zlib = require('zlib'), raw = fs.readFileSync(path.join(D, 'demo.fa'));
+    const want = fs.readFileSync(path.join(D, 'demo.fa.fai'), 'utf8').trim();
+    const asFai = idx => [...idx].map(([n, e]) => [n, e.len, e.off, e.lb, e.lw].join('\t')).join('\n');
+    const plain = await new C.IndexedFasta(new C.FileSource(new Blob([raw]), 'demo.fasta')).openUnindexed(raw.length);
+    ok(asFai(plain.idx) === want, 'index built from plain FASTA equals .fai');
+    const p1 = await plain.fetch('demo', 12345, 12400), p2 = await fa.fetch('demo', 12345, 12400);
+    ok(!Buffer.compare(Buffer.from(p1), Buffer.from(p2)), 'bases from the built index match');
+    // CRLF line endings
+    const crlf = Buffer.from(raw.toString('latin1').replace(/\n/g, '\r\n'), 'latin1');
+    const fc = await new C.IndexedFasta(new C.FileSource(new Blob([crlf]), 'crlf.fa')).openUnindexed(crlf.length);
+    const c1 = await fc.fetch('demo2', 50, 1950), c2 = await fa.fetch('demo2', 50, 1950);
+    ok(!Buffer.compare(Buffer.from(c1), Buffer.from(c2)), 'CRLF FASTA indexed and read correctly');
+    // ordinary gzip (not bgzip)
+    const gz = zlib.gzipSync(raw);
+    const fg = await new C.IndexedFasta(new C.FileSource(new Blob([gz]), 'demo.fa.gz')).openUnindexed(gz.length);
+    const g1 = await fg.fetch('demo', 30000, 30100), g2 = await fa.fetch('demo', 30000, 30100);
+    ok(!Buffer.compare(Buffer.from(g1), Buffer.from(g2)), 'plain gzip FASTA indexed and read');
+    // bgzip without .gzi: the .gzi table is rebuilt
+    const blocks = []; for (let u = 0; u < raw.length; u += 900) {
+      const d = raw.subarray(u, u + 900), c = zlib.deflateRawSync(d);
+      const h = Buffer.from([31, 139, 8, 4, 0, 0, 0, 0, 0, 255, 6, 0, 66, 67, 2, 0, 0, 0]); h.writeUInt16LE(c.length + 25, 16);
+      const tl = Buffer.alloc(8); tl.writeUInt32LE(zlib.crc32(d), 0); tl.writeUInt32LE(d.length, 4); blocks.push(h, c, tl);
+    }
+    blocks.push(Buffer.from('1f8b08040000000000ff0600424302001b0003000000000000000000', 'hex'));
+    const bz = Buffer.concat(blocks);
+    const fb = await new C.IndexedFasta(new C.FileSource(new Blob([bz]), 'demo.fa.gz')).openUnindexed(bz.length);
+    let same = asFai(fb.idx) === want && !!fb.gzi;
+    for (const [s0, s1] of [[0, 5], [880, 2100], [39000, 40000]]) { const x = await fb.fetch('demo', s0, s1), y = await fa.fetch('demo', s0, s1); if (Buffer.compare(Buffer.from(x), Buffer.from(y))) same = false; }
+    ok(same, 'bgzip FASTA without .gzi: index and .gzi rebuilt, bases match');
+    // lines of different lengths in the middle of a contig: clear error
+    let code = null; try { await new C.IndexedFasta(new C.FileSource(new Blob(['>x\nACGT\nAC\nACGT\n']), 'bad.fa')).openUnindexed(17); } catch (e) { code = e.code; }
+    ok(code === 'faIrregular', 'irregular line lengths give a clear error');
+  }
   console.log(fails ? `\n${fails} FAILED` : '\nAll checks passed');
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

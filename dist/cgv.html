@@ -267,7 +267,7 @@ const STRINGS = {
     'ex.del3k': '3 kb deletion', 'ex.repeat': 'Segmental duplication, MAPQ 0', 'ex.chim': 'Mates on another contig', 'ex.whole': 'Whole contig',
     'btn.open': 'Open', 'btn.view': 'View', 'btn.close': 'Close', 'btn.toolbar': 'Toolbar (H)',
     'open.title': 'Open data',
-    'open.disk': 'From disk', 'open.pick': 'Choose .bam and .bai', 'open.pickSub': 'you can add .fa and .fai', 'open.pickDrop': 'or drop files onto the screen',
+    'open.disk': 'From disk', 'open.pick': 'Choose .bam and .bai', 'open.pickSub': 'you can add a .fa / .fasta reference', 'open.pickDrop': 'or drop files onto the screen',
     'open.diskHint': 'Files are read in pieces straight from disk and are never uploaded.',
     'open.url': 'By link', 'open.urlBam': 'BAM', 'open.urlBai': 'Index (if not next to the BAM)', 'open.urlBaiPh': 'default: link + .bai',
     'open.urlAuth': 'Access token (optional)', 'open.urlBtn': 'Open link',
@@ -275,11 +275,12 @@ const STRINGS = {
     'open.demo': 'Demo', 'open.demoBtn': 'Synthetic demo data', 'open.demoHint': '40 kb of made-up sequence, 30×, five known variants.',
     'ref.title': 'Reference', 'ref.hint': 'Without a reference, CGV rebuilds the reference bases from MD tags where reads cover them.',
     'ref.current': 'Current reference: {name}', 'ref.none': 'No reference loaded', 'ref.fromMd': 'reference from MD tags',
-    'ref.pick': 'Choose .fa and .fai', 'ref.pickSub': 'for .fa.gz also choose .gzi',
+    'ref.pick': 'Choose a .fa or .fasta file', 'ref.pickSub': 'add .fai / .gzi if you have them — otherwise CGV indexes the file itself',
     'ref.preset': 'Public genome', 'ref.presetNone': 'Choose…', 'ref.url': 'FASTA link', 'ref.urlPh': 'https://…/genome.fa (.fai next to it)', 'ref.load': 'Load reference',
     'ref.presetHint': 'Public copies hosted by the IGV team (Broad Institute) on Amazon S3. Use only with data aligned to the same assembly.',
     'ref.loaded': 'Reference loaded: {name}', 'ref.failed': 'Reference not loaded: {msg}', 'ref.needBam': 'Open a BAM first, then add the reference',
     'ref.mismatch': 'The reference has none of the contigs in this BAM — check the assembly',
+    'ref.indexing': 'Indexing {name}: {done}', 'ref.indexed': 'Reference indexed in the browser: {name}, {n} sequences. To skip this step next time, add the .fai (samtools faidx).',
     'view.title': 'View',
     'view.reads': 'Reads', 'view.readHeight': 'Read height', 'view.colorBy': 'Color by',
     'color.none': 'None', 'color.strand': 'Strand', 'color.pair': 'Pair orientation and insert size', 'color.tag': 'Tag value',
@@ -327,6 +328,7 @@ const STRINGS = {
     'err.notBai': 'This is not a BAI index (.bai)', 'err.notBam': 'This is not a BAM file (no BAM signature)', 'err.header': 'Could not read the BAM header',
     'err.headerCut': 'The BAM header is cut short — the file is incomplete', 'err.headerBig': 'The BAM header is too large',
     'err.fai': 'Empty or invalid FASTA index (.fai)', 'err.gzi': 'Invalid .gzi index', 'err.needGzi': 'A compressed .fa.gz needs its .gzi index',
+    'err.faIrregular': 'Sequence {name} has lines of different lengths, so it cannot be indexed. Rewrap it to a fixed width, e.g. with seqkit seq -w 60.', 'err.faEmpty': 'No sequences found — is this a FASTA file?',
   },
   ru: {
     'locus.aria': 'Локус: контиг:начало-конец',
@@ -335,7 +337,7 @@ const STRINGS = {
     'ex.del3k': 'Делеция 3 т.п.н.', 'ex.repeat': 'Сегментный повтор, MAPQ 0', 'ex.chim': 'Мейты на другом контиге', 'ex.whole': 'Весь контиг',
     'btn.open': 'Открыть', 'btn.view': 'Вид', 'btn.close': 'Закрыть', 'btn.toolbar': 'Панель (H)',
     'open.title': 'Открыть данные',
-    'open.disk': 'С диска', 'open.pick': 'Выберите .bam и .bai', 'open.pickSub': 'можно добавить .fa и .fai', 'open.pickDrop': 'или перетащите файлы на экран',
+    'open.disk': 'С диска', 'open.pick': 'Выберите .bam и .bai', 'open.pickSub': 'можно добавить референс .fa / .fasta', 'open.pickDrop': 'или перетащите файлы на экран',
     'open.diskHint': 'Файлы читаются кусками прямо с диска и никуда не отправляются.',
     'open.url': 'По ссылке', 'open.urlBam': 'BAM', 'open.urlBai': 'Индекс (если не рядом с BAM)', 'open.urlBaiPh': 'по умолчанию: ссылка + .bai',
     'open.urlAuth': 'Токен доступа (необязательно)', 'open.urlBtn': 'Открыть по ссылке',
@@ -343,11 +345,12 @@ const STRINGS = {
     'open.demo': 'Демо', 'open.demoBtn': 'Синтетические демо-данные', 'open.demoHint': '40 т.п.н. выдуманной последовательности, 30×, пять известных вариантов.',
     'ref.title': 'Референс', 'ref.hint': 'Без референса CGV восстанавливает базы референса из тегов MD там, где есть риды.',
     'ref.current': 'Текущий референс: {name}', 'ref.none': 'Референс не загружен', 'ref.fromMd': 'референс из MD',
-    'ref.pick': 'Выберите .fa и .fai', 'ref.pickSub': 'для .fa.gz добавьте .gzi',
+    'ref.pick': 'Выберите файл .fa или .fasta', 'ref.pickSub': 'добавьте .fai / .gzi, если они есть, — иначе CGV проиндексирует файл сам',
     'ref.preset': 'Публичная сборка', 'ref.presetNone': 'Выберите…', 'ref.url': 'Ссылка на FASTA', 'ref.urlPh': 'https://…/genome.fa (рядом .fai)', 'ref.load': 'Загрузить референс',
     'ref.presetHint': 'Публичные копии, которые команда IGV (Broad Institute) держит на Amazon S3. Используйте только с данными, выровненными на ту же сборку.',
     'ref.loaded': 'Референс загружен: {name}', 'ref.failed': 'Референс не загружен: {msg}', 'ref.needBam': 'Сначала откройте BAM, потом добавьте референс',
     'ref.mismatch': 'В референсе нет ни одного контига из этого BAM — проверьте сборку',
+    'ref.indexing': 'Индексирую {name}: {done}', 'ref.indexed': 'Референс проиндексирован в браузере: {name}, последовательностей: {n}. Чтобы в следующий раз не ждать, добавьте .fai (samtools faidx).',
     'view.title': 'Вид',
     'view.reads': 'Риды', 'view.readHeight': 'Высота рида', 'view.colorBy': 'Раскраска',
     'color.none': 'Без раскраски', 'color.strand': 'Цепь', 'color.pair': 'Ориентация и размер вставки пары', 'color.tag': 'Значение тега',
@@ -395,6 +398,7 @@ const STRINGS = {
     'err.notBai': 'Это не индекс BAI (.bai)', 'err.notBam': 'Это не BAM-файл (нет сигнатуры BAM)', 'err.header': 'Не удалось прочитать заголовок BAM',
     'err.headerCut': 'Заголовок BAM обрывается — файл неполный', 'err.headerBig': 'Слишком большой заголовок BAM',
     'err.fai': 'Пустой или неверный индекс FASTA (.fai)', 'err.gzi': 'Неверный индекс .gzi', 'err.needGzi': 'Для сжатого .fa.gz нужен индекс .gzi',
+    'err.faIrregular': 'В последовательности {name} строки разной длины, её нельзя проиндексировать. Переформатируйте файл на строки одной длины, например seqkit seq -w 60.', 'err.faEmpty': 'Последовательности не найдены — это точно FASTA?',
   },
 };
 const LANGS = [['en', 'English'], ['ru', 'Русский']];
@@ -470,6 +474,7 @@ const CGV_ERR_EN = {
   notBai: 'This is not a BAI index (.bai)', notBam: 'This is not a BAM file (no BAM signature)', header: 'Could not read the BAM header',
   headerCut: 'The BAM header is cut short — the file is incomplete', headerBig: 'The BAM header is too large',
   fai: 'Empty or invalid FASTA index (.fai)', gzi: 'Invalid .gzi index', needGzi: 'A compressed .fa.gz needs its .gzi index',
+  faIrregular: 'Sequence {name} has lines of different lengths, so it cannot be indexed. Rewrap it to a fixed width, e.g. with seqkit seq -w 60.', faEmpty: 'No sequences found — is this a FASTA file?',
 };
 class CgvError extends Error {
   constructor(code, vars) {
@@ -793,8 +798,100 @@ function baseAtRefPos(rec, pos) {
 
 // ======================= FASTA =======================
 // Plain FASTA + .fai, or bgzip-compressed FASTA + .fai + .gzi.
+// ---- Building a FASTA index in the browser (no .fai given) ----
+// One pass over the uncompressed bytes gives what samtools faidx writes:
+// name, length, offset of the first base, bases per line, bytes per line.
+class FaiBuilder {
+  constructor() { this.entries = []; this.pos = 0; this.cur = null; this.inHeader = false; this.hdr = []; this.lb = 0; this.lbytes = 0; this.atStart = true; }
+  _endLine() {
+    const c = this.cur;
+    if (!c) { this.lb = this.lbytes = 0; return; }
+    if (this.lb === 0) { if (this.lbytes === 0) c.blank = true; this.lb = this.lbytes = 0; return; }
+    if (c.blank || c.short) throw new CgvError('faIrregular', { name: c.name });
+    if (c.lb === 0) { c.lb = this.lb; c.lw = this.lbytes + 1; }
+    else if (this.lb !== c.lb || this.lbytes + 1 !== c.lw) { if (this.lb < c.lb) c.short = true; else throw new CgvError('faIrregular', { name: c.name }); }
+    c.len += this.lb; this.lb = this.lbytes = 0;
+  }
+  push(u8) {
+    for (let i = 0; i < u8.length; i++, this.pos++) {
+      const ch = u8[i];
+      if (this.inHeader) {
+        if (ch === 10) {
+          this.inHeader = false; this.atStart = true;
+          let n = ''; for (const x of this.hdr) { if (x === 32 || x === 9 || x === 13) break; n += String.fromCharCode(x); }
+          this.cur = { name: n, len: 0, off: this.pos + 1, lb: 0, lw: 0 }; this.entries.push(this.cur);
+        } else if (this.hdr.length < 512) this.hdr.push(ch);
+        continue;
+      }
+      if (ch === 10) { this._endLine(); this.atStart = true; continue; }
+      if (this.atStart && ch === 62) { this.inHeader = true; this.hdr = []; continue; }
+      this.atStart = false;
+      this.lbytes++; if (ch !== 13) this.lb++;
+    }
+  }
+  finish() {
+    if (this.lbytes) { const c = this.cur; if (c && c.lb === 0) { c.lb = this.lb; c.lw = this.lbytes + 1; } if (c) c.len += this.lb; }
+    const idx = new Map();
+    for (const e of this.entries) if (!idx.has(e.name)) idx.set(e.name, { len: e.len, off: e.off, lb: e.lb || 1, lw: e.lw || 2 });
+    if (!idx.size) throw new CgvError('faEmpty');
+    return idx;
+  }
+}
+
+function isBgzfHeader(b) { return b.length >= 18 && b[0] === 31 && b[1] === 139 && (b[3] & 4) && b[12] === 66 && b[13] === 67; }
+
+// Indexes a FASTA source with no .fai. Handles plain FASTA, BGZF (.fa.gz from bgzip,
+// also builds the .gzi table) and ordinary gzip (decompressed into memory).
+// Returns { idx, gzi, src } where src is the source to read sequence from.
+async function indexFasta(src, size, onProgress) {
+  const head = await src.read(0, 18);
+  const b = new FaiBuilder(), SLAB = 8 << 20;
+  const report = done => onProgress && onProgress(done, size);
+  if (isBgzfHeader(head)) {
+    const gzi = [[0, 0]]; let coff = 0, uoff = 0;
+    for (;;) {
+      const raw = await src.read(coff, SLAB);
+      if (!raw.length) break;
+      const blocks = parseBgzfBlocks(raw, coff);
+      if (!blocks.length) break;
+      const parts = await Promise.all(blocks.map(bl => inflateRaw(raw.subarray(bl.cstart, bl.cstart + bl.clen))));
+      for (let i = 0; i < blocks.length; i++) {
+        if (blocks[i].coff && parts[i].length) gzi.push([blocks[i].coff, uoff]);
+        b.push(parts[i]); uoff += parts[i].length;
+      }
+      const last = blocks[blocks.length - 1];
+      // parseBgzfBlocks gives cstart relative to raw; the block ends 8 bytes after its deflate data
+      const consumed = last.cstart + last.clen + 8;
+      coff += consumed; report(coff);
+      if (raw.length < SLAB && consumed >= raw.length) break;
+    }
+    return { idx: b.finish(), gzi, src };
+  }
+  if (head[0] === 31 && head[1] === 139) { // ordinary gzip: no random access, keep the text in memory
+    const all = await src.readAll();
+    const ds = new DecompressionStream('gzip'); const w = ds.writable.getWriter(); w.write(all).catch(() => {}); w.close().catch(() => {});
+    const r = ds.readable.getReader(), chunks = []; let done = 0;
+    for (;;) { const { value, done: end } = await r.read(); if (end) break; b.push(value); chunks.push(value); done += value.length; report(done); }
+    return { idx: b.finish(), gzi: null, src: new FileSource(new Blob(chunks), src.name.replace(/\.gz$/i, '')) };
+  }
+  for (let off = 0; ; off += SLAB) {
+    const raw = await src.read(off, SLAB);
+    if (raw.length) b.push(raw);
+    report(off + raw.length);
+    if (raw.length < SLAB) break;
+  }
+  return { idx: b.finish(), gzi: null, src };
+}
+
 class IndexedFasta {
-  constructor(faSource, faiSource, gziSource) { this.src = faSource; this.faiSrc = faiSource; this.gziSrc = gziSource || null; this.name = faSource.name; }
+  constructor(faSource, faiSource, gziSource) { this.src = faSource; this.faiSrc = faiSource || null; this.gziSrc = gziSource || null; this.name = faSource.name; }
+  // Index the FASTA in the browser when no .fai is available.
+  async openUnindexed(size, onProgress) {
+    const r = await indexFasta(this.src, size, onProgress);
+    this.idx = r.idx; this.src = r.src; this.built = true;
+    if (r.gzi) this.gzi = r.gzi;
+    return this;
+  }
   async open() {
     if (/\.gz$/i.test(this.src.name || '') && !this.gziSrc) throw new CgvError('needGzi');
     const t = new TextDecoder().decode(await this.faiSrc.readAll());
@@ -909,7 +1006,7 @@ function packRows(reads, padBp) {
   return rows;
 }
 
-if (typeof module !== 'undefined') module.exports = { FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
 
 // CGV app: state, loading, WebGL read rendering, Canvas2D for ruler/coverage, UI.
 'use strict';
@@ -1465,8 +1562,11 @@ function parseLocus(str) {
 
 // ======================= Input =======================
 let drag = null;
+// Genome gestures only start on the canvas itself: panels, cards and messages on top of
+// the stage keep their own clicks, scrolling and text selection.
+const onCanvas = e => e.target === ov;
 stage.addEventListener('pointerdown', e => {
-  if (e.button !== 0 || !S.bam) return;
+  if (e.button !== 0 || !S.bam || !onCanvas(e)) return;
   stage.setPointerCapture(e.pointerId);
   drag = { x: e.clientX, y: e.clientY, sx: S.view.start, sc: S.scroll, moved: false, inReads: e.offsetY > readsTop() };
 });
@@ -1484,9 +1584,9 @@ stage.addEventListener('pointerup', e => {
   const d = drag; drag = null;
   if (!d.moved) onClick(e.offsetX, e.offsetY);
 });
-stage.addEventListener('dblclick', e => { if (S.bam) zoomAt(e.offsetX, 0.5); });
+stage.addEventListener('dblclick', e => { if (S.bam && onCanvas(e)) zoomAt(e.offsetX, 0.5); });
 stage.addEventListener('wheel', e => {
-  if (!S.bam) return;
+  if (!S.bam || !onCanvas(e)) return;
   e.preventDefault();
   const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY, dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
   if (e.ctrlKey || e.metaKey) { zoomAt(e.offsetX, Math.exp(dy * 0.01)); return; }
@@ -1617,11 +1717,11 @@ function openLocalFiles(files) {
   if (cram) { toast(t('files.cram')); return; }
   const bam = by('.bam'), bai = by('.bai');
   const ref = pickRefFiles(files);
-  if (!bam && ref) { openReference(ref.fa, ref.fai, ref.gzi); return; }
+  if (!bam && ref) { openReference(ref); return; }
   if (by('.csi') && !bai) { toast(t('files.csi')); return; }
   if (!bam || !bai) { toast(t('files.needPair')); return; }
-  openBam(new FileSource(bam), new FileSource(bai), ref ? ref.fa : null, ref ? ref.fai : null, { gzi: ref && ref.gzi, keepRef: true });
   closePanels();
+  openBam(new FileSource(bam), new FileSource(bai), null, null, { keepRef: !ref }).then(() => { if (ref) openReference(ref); });
 }
 
 function openUrls() {
@@ -1649,28 +1749,45 @@ function pickRefFiles(files) {
   if (!fa) return null;
   const fai = [...files].find(f => L(f).endsWith('.fai')) || null;
   const gzi = [...files].find(f => L(f).endsWith('.gzi')) || null;
-  if (!fai) return null;
-  return { fa: new FileSource(fa), fai: new FileSource(fai), gzi: gzi ? new FileSource(gzi) : null };
+  return { fa: new FileSource(fa), fai: fai ? new FileSource(fai) : null, gzi: gzi ? new FileSource(gzi) : null, size: fa.size };
 }
-async function openReference(faSrc, faiSrc, gziSrc) {
+// ref = { fa, fai?, gzi?, size? } — sources. Without a .fai (or a .fa.gz without .gzi)
+// the FASTA is indexed here in one pass, with progress.
+let refBusy = false;
+async function openReference(ref) {
   if (!S.bam) { toast(t('ref.needBam')); return; }
+  if (refBusy) return;
+  refBusy = true;
+  const name = ref.fa.name, gz = /\.gz$/i.test(name);
   try {
-    const fasta = await new IndexedFasta(faSrc, faiSrc, gziSrc).open();
+    let fasta = null;
+    if (ref.fai && (!gz || ref.gzi)) {
+      try { fasta = await new IndexedFasta(ref.fa, ref.fai, ref.gzi).open(); }
+      catch (e) { if (!(ref.fa instanceof UrlSource) || !['notfound', 'http', 'auth', 'network'].includes(e.code) || e.vars.name === name) throw e; fasta = null; }
+    }
+    if (!fasta) {
+      const fmt = n => n >= 1 << 30 ? (n / (1 << 30)).toFixed(1) + ' GB' : (n / (1 << 20)).toFixed(0) + ' MB';
+      toast(t('ref.indexing', { name, done: '0%' }), true);
+      fasta = await new IndexedFasta(ref.fa).openUnindexed(ref.size, (done, total) =>
+        toast(t('ref.indexing', { name, done: total ? Math.min(100, Math.round(done / total * 100)) + '%' : fmt(done) }), true));
+    }
     if (!S.bam.refs.some(r => fasta.has(r.name))) { toast(t('ref.mismatch')); return; }
     S.fasta = fasta; S.data = null; S.shown = null; GL.n = 0; updateRefInfo(); closePanels();
-    toast(t('ref.loaded', { name: faSrc.name })); ensureData();
+    toast(fasta.built ? t('ref.indexed', { name, n: fmtInt(fasta.idx.size) }) : t('ref.loaded', { name }));
+    ensureData();
   } catch (e) { toast(t('ref.failed', { msg: errText(e) })); }
+  finally { refBusy = false; }
 }
 function updateRefInfo() {
   const el = $('refInfo'); if (!el) return;
   el.textContent = S.fasta ? t('ref.current', { name: S.fasta.name }) : t('ref.none');
 }
-$('pickRef').onchange = e => { const r = pickRefFiles(e.target.files); e.target.value = ''; if (!r) { toast(t('ref.failed', { msg: t('err.fai') })); return; } openReference(r.fa, r.fai, r.gzi); };
+$('pickRef').onchange = e => { const r = pickRefFiles(e.target.files); e.target.value = ''; if (!r) { toast(t('ref.failed', { msg: t('err.faEmpty') })); return; } openReference(r); };
 $('refPreset').onchange = e => { const p = REF_PRESETS[e.target.value]; if (p) $('refUrl').value = p.fa; };
 $('loadRef').onclick = () => {
   const u = $('refUrl').value.trim(); if (!u) return;
   const gz = /\.gz(\?|$)/i.test(u);
-  openReference(new UrlSource(u), new UrlSource(addSuffix(u, '.fai')), gz ? new UrlSource(addSuffix(u, '.gzi')) : null);
+  openReference({ fa: new UrlSource(u), fai: new UrlSource(addSuffix(u, '.fai')), gzi: gz ? new UrlSource(addSuffix(u, '.gzi')) : null });
 };
 
 // ======================= Language =======================
@@ -1761,7 +1878,7 @@ $('showToolbar').onclick = () => { P.hideToolbar = false; saveProfile(); applyCh
 function applyChrome() { document.body.classList.toggle('bare', P.hideToolbar); $('showToolbar').hidden = !P.hideToolbar; requestAnimationFrame(resize); }
 
 let toastTimer = 0;
-function toast(msg) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 3500); }
+function toast(msg, sticky) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastTimer); if (!sticky) toastTimer = setTimeout(() => el.hidden = true, msg.length > 90 ? 7000 : 3500); }
 
 // ======================= Theme =======================
 function onTheme() { readColors(); if (S.data) rebuild(); draw(); updateMqLegend(); }

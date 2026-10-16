@@ -53,6 +53,7 @@ const CGV_ERR_EN = {
   notBai: 'This is not a BAI index (.bai)', notBam: 'This is not a BAM file (no BAM signature)', header: 'Could not read the BAM header',
   headerCut: 'The BAM header is cut short — the file is incomplete', headerBig: 'The BAM header is too large',
   fai: 'Empty or invalid FASTA index (.fai)', gzi: 'Invalid .gzi index', needGzi: 'A compressed .fa.gz needs its .gzi index',
+  faIrregular: 'Sequence {name} has lines of different lengths, so it cannot be indexed. Rewrap it to a fixed width, e.g. with seqkit seq -w 60.', faEmpty: 'No sequences found — is this a FASTA file?',
 };
 class CgvError extends Error {
   constructor(code, vars) {
@@ -376,8 +377,100 @@ function baseAtRefPos(rec, pos) {
 
 // ======================= FASTA =======================
 // Plain FASTA + .fai, or bgzip-compressed FASTA + .fai + .gzi.
+// ---- Building a FASTA index in the browser (no .fai given) ----
+// One pass over the uncompressed bytes gives what samtools faidx writes:
+// name, length, offset of the first base, bases per line, bytes per line.
+class FaiBuilder {
+  constructor() { this.entries = []; this.pos = 0; this.cur = null; this.inHeader = false; this.hdr = []; this.lb = 0; this.lbytes = 0; this.atStart = true; }
+  _endLine() {
+    const c = this.cur;
+    if (!c) { this.lb = this.lbytes = 0; return; }
+    if (this.lb === 0) { if (this.lbytes === 0) c.blank = true; this.lb = this.lbytes = 0; return; }
+    if (c.blank || c.short) throw new CgvError('faIrregular', { name: c.name });
+    if (c.lb === 0) { c.lb = this.lb; c.lw = this.lbytes + 1; }
+    else if (this.lb !== c.lb || this.lbytes + 1 !== c.lw) { if (this.lb < c.lb) c.short = true; else throw new CgvError('faIrregular', { name: c.name }); }
+    c.len += this.lb; this.lb = this.lbytes = 0;
+  }
+  push(u8) {
+    for (let i = 0; i < u8.length; i++, this.pos++) {
+      const ch = u8[i];
+      if (this.inHeader) {
+        if (ch === 10) {
+          this.inHeader = false; this.atStart = true;
+          let n = ''; for (const x of this.hdr) { if (x === 32 || x === 9 || x === 13) break; n += String.fromCharCode(x); }
+          this.cur = { name: n, len: 0, off: this.pos + 1, lb: 0, lw: 0 }; this.entries.push(this.cur);
+        } else if (this.hdr.length < 512) this.hdr.push(ch);
+        continue;
+      }
+      if (ch === 10) { this._endLine(); this.atStart = true; continue; }
+      if (this.atStart && ch === 62) { this.inHeader = true; this.hdr = []; continue; }
+      this.atStart = false;
+      this.lbytes++; if (ch !== 13) this.lb++;
+    }
+  }
+  finish() {
+    if (this.lbytes) { const c = this.cur; if (c && c.lb === 0) { c.lb = this.lb; c.lw = this.lbytes + 1; } if (c) c.len += this.lb; }
+    const idx = new Map();
+    for (const e of this.entries) if (!idx.has(e.name)) idx.set(e.name, { len: e.len, off: e.off, lb: e.lb || 1, lw: e.lw || 2 });
+    if (!idx.size) throw new CgvError('faEmpty');
+    return idx;
+  }
+}
+
+function isBgzfHeader(b) { return b.length >= 18 && b[0] === 31 && b[1] === 139 && (b[3] & 4) && b[12] === 66 && b[13] === 67; }
+
+// Indexes a FASTA source with no .fai. Handles plain FASTA, BGZF (.fa.gz from bgzip,
+// also builds the .gzi table) and ordinary gzip (decompressed into memory).
+// Returns { idx, gzi, src } where src is the source to read sequence from.
+async function indexFasta(src, size, onProgress) {
+  const head = await src.read(0, 18);
+  const b = new FaiBuilder(), SLAB = 8 << 20;
+  const report = done => onProgress && onProgress(done, size);
+  if (isBgzfHeader(head)) {
+    const gzi = [[0, 0]]; let coff = 0, uoff = 0;
+    for (;;) {
+      const raw = await src.read(coff, SLAB);
+      if (!raw.length) break;
+      const blocks = parseBgzfBlocks(raw, coff);
+      if (!blocks.length) break;
+      const parts = await Promise.all(blocks.map(bl => inflateRaw(raw.subarray(bl.cstart, bl.cstart + bl.clen))));
+      for (let i = 0; i < blocks.length; i++) {
+        if (blocks[i].coff && parts[i].length) gzi.push([blocks[i].coff, uoff]);
+        b.push(parts[i]); uoff += parts[i].length;
+      }
+      const last = blocks[blocks.length - 1];
+      // parseBgzfBlocks gives cstart relative to raw; the block ends 8 bytes after its deflate data
+      const consumed = last.cstart + last.clen + 8;
+      coff += consumed; report(coff);
+      if (raw.length < SLAB && consumed >= raw.length) break;
+    }
+    return { idx: b.finish(), gzi, src };
+  }
+  if (head[0] === 31 && head[1] === 139) { // ordinary gzip: no random access, keep the text in memory
+    const all = await src.readAll();
+    const ds = new DecompressionStream('gzip'); const w = ds.writable.getWriter(); w.write(all).catch(() => {}); w.close().catch(() => {});
+    const r = ds.readable.getReader(), chunks = []; let done = 0;
+    for (;;) { const { value, done: end } = await r.read(); if (end) break; b.push(value); chunks.push(value); done += value.length; report(done); }
+    return { idx: b.finish(), gzi: null, src: new FileSource(new Blob(chunks), src.name.replace(/\.gz$/i, '')) };
+  }
+  for (let off = 0; ; off += SLAB) {
+    const raw = await src.read(off, SLAB);
+    if (raw.length) b.push(raw);
+    report(off + raw.length);
+    if (raw.length < SLAB) break;
+  }
+  return { idx: b.finish(), gzi: null, src };
+}
+
 class IndexedFasta {
-  constructor(faSource, faiSource, gziSource) { this.src = faSource; this.faiSrc = faiSource; this.gziSrc = gziSource || null; this.name = faSource.name; }
+  constructor(faSource, faiSource, gziSource) { this.src = faSource; this.faiSrc = faiSource || null; this.gziSrc = gziSource || null; this.name = faSource.name; }
+  // Index the FASTA in the browser when no .fai is available.
+  async openUnindexed(size, onProgress) {
+    const r = await indexFasta(this.src, size, onProgress);
+    this.idx = r.idx; this.src = r.src; this.built = true;
+    if (r.gzi) this.gzi = r.gzi;
+    return this;
+  }
   async open() {
     if (/\.gz$/i.test(this.src.name || '') && !this.gziSrc) throw new CgvError('needGzi');
     const t = new TextDecoder().decode(await this.faiSrc.readAll());
@@ -492,4 +585,4 @@ function packRows(reads, padBp) {
   return rows;
 }
 
-if (typeof module !== 'undefined') module.exports = { FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

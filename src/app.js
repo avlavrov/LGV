@@ -552,8 +552,11 @@ function parseLocus(str) {
 
 // ======================= Input =======================
 let drag = null;
+// Genome gestures only start on the canvas itself: panels, cards and messages on top of
+// the stage keep their own clicks, scrolling and text selection.
+const onCanvas = e => e.target === ov;
 stage.addEventListener('pointerdown', e => {
-  if (e.button !== 0 || !S.bam) return;
+  if (e.button !== 0 || !S.bam || !onCanvas(e)) return;
   stage.setPointerCapture(e.pointerId);
   drag = { x: e.clientX, y: e.clientY, sx: S.view.start, sc: S.scroll, moved: false, inReads: e.offsetY > readsTop() };
 });
@@ -571,9 +574,9 @@ stage.addEventListener('pointerup', e => {
   const d = drag; drag = null;
   if (!d.moved) onClick(e.offsetX, e.offsetY);
 });
-stage.addEventListener('dblclick', e => { if (S.bam) zoomAt(e.offsetX, 0.5); });
+stage.addEventListener('dblclick', e => { if (S.bam && onCanvas(e)) zoomAt(e.offsetX, 0.5); });
 stage.addEventListener('wheel', e => {
-  if (!S.bam) return;
+  if (!S.bam || !onCanvas(e)) return;
   e.preventDefault();
   const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY, dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
   if (e.ctrlKey || e.metaKey) { zoomAt(e.offsetX, Math.exp(dy * 0.01)); return; }
@@ -704,11 +707,11 @@ function openLocalFiles(files) {
   if (cram) { toast(t('files.cram')); return; }
   const bam = by('.bam'), bai = by('.bai');
   const ref = pickRefFiles(files);
-  if (!bam && ref) { openReference(ref.fa, ref.fai, ref.gzi); return; }
+  if (!bam && ref) { openReference(ref); return; }
   if (by('.csi') && !bai) { toast(t('files.csi')); return; }
   if (!bam || !bai) { toast(t('files.needPair')); return; }
-  openBam(new FileSource(bam), new FileSource(bai), ref ? ref.fa : null, ref ? ref.fai : null, { gzi: ref && ref.gzi, keepRef: true });
   closePanels();
+  openBam(new FileSource(bam), new FileSource(bai), null, null, { keepRef: !ref }).then(() => { if (ref) openReference(ref); });
 }
 
 function openUrls() {
@@ -736,28 +739,45 @@ function pickRefFiles(files) {
   if (!fa) return null;
   const fai = [...files].find(f => L(f).endsWith('.fai')) || null;
   const gzi = [...files].find(f => L(f).endsWith('.gzi')) || null;
-  if (!fai) return null;
-  return { fa: new FileSource(fa), fai: new FileSource(fai), gzi: gzi ? new FileSource(gzi) : null };
+  return { fa: new FileSource(fa), fai: fai ? new FileSource(fai) : null, gzi: gzi ? new FileSource(gzi) : null, size: fa.size };
 }
-async function openReference(faSrc, faiSrc, gziSrc) {
+// ref = { fa, fai?, gzi?, size? } — sources. Without a .fai (or a .fa.gz without .gzi)
+// the FASTA is indexed here in one pass, with progress.
+let refBusy = false;
+async function openReference(ref) {
   if (!S.bam) { toast(t('ref.needBam')); return; }
+  if (refBusy) return;
+  refBusy = true;
+  const name = ref.fa.name, gz = /\.gz$/i.test(name);
   try {
-    const fasta = await new IndexedFasta(faSrc, faiSrc, gziSrc).open();
+    let fasta = null;
+    if (ref.fai && (!gz || ref.gzi)) {
+      try { fasta = await new IndexedFasta(ref.fa, ref.fai, ref.gzi).open(); }
+      catch (e) { if (!(ref.fa instanceof UrlSource) || !['notfound', 'http', 'auth', 'network'].includes(e.code) || e.vars.name === name) throw e; fasta = null; }
+    }
+    if (!fasta) {
+      const fmt = n => n >= 1 << 30 ? (n / (1 << 30)).toFixed(1) + ' GB' : (n / (1 << 20)).toFixed(0) + ' MB';
+      toast(t('ref.indexing', { name, done: '0%' }), true);
+      fasta = await new IndexedFasta(ref.fa).openUnindexed(ref.size, (done, total) =>
+        toast(t('ref.indexing', { name, done: total ? Math.min(100, Math.round(done / total * 100)) + '%' : fmt(done) }), true));
+    }
     if (!S.bam.refs.some(r => fasta.has(r.name))) { toast(t('ref.mismatch')); return; }
     S.fasta = fasta; S.data = null; S.shown = null; GL.n = 0; updateRefInfo(); closePanels();
-    toast(t('ref.loaded', { name: faSrc.name })); ensureData();
+    toast(fasta.built ? t('ref.indexed', { name, n: fmtInt(fasta.idx.size) }) : t('ref.loaded', { name }));
+    ensureData();
   } catch (e) { toast(t('ref.failed', { msg: errText(e) })); }
+  finally { refBusy = false; }
 }
 function updateRefInfo() {
   const el = $('refInfo'); if (!el) return;
   el.textContent = S.fasta ? t('ref.current', { name: S.fasta.name }) : t('ref.none');
 }
-$('pickRef').onchange = e => { const r = pickRefFiles(e.target.files); e.target.value = ''; if (!r) { toast(t('ref.failed', { msg: t('err.fai') })); return; } openReference(r.fa, r.fai, r.gzi); };
+$('pickRef').onchange = e => { const r = pickRefFiles(e.target.files); e.target.value = ''; if (!r) { toast(t('ref.failed', { msg: t('err.faEmpty') })); return; } openReference(r); };
 $('refPreset').onchange = e => { const p = REF_PRESETS[e.target.value]; if (p) $('refUrl').value = p.fa; };
 $('loadRef').onclick = () => {
   const u = $('refUrl').value.trim(); if (!u) return;
   const gz = /\.gz(\?|$)/i.test(u);
-  openReference(new UrlSource(u), new UrlSource(addSuffix(u, '.fai')), gz ? new UrlSource(addSuffix(u, '.gzi')) : null);
+  openReference({ fa: new UrlSource(u), fai: new UrlSource(addSuffix(u, '.fai')), gzi: gz ? new UrlSource(addSuffix(u, '.gzi')) : null });
 };
 
 // ======================= Language =======================
@@ -848,7 +868,7 @@ $('showToolbar').onclick = () => { P.hideToolbar = false; saveProfile(); applyCh
 function applyChrome() { document.body.classList.toggle('bare', P.hideToolbar); $('showToolbar').hidden = !P.hideToolbar; requestAnimationFrame(resize); }
 
 let toastTimer = 0;
-function toast(msg) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.hidden = true, 3500); }
+function toast(msg, sticky) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastTimer); if (!sticky) toastTimer = setTimeout(() => el.hidden = true, msg.length > 90 ? 7000 : 3500); }
 
 // ======================= Theme =======================
 function onTheme() { readColors(); if (S.data) rebuild(); draw(); updateMqLegend(); }

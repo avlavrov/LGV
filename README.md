@@ -14,7 +14,7 @@ data. To view your own data, press **Open**:
   files onto the window. Files are read in pieces straight from disk and never uploaded.
 - **By link**: an HTTPS link to a BAM. The server must allow CORS and Range requests.
   An access token can be given; it is not saved.
-- **Reference**: add a FASTA at any time, separately from the BAM — `.fa` + `.fai`, or
+- **Reference**: add a FASTA at any time, separately from the BAM. One `.fa` / `.fasta` file is enough: without a `.fai` CGV indexes it in the browser in one pass (plain, bgzip or gzip). With an index it opens instantly — `.fa` + `.fai`, or
   bgzip-compressed `.fa.gz` + `.fai` + `.gzi`, from disk or by link. Public GRCh38, GRCh37
   and T2T-CHM13 v2.0 copies (hosted by the IGV team on Amazon S3) are offered as presets.
   Without a reference, CGV rebuilds reference bases from MD tags where reads cover them.
