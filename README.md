@@ -86,6 +86,22 @@ Targeted panels reach thousands of reads per base. CGV handles them the way IGV 
 - **Load limit by size:** a window loads on its own when the index points to at most 64 MB
   of compressed alignments; larger windows ask first.
 
+## Read layout
+
+- **Stable:** every read keeps its row while the layout lives — panning, reloading the
+  window, recoloring, changing read height. Only reads seen for the first time are placed.
+  A new layout is made only when something that decides placement changes: contig,
+  grouping, sort, filters or downsampling. The same reads and settings always give the
+  same picture.
+- **Compact:** a new read goes into the lowest row where it fits (2 bp gap), so coverage
+  dips fill from the top. Without grouping, the scroll range follows the rows the visible
+  part uses, not the deepest spot in the loaded margin.
+- **Sorting is a layout, not a row shuffle:** reads covering the sort position take the top
+  rows in sort order; all other reads pack around them. The sort stays exact at that
+  position and the rest stays compact; panning afterwards keeps it.
+- **Downsampling is query-independent:** reads kept in a window never depend on where a
+  query began, so reloads do not swap reads.
+
 ## Measurements (local disk, headless Chromium without a GPU)
 
 | Data | Window | Reads in window | Load | Build view |

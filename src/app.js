@@ -211,23 +211,16 @@ function rebuild() {
   // reads are already filtered (and downsampled) while loading; coverage came with them
   let reads = d.reads;
   let sampled = reads.length < d.total;
-  if (reads.length > P.maxReads) { // even downsampling with a fixed step, deterministic
-    const step = reads.length / P.maxReads, out = [];
-    for (let i = 0; i < P.maxReads; i++) out.push(reads[Math.floor(i * step)]);
-    reads = out; sampled = true;
+  if (reads.length > P.maxReads) { // safety cap; the choice depends on each read alone, not on its neighbours
+    const keep = Math.floor(4294967296 * P.maxReads / reads.length);
+    reads = reads.filter(r => hashStr(readKey(r)) < keep); sampled = true;
   }
   const cov = d.cov;
-  // groups
-  const gmap = new Map();
-  for (const r of reads) { const k = groupKey(r); if (!gmap.has(k)) gmap.set(k, []); gmap.get(k).push(r); }
-  const keys = [...gmap.keys()].sort((a, b) => a.localeCompare(b, LANG));
-  const groups = []; let rowCursor = 0;
-  for (const k of keys) {
-    const rows = packRows(gmap.get(k), 3);
-    sortRows(rows);
-    groups.push({ key: k, rows, start: rowCursor, count: gmap.get(k).length });
-    rowCursor += rows.length;
-  }
+  // Stable layout: rows are kept while nothing that decides placement changes (see ReadLayout).
+  const sorting = P.sortBy !== 'start' && S.sortPos != null;
+  const sig = JSON.stringify([S.bamSeq, S.view.refId, P.groupBy, P.groupTag, P.sortBy, sorting ? S.sortPos : null, P.filters, P.downsample, LANG]);
+  if (!S.layout || S.layout.sig !== sig) S.layout = new ReadLayout(sig, 2);
+  const { groups, totalRows: rowCursor } = S.layout.update(reads, groupKey, sorting ? { pos: S.sortPos, key: sortKeyFactory(S.sortPos) } : null);
   // instances: bodies → lines → features on top
   const ib = new InstBuf(Math.max(1024, reads.length * 3));
   const bodies = [], marks = [];
@@ -276,13 +269,10 @@ function flaggedPos(cov, d, pos) {
   return (t - cov[j + ri]) / t >= P.coverage.alleleThreshold;
 }
 
-function sortRows(rows) {
-  if (P.sortBy === 'start') return;
-  const pos = S.sortPos != null ? S.sortPos : Math.floor(viewCenter());
-  const refAt = refAtFactory(), rb = refAt(pos);
-  const keyOf = row => {
-    const rec = row.find(r => r.pos <= pos && r.end > pos);
-    if (!rec) return [9, 0];
+// Sort key of a read at a position; smaller goes higher.
+function sortKeyFactory(pos) {
+  const rb = refAtFactory()(pos);
+  return rec => {
     switch (P.sortBy) {
       case 'base': { const b = baseAtRefPos(rec, pos); if (!b) return [8, 0]; if (b === 45) return [2, 0]; return b === rb ? [3, 0] : [1, b]; }
       case 'mapq': return [1, -rec.mapq];
@@ -291,9 +281,6 @@ function sortRows(rows) {
     }
     return [1, 0];
   };
-  const keyed = rows.map(r => [keyOf(r), r]);
-  keyed.sort((a, b) => a[0][0] - b[0][0] || a[0][1] - b[0][1]);
-  for (let i = 0; i < rows.length; i++) rows[i] = keyed[i][1];
 }
 
 // ======================= View =======================
@@ -315,7 +302,13 @@ function clampView() {
   const span = W * S.view.bpPerPx;
   S.view.start = Math.min(L - span * 0.5, Math.max(-span * 0.5, S.view.start));
 }
-function contentHeight() { if (!S.shown) return 0; return S.shown.totalRows * P.readHeight + S.shown.groups.length * groupGap(); }
+// Without groups the scroll range follows the rows the visible part uses, so a deep spot off screen
+// does not leave empty space under a coverage dip. With groups their offsets stay fixed.
+function contentHeight() {
+  const sh = S.shown; if (!sh) return 0;
+  if (sh.groups.length === 1) return rowsInUse(sh.groups[0], S.view.start, viewEnd()) * P.readHeight;
+  return sh.totalRows * P.readHeight + sh.groups.length * groupGap();
+}
 function clampScroll() { const maxS = Math.max(0, contentHeight() - (H - readsTop()) + 24); S.scroll = Math.min(maxS, Math.max(0, S.scroll)); }
 function goto(refId, start, end) {
   S.view.refId = refId;
@@ -341,7 +334,10 @@ async function ensureData() {
   const d = S.data;
   if (d && d.refId === S.view.refId && vs >= d.start && ve <= d.end) return;
   const span = ve - vs, margin = Math.round(Math.min(span, 20000) / 2);
-  const ls = Math.max(0, vs - margin), le = Math.min(refLen(), ve + margin);
+  let ls = Math.max(0, vs - margin); const le = Math.min(refLen(), ve + margin);
+  // with downsampling, reads starting before the query start are left out (see BamFile.fetch), so the
+  // query starts one read length earlier, on a window boundary; reads kept never depend on the query
+  if (S.bam && P.downsample.enabled) { const w = P.downsample.window; ls = Math.max(0, Math.floor((ls - Math.max(S.bam.maxSpan, 1000)) / w) * w); }
   // decide by the amount of data the index points to, not by window length: 30x WGS and a
   // 3000x panel differ a hundredfold for the same window
   const bamRef = S.bam ? S.bamMap[S.view.refId] : -1;
@@ -396,6 +392,7 @@ function fmtInt(n) { return Math.round(n).toLocaleString(NUM_LOCALE[LANG]); }
 const frameTimes = [];
 function render() {
   const t0 = performance.now(), tp = {};
+  if (S.shown && !drag) clampScroll();
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, W, H);
   const rt = readsTop();
@@ -798,7 +795,7 @@ async function openBam(bamSrc, baiSrc, opts) {
       map = Int32Array.from(bam.refs, (r, i) => i); back.forEach((v, i) => { back[i] = i; });
     }
     const keepView = !!S.fasta && S.viewSet && map[S.view.refId] >= 0;
-    S.bam = bam; S.bamMap = map; S.bamBack = back;
+    S.bam = bam; S.bamMap = map; S.bamBack = back; S.bamSeq = (S.bamSeq || 0) + 1; S.layout = null;
     S.data = null; S.shown = null; GL.n = 0; S.isDemo = !!opts.demo; S.sortPos = null; S.selected = null; hideCard();
     S.bamName = bamSrc.name; updateFileLabel();
     $('examples').hidden = !S.isDemo;
@@ -894,7 +891,7 @@ async function openReference(ref, opts) {
     const closed = !!S.bam;
     S.loadToken++;
     S.fasta = fasta; S.contigs = [...fasta.idx].map(([n, e]) => ({ name: n, len: e.len })); S._ck = null;
-    S.bam = null; S.bamMap = null; S.bamBack = null; S.bamName = '';
+    S.bam = null; S.bamMap = null; S.bamBack = null; S.bamName = ''; S.layout = null;
     S.data = null; S.shown = null; GL.n = 0; S.selected = null; S.sortPos = null; S.isDemo = false; S.msg = null; S.loading = false;
     hideCard(); updateRefInfo(); updateFileLabel(); $('examples').hidden = true; closePanels();
     if (!opts.quiet) {

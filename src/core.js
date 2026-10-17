@@ -226,9 +226,14 @@ class BamFile {
       if (refLen > this.maxSpan) this.maxSpan = refLen;
       if (pos + Math.max(refLen, 1) <= beg) return;
       if (flt && !passFlags(flag, mapq, flt)) return;
-      out.total++;
       addCoverage(buf, dv, p, cov, beg, covLen);
+      if (!ds || pos >= beg) out.total++;
       if (!ds) { out.reads.push(parseBamRecord(buf, dv, p)); return; }
+      // Downsampling decides per window of read starts. A read starting before `beg` belongs to a window
+      // this query only partly sees, so the choice there could differ from a wider query. Such reads
+      // count for coverage but are not returned: what is returned for a window never depends on where
+      // the query began. Callers start the query a read length early to cover the left edge.
+      if (pos < beg) return;
       const w = Math.floor(pos / ds.window);
       if (w !== win) { flush(); win = w; rng = (Math.imul(w + 1, 2654435761) >>> 0) || 1; }
       n++;
@@ -708,17 +713,122 @@ function insertSizeBounds(reads) {
   return { lo: v[Math.floor(v.length * 0.005)], hi: v[Math.floor(v.length * 0.995)] };
 }
 
-// Dense row packing with a min-heap on row end.
-function packRows(reads, padBp) {
-  const rows = []; const heap = []; // [end, row]
-  const less = (a, b) => a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
-  const push = x => { heap.push(x); let i = heap.length - 1; while (i) { const p = (i - 1) >> 1; if (less(heap[i], heap[p])) { [heap[i], heap[p]] = [heap[p], heap[i]]; i = p; } else break; } };
-  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && less(heap[l], heap[m])) m = l; if (r < heap.length && less(heap[r], heap[m])) m = r; if (m === i) break; [heap[i], heap[m]] = [heap[m], heap[i]]; i = m; } } return top; };
-  for (const rec of reads) {
-    if (heap.length && heap[0][0] + padBp <= rec.pos) { const [, row] = pop(); rows[row].push(rec); push([rec.end, row]); }
-    else { rows.push([rec]); push([rec.end, rows.length - 1]); }
+// ======================= Read layout =======================
+// Stable read layout. A read keeps its row for as long as the layout lives (panning, reloads,
+// redraws, recoloring); only reads seen for the first time are placed, each into the lowest
+// row where it fits. A new layout is made only when what decides placement changes
+// (contig, grouping, sort, filters, downsampling), so the picture never reshuffles on its own.
+
+// Identity of an alignment record: name + which segment (first/second, secondary, supplementary) + position.
+function readKey(r) { return r.name + '\u0001' + (r.flag & 0x9C0) + '\u0001' + r.pos; }
+
+// One row: disjoint intervals sorted by start.
+class LayoutRow {
+  constructor() { this.s = []; this.e = []; }
+  // index of the first interval starting at or after x
+  _at(x) { let lo = 0, hi = this.s.length; while (lo < hi) { const m = (lo + hi) >> 1; if (this.s[m] < x) lo = m + 1; else hi = m; } return lo; }
+  fits(s, e, pad) {
+    const i = this._at(s);
+    if (i > 0 && this.e[i - 1] + pad > s) return false;
+    if (i < this.s.length && this.s[i] < e + pad) return false;
+    return true;
   }
-  return rows;
+  add(s, e) {
+    const n = this.s.length;
+    if (!n || this.s[n - 1] <= s) { this.s.push(s); this.e.push(e); return; }
+    const i = this._at(s); this.s.splice(i, 0, s); this.e.splice(i, 0, e);
+  }
+  // does any interval overlap [a, b)?
+  overlaps(a, b) { const i = this._at(b); return i > 0 && this.e[i - 1] > a; }
 }
 
-if (typeof module !== 'undefined') module.exports = { matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+class ReadLayout {
+  // sig: anything that, when changed, must produce a fresh layout. pad: minimum gap in bp.
+  constructor(sig, pad) { this.sig = sig; this.pad = pad == null ? 2 : pad; this.place = new Map(); this.order = []; this.size = new Map(); }
+
+  // reads: sorted by position. groupOf(r) -> group label. prio: { pos, key(r) -> [a, b] } places the
+  // reads covering `pos` first, in key order, one per row from the top (sorting). Used only when the
+  // layout is fresh; afterwards the rows it made are kept like any others.
+  // Returns { groups: [{ key, rows: [[rec...]], start, count, sets }], totalRows }.
+  update(reads, groupOf, prio) {
+    const pad = this.pad, fresh = this.place.size === 0;
+    const byGroup = new Map();
+    for (const r of reads) { const k = groupOf(r); let a = byGroup.get(k); if (!a) byGroup.set(k, a = []); a.push(r); }
+    // group order is kept; a new group goes into its sorted place
+    for (const k of byGroup.keys()) if (!this.order.includes(k)) this.order.push(k);
+    this.order.sort((a, b) => String(a).localeCompare(String(b)));
+    const place = new Map(), groups = [];
+    let start = 0;
+    for (const k of this.order) {
+      const list = byGroup.get(k) || [];
+      const sets = [], rowOf = new Array(list.length);
+      const ensure = n => { while (sets.length <= n) sets.push(new LayoutRow()); };
+      const pending = [];
+      // 1. reads already placed keep their rows
+      for (let i = 0; i < list.length; i++) {
+        const r = list[i], key = readKey(r), old = this.place.get(key);
+        if (old && old.g === k) { ensure(old.r); sets[old.r].add(r.pos, r.end); rowOf[i] = old.r; place.set(key, old); }
+        else pending.push(i);
+      }
+      // 2. sorting: reads covering the sort position take rows from the top, in key order
+      if (fresh && prio && pending.length) {
+        const cover = pending.filter(i => list[i].pos <= prio.pos && list[i].end > prio.pos);
+        const keyed = cover.map(i => [prio.key(list[i]), i]);
+        keyed.sort((a, b) => a[0][0] - b[0][0] || a[0][1] - b[0][1] || list[a[1]].pos - list[b[1]].pos);
+        const taken = new Set();
+        keyed.forEach(([, i], n) => { ensure(n); sets[n].add(list[i].pos, list[i].end); rowOf[i] = n; taken.add(i); });
+        for (let n = pending.length - 1; n >= 0; n--) if (taken.has(pending[n])) pending.splice(n, 1);
+      }
+      // 3. everything else goes into the lowest row where it fits
+      if (sets.length === 0 && pending.length === list.length) {
+        // empty group: sweep with a heap of rows in use and a heap of free row numbers (lowest first)
+        const act = new MinHeap((a, b) => a[0] - b[0] || a[1] - b[1]), free = new MinHeap((a, b) => a - b);
+        for (const i of pending) {
+          const r = list[i];
+          while (act.size && act.peek()[0] + pad <= r.pos) free.push(act.pop()[1]);
+          const row = free.size ? free.pop() : sets.length;
+          ensure(row); sets[row].add(r.pos, r.end); rowOf[i] = row; act.push([r.end, row]);
+        }
+      } else {
+        for (const i of pending) {
+          const r = list[i]; let row = 0;
+          while (row < sets.length && !sets[row].fits(r.pos, r.end, pad)) row++;
+          ensure(row); sets[row].add(r.pos, r.end); rowOf[i] = row;
+        }
+      }
+      for (let i = 0; i < list.length; i++) if (!place.has(readKey(list[i]))) place.set(readKey(list[i]), { g: k, r: rowOf[i] });
+      // rows never shrink while the layout lives, so groups below never jump up and down
+      const n = Math.max(sets.length, this.size.get(k) || 0);
+      this.size.set(k, n); ensure(n - 1);
+      const rows = Array.from({ length: n }, () => []);
+      for (let i = 0; i < list.length; i++) rows[rowOf[i]].push(list[i]);
+      groups.push({ key: k, rows, start, count: list.length, sets });
+      start += n;
+    }
+    this.place = place;
+    return { groups, totalRows: start };
+  }
+}
+
+// Number of rows of a group that hold a read overlapping [a, b): what the visible part needs.
+function rowsInUse(group, a, b) {
+  for (let r = group.sets.length - 1; r >= 0; r--) if (group.sets[r].overlaps(a, b)) return r + 1;
+  return 0;
+}
+
+class MinHeap {
+  constructor(less) { this.a = []; this.cmp = less; }
+  get size() { return this.a.length; }
+  peek() { return this.a[0]; }
+  push(x) { const a = this.a; a.push(x); let i = a.length - 1; while (i) { const p = (i - 1) >> 1; if (this.cmp(a[i], a[p]) < 0) { [a[i], a[p]] = [a[p], a[i]]; i = p; } else break; } }
+  pop() {
+    const a = this.a, top = a[0], last = a.pop();
+    if (a.length) { a[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < a.length && this.cmp(a[l], a[m]) < 0) m = l; if (r < a.length && this.cmp(a[r], a[m]) < 0) m = r; if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } }
+    return top;
+  }
+}
+
+// Plain packing of a list (no persistence), lowest free row first.
+function packRows(reads, padBp) { const g = new ReadLayout(null, padBp).update(reads, () => '').groups[0]; return g ? g.rows : []; }
+
+if (typeof module !== 'undefined') module.exports = { ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

@@ -119,7 +119,7 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     ok(full.cov.every((v, i) => v === ref[i]), 'coverage from the stream equals coverage from records');
     const ds = await bam.fetch(0, 11000, 13000, { filters: flt, downsample: { max: 5, window: 50 } });
     const perWin = {}; for (const r of ds.reads) { const w = Math.floor(r.pos / 50); perWin[w] = (perWin[w] || 0) + 1; }
-    ok(Math.max(...Object.values(perWin)) <= 5 && ds.total === full.total && ds.sampled.length > 0, `downsampling: ${ds.reads.length} of ${ds.total} kept, ${ds.sampled.length} windows sampled, max ${Math.max(...Object.values(perWin))} per window`);
+    ok(Math.max(...Object.values(perWin)) <= 5 && ds.total === full.reads.filter(r => r.pos >= 11000).length && ds.sampled.length > 0, `downsampling: ${ds.reads.length} of ${ds.total} kept, ${ds.sampled.length} windows sampled, max ${Math.max(...Object.values(perWin))} per window`);
     ok(ds.cov.every((v, i) => v === full.cov[i]), 'coverage is the same with downsampling');
     ok(ds.reads.every((r, i) => !i || ds.reads[i - 1].pos <= r.pos), 'downsampled reads stay sorted');
     const again = await bam.fetch(0, 11000, 13000, { filters: flt });
@@ -137,6 +137,40 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     ok(ncbi.matched.length === 1 && ncbi.matched[0][2] === 'name', 'NCBI-style FASTA headers match by accession');
     const amb = C.matchContigs([{ name: 'a', len: 5 }, { name: 'b', len: 5 }], [{ name: 'x', len: 5 }, { name: 'y', len: 5 }]);
     ok(amb.matched.length === 0, 'equal lengths on several contigs are not guessed');
+  }
+  // stable layout
+  {
+    const all = (await bam.fetch(0, 0, 40000)).reads;
+    const win = (a, b) => all.filter(r => r.end > a && r.pos < b);
+    const noOverlap = groups => groups.every(g => g.rows.every(row => row.every((r, i) => !i || row[i - 1].end + 2 <= r.pos)));
+    const L = new C.ReadLayout('t', 2);
+    const A = L.update(win(10000, 20000), () => '');
+    const depthAt = p => all.filter(r => r.pos <= p && r.end + 2 > p).length;
+    const rowOf = res => { const m = new Map(); for (const g of res.groups) g.rows.forEach((row, i) => row.forEach(r => m.set(C.readKey(r), i))); return m; };
+    const ra = rowOf(A);
+    ok(noOverlap(A.groups), 'layout: no overlaps in rows');
+    ok(win(10000, 20000).every(r => ra.get(C.readKey(r)) < depthAt(r.pos)), 'layout: each read sits no lower than the depth at its start (rows filled from the top)');
+    const B = L.update(win(15000, 25000), () => ''), rb = rowOf(B);
+    const common = win(15000, 20000);
+    ok(common.every(r => ra.get(C.readKey(r)) === rb.get(C.readKey(r))) && noOverlap(B.groups), `layout: ${common.length} reads shared by two windows keep their rows`);
+    const B2 = L.update(win(15000, 25000), () => ''), rb2 = rowOf(B2);
+    ok([...rb].every(([k, v]) => rb2.get(k) === v), 'layout: same reads again give the same rows');
+    const back = L.update(win(5000, 15000), () => ''), rk = rowOf(back);
+    const c2 = all.filter(r => r.pos < 15000 && r.end > 15000); // loaded in both windows
+    ok(c2.length > 0 && c2.every(r => rk.get(C.readKey(r)) === rb.get(C.readKey(r))) && noOverlap(back.groups), `layout: panning back, ${c2.length} reads loaded in both windows keep their rows`);
+    // sorting places reads covering the position at the top, in key order
+    const S = new C.ReadLayout('s', 2), pos = 12000;
+    const prio = { pos, key: r => [r.flag & 16 ? 1 : 0, r.mapq] };
+    const res = S.update(win(11000, 13000), () => '', prio), rows = res.groups[0].rows;
+    const cover = win(11000, 13000).filter(r => r.pos <= pos && r.end > pos);
+    const top = rows.slice(0, cover.length).map(row => row.find(r => r.pos <= pos && r.end > pos));
+    ok(top.every(Boolean) && top.every((r, i) => !i || prio.key(top[i - 1])[0] <= prio.key(r)[0]) && noOverlap(res.groups), `sort: ${cover.length} reads at ${pos} fill the top rows in key order`);
+    // downsampling gives the same reads for a window whatever the query start
+    const flt = { minMapq: 0, hideDuplicates: true, hideSecondary: true, hideSupplementary: false, hideQcFail: true }, ds = { max: 5, window: 50 };
+    const q1 = await bam.fetch(0, 10000, 14000, { filters: flt, downsample: ds }), q2 = await bam.fetch(0, 11000, 16000, { filters: flt, downsample: ds });
+    const keys = q => new Set(q.reads.filter(r => r.pos >= 11000 && r.pos < 14000).map(C.readKey));
+    const k1 = keys(q1), k2 = keys(q2);
+    ok(k1.size === k2.size && [...k1].every(k => k2.has(k)), `downsampling: ${k1.size} kept reads in 11000-14000 are the same for both queries`);
   }
   console.log(fails ? `\n${fails} FAILED` : '\nAll checks passed');
   process.exit(fails ? 1 : 0);
