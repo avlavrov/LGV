@@ -44,7 +44,7 @@ More languages are one dictionary in `src/i18n.js`.
 | F11 Group and sort | groups (View): strand, first/second, pair orientation, tag; sort by (right click, at the clicked position): base, MAPQ, strand, insert size |
 | F12 Filters | MAPQ, duplicates, secondary, supplementary, QC fail; downsampling |
 | F13 Mate | view as pairs (right click), read details + go to mate; several regions on screen is the next step |
-| F14 Read details | the clicked base (position, read base, reference base, base quality), all fields and tags, copy |
+| F14 Read details | IGV-style popup: read, mapping, clipping, mate and tags, then Location and `Base = A @ QV 14` for the clicked base; one read or read + mate side by side; copy |
 | F18 Display profile as JSON | kept in the browser, copied and applied as JSON |
 | F23 Screen space for data | one bar of controls, hidden with H |
 
@@ -109,6 +109,9 @@ Targeted panels reach thousands of reads per base. CGV handles them the way IGV 
   10 kb (`pairs.maxSpan` in the profile), mates on other contigs, unmapped mates and
   secondary or supplementary alignments are shown as single reads. Downsampling picks reads
   independently, so in deep downsampled regions some pairs show one mate.
+- **Soft clips:** shown by default (right click → *Show soft-clipped bases*, or View → Reads):
+  clipped bases continue the read in a lighter shade, bases that differ from the reference
+  are colored, and the layout leaves room for them. Hidden, a clip is marked by a tick.
 - **Downsampling is query-independent:** reads kept in a window never depend on where a
   query began, so reloads do not swap reads.
 

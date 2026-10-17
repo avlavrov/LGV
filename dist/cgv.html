@@ -75,7 +75,7 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 @keyframes s { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 
-.card { position: absolute; z-index: 5; width: min(360px, calc(100% - 16px)); max-height: calc(100% - 16px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px rgb(0 0 0 / .14); padding: 8px 10px; cursor: auto; user-select: text; -webkit-user-select: text; }
+.card { position: absolute; z-index: 5; width: min(380px, calc(100% - 16px)); max-height: calc(100% - 16px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px rgb(0 0 0 / .14); padding: 8px 10px; cursor: auto; user-select: text; -webkit-user-select: text; }
 .card dl { display: grid; grid-template-columns: max-content 1fr; gap: 0 10px; margin: 0; font-size: 11.5px; line-height: 1.3; }
 .card dt.hl, .card dd.hl { font-weight: 600; color: var(--fg); }
 .card dd.hl + dt:not(.hl) { margin-top: 4px; } .card dd.hl + dt:not(.hl) + dd { margin-top: 4px; }
@@ -88,6 +88,17 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .ms { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 8px 10px 3px 26px; border-top: 1px solid var(--line); margin-top: 4px; }
 .mt { display: flex; align-items: center; gap: 8px; padding: 2px 10px 4px 26px; font-size: 12px; color: var(--muted); }
 .mt input { width: 46px; height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); font-family: var(--mono); }
+.card.wide { width: min(760px, calc(100% - 16px)); }
+.card .cols { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 0 20px; }
+.card .col h3 { font-size: 12.5px; margin: 2px 0 3px; font-weight: 700; }
+.card .ln { font-size: 12px; line-height: 1.32; overflow-wrap: anywhere; }
+.card .ln.b { font-weight: 600; }
+.card .sep { border-top: 1px dashed var(--line); margin: 3px 0; }
+.card .loc { border-top: 1px solid var(--muted); margin-top: 5px; padding-top: 3px; }
+.card .seg { display: inline-flex; margin-bottom: 6px; }
+.card .seg .btn { height: 24px; font-size: 12px; border-radius: 0; }
+.card .seg .btn:first-child { border-radius: 6px 0 0 6px; } .card .seg .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.card .seg .btn.on { border-color: var(--accent); color: var(--accent); position: relative; }
 .card-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 
 .side { position: absolute; z-index: 10; top: var(--bar-h); right: 0; bottom: 0; width: min(330px, 100%); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 28px rgb(0 0 0 / .08); overflow: auto;
@@ -301,7 +312,7 @@ const STRINGS = {
     'view.title': 'View',
     'view.reads': 'Reads', 'view.readHeight': 'Read height', 'view.colorBy': 'Color by',
     'color.none': 'None', 'color.strand': 'Strand', 'color.pair': 'Pair orientation and insert size', 'color.tag': 'Tag value',
-    'view.colorTag': 'Tag for color', 'view.bqShade': 'Fade low-quality bases', 'view.softClips': 'Mark soft clips',
+    'view.colorTag': 'Tag for color', 'view.bqShade': 'Fade low-quality bases', 'view.softClips': 'Show soft-clipped bases',
     'view.mq': 'MAPQ transparency', 'view.mqLow': 'From MQ', 'view.mqHigh': 'To MQ', 'view.mqMinAlpha': 'Opacity at low MQ', 'view.mqHint': 'Works on top of any coloring.',
     'view.groupSort': 'Group and sort', 'view.groupBy': 'Group by',
     'group.none': 'No grouping', 'group.strand': 'Strand', 'group.firstOfPair': 'First / second of pair', 'group.pair': 'Pair orientation', 'group.tag': 'Tag',
@@ -325,6 +336,16 @@ const STRINGS = {
     'keys.arrows': '← → ↑ ↓  + −', 'keys.arrowsD': 'move, scroll, zoom',
     'keys.s': 'sort by base at the screen center', 'keys.h': 'hide / show the bar', 'keys.click': 'click a read', 'keys.clickD': 'read details',
     'drop': 'Drop .bam and .bai files',
+    'menu.clips': 'Show soft-clipped bases',
+    'card.leftAln': 'Left alignment', 'card.rightAln': 'Right alignment', 'card.readName': 'Read name', 'card.sample': 'Sample', 'card.rg': 'Read group',
+    'card.readLen': 'Read length', 'card.flags': 'Flags', 'card.mapping': 'Mapping', 'card.primary': 'Primary', 'card.secondary': 'Secondary',
+    'card.supplementary': 'Supplementary', 'card.dup': 'Duplicate', 'card.qcfail': 'Fails QC', 'card.yes': 'yes', 'card.no': 'no',
+    'card.refSpan': 'Reference span', 'card.cigar': 'Cigar', 'card.clipping': 'Clipping', 'card.none': 'None', 'card.left': 'Left', 'card.right': 'Right',
+    'card.soft': 'soft', 'card.hard': 'hard', 'card.mateMapped': 'Mate is mapped', 'card.mateStart': 'Mate start', 'card.insert': 'Insert size',
+    'card.first': 'First in pair', 'card.second': 'Second in pair', 'card.pairOr': 'Pair orientation', 'card.hidden': 'Hidden tags',
+    'card.location': 'Location', 'card.base': 'Base', 'card.deletion': 'deletion', 'card.softclip': 'soft-clipped',
+    'card.show': 'Show', 'card.showRead': 'Read', 'card.showPair': 'Read and mate',
+    'card.mateNotLoaded': 'Mate is not in the loaded window', 'card.mateUnmapped2': 'Mate is unmapped',
     'menu.pairs': 'View as pairs', 'menu.colorBy': 'Color by', 'menu.sortBy': 'Sort by (at {pos})',
     'view.menuHint': 'Pair view, coloring and sorting: right click on the reads.', 'view.group': 'Group',
     'keys.right': 'right click on reads', 'keys.rightD': 'view as pairs, color by, sort by (at the clicked position)',
@@ -384,7 +405,7 @@ const STRINGS = {
     'view.title': 'Вид',
     'view.reads': 'Риды', 'view.readHeight': 'Высота рида', 'view.colorBy': 'Раскраска',
     'color.none': 'Без раскраски', 'color.strand': 'Цепь', 'color.pair': 'Ориентация и размер вставки пары', 'color.tag': 'Значение тега',
-    'view.colorTag': 'Тег раскраски', 'view.bqShade': 'Бледнее при низком качестве основания', 'view.softClips': 'Отмечать soft clip',
+    'view.colorTag': 'Тег раскраски', 'view.bqShade': 'Бледнее при низком качестве основания', 'view.softClips': 'Показывать soft clip',
     'view.mq': 'Прозрачность по MAPQ', 'view.mqLow': 'От MQ', 'view.mqHigh': 'До MQ', 'view.mqMinAlpha': 'Непрозрачность при низком MQ', 'view.mqHint': 'Работает поверх любой раскраски.',
     'view.groupSort': 'Группировка и сортировка', 'view.groupBy': 'Группировать',
     'group.none': 'Не группировать', 'group.strand': 'По цепи', 'group.firstOfPair': 'Первый / второй в паре', 'group.pair': 'По ориентации пары', 'group.tag': 'По тегу',
@@ -408,6 +429,16 @@ const STRINGS = {
     'keys.arrowsD': 'сдвиг, прокрутка, масштаб',
     'keys.s': 'сортировать по основанию в центре экрана', 'keys.h': 'скрыть/показать панель', 'keys.click': 'клик по риду', 'keys.clickD': 'карточка рида',
     'drop': 'Отпустите файлы .bam и .bai',
+    'menu.clips': 'Показывать soft clip',
+    'card.leftAln': 'Левое выравнивание', 'card.rightAln': 'Правое выравнивание', 'card.readName': 'Имя рида', 'card.sample': 'Образец', 'card.rg': 'Группа ридов',
+    'card.readLen': 'Длина рида', 'card.flags': 'Флаги', 'card.mapping': 'Выравнивание', 'card.primary': 'Основное', 'card.secondary': 'Вторичное',
+    'card.supplementary': 'Дополнительное', 'card.dup': 'Дубликат', 'card.qcfail': 'Не прошёл QC', 'card.yes': 'да', 'card.no': 'нет',
+    'card.refSpan': 'Участок референса', 'card.cigar': 'Cigar', 'card.clipping': 'Обрезка', 'card.none': 'Нет', 'card.left': 'Слева', 'card.right': 'Справа',
+    'card.soft': 'soft', 'card.hard': 'hard', 'card.mateMapped': 'Мейт выровнен', 'card.mateStart': 'Начало мейта', 'card.insert': 'Размер вставки',
+    'card.first': 'Первый в паре', 'card.second': 'Второй в паре', 'card.pairOr': 'Ориентация пары', 'card.hidden': 'Скрытые теги',
+    'card.location': 'Позиция', 'card.base': 'Основание', 'card.deletion': 'делеция', 'card.softclip': 'soft clip',
+    'card.show': 'Показать', 'card.showRead': 'Рид', 'card.showPair': 'Рид и мейт',
+    'card.mateNotLoaded': 'Мейта нет в загруженном окне', 'card.mateUnmapped2': 'Мейт не выровнен',
     'menu.pairs': 'Показывать парами', 'menu.colorBy': 'Раскраска', 'menu.sortBy': 'Сортировать по (в {pos})',
     'view.menuHint': 'Показ парами, раскраска и сортировка — правый клик по ридам.', 'view.group': 'Группировка',
     'keys.right': 'правый клик по ридам', 'keys.rightD': 'показ парами, раскраска, сортировка (в позиции клика)',
@@ -1350,31 +1381,58 @@ function cigarStrRefLen(str) {
   }
   return n;
 }
+// Soft-clipped lengths at the left and right end of a record (hard clips are not shown).
+function clipLens(r) {
+  if (r._clips) return r._clips;
+  const c = r.cigar, n = c.length; let L = 0, R = 0;
+  for (let i = 0; i < n; i++) { const op = c[i] & 15; if (op === 5) continue; if (op === 4) L = c[i] >>> 4; break; }
+  for (let i = n - 1; i >= 0; i--) { const op = c[i] & 15; if (op === 5) continue; if (op === 4) R = c[i] >>> 4; break; }
+  return (r._clips = [L, R]);
+}
+// Hard-clipped lengths at both ends.
+function hardClipLens(r) {
+  const c = r.cigar, n = c.length;
+  return [n && (c[0] & 15) === 5 ? c[0] >>> 4 : 0, n > 1 && (c[n - 1] & 15) === 5 ? c[n - 1] >>> 4 : 0];
+}
+// Drawn extent of a read: the aligned part, plus soft clips when they are shown.
+function readExtent(r, clips) { if (!clips) return [r.pos, r.end]; const [L, R] = clipLens(r); return [r.pos - L, r.end + R]; }
+// Soft clips of a CIGAR string (the MC tag), for the mate's drawn extent.
+function cigarStrClips(str) {
+  const m = str.match(/^(?:\d+H)?(\d+)S/), e = str.match(/(\d+)S(?:\d+H)?$/);
+  const L = m ? +m[1] : 0, R = e && e.index > 0 ? +e[1] : 0; // an all-S CIGAR counts once, on the left
+  return [L, R];
+}
+
 // Can this read be shown joined with its mate? Primary, paired, mate mapped on the same contig.
 function pairable(r) { return (r.flag & 1) && !(r.flag & 4) && !(r.flag & 8) && !(r.flag & 0x900) && r.mateRef === r.refID; }
 // Where the mate lies: exact with the MC tag, otherwise assumed as long as this read.
-function mateExtent(r) {
-  const mc = recTags(r).MC, len = typeof mc === 'string' ? cigarStrRefLen(mc) : r.end - r.pos;
-  return [r.matePos, r.matePos + Math.max(1, len)];
+function mateExtent(r, clips) {
+  const mc = recTags(r).MC, has = typeof mc === 'string';
+  const len = has ? cigarStrRefLen(mc) : r.end - r.pos;
+  let s = r.matePos, e = r.matePos + Math.max(1, len);
+  if (clips && has) { const [L, R] = cigarStrClips(mc); s -= L; e += R; }
+  return [s, e];
 }
 // Groups reads into layout units for pair view. A unit spans both mates (one taken from the mate
 // fields when the mate itself is not loaded), so its size does not change when the mate arrives.
 // Pairs spanning more than maxSpan, and reads that cannot pair, stay single.
 // Returns units sorted by start: { key, pos, end, reads: [rec, rec?], mate: [start, end] | null }.
-function pairUnits(reads, maxSpan) {
+function pairUnits(reads, maxSpan, clips) {
   const open = new Map(), units = [];
   for (const r of reads) {
+    const [rs, re] = readExtent(r, clips);
     if (pairable(r)) {
       const u = open.get(r.name);
       if (u) {
         u.reads.push(r); open.delete(r.name);
-        u.pos = Math.min(u.reads[0].pos, r.pos); u.end = Math.max(u.reads[0].end, r.end); u.mate = null;
+        const [s0, e0] = readExtent(u.reads[0], clips);
+        u.pos = Math.min(s0, rs); u.end = Math.max(e0, re); u.mate = null;
         continue;
       }
-      const m = mateExtent(r), pos = Math.min(r.pos, m[0]), end = Math.max(r.end, m[1]);
+      const m = mateExtent(r, clips), pos = Math.min(rs, m[0]), end = Math.max(re, m[1]);
       if (end - pos <= maxSpan) { const nu = { key: 'P\u0001' + r.name, pos, end, reads: [r], mate: m }; open.set(r.name, nu); units.push(nu); continue; }
     }
-    units.push({ key: readKey(r), pos: r.pos, end: r.end, reads: [r], mate: null });
+    units.push({ key: readKey(r), pos: rs, end: re, reads: [r], mate: null });
   }
   units.sort((a, b) => a.pos - b.pos || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   return units;
@@ -1401,7 +1459,7 @@ class MinHeap {
 // Plain packing of a list (no persistence), lowest free row first.
 function packRows(reads, padBp) { const g = new ReadLayout(null, padBp).update(reads, () => '').groups[0]; return g ? g.rows : []; }
 
-if (typeof module !== 'undefined') module.exports = { pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
 
 // CGV app: state, loading, WebGL read rendering, Canvas2D for ruler/coverage, UI.
 'use strict';
@@ -1425,6 +1483,7 @@ const DEFAULT_PROFILE = {
   maxLoadMB: 64,                 // windows with more compressed alignment data ask before loading
   hideToolbar: false,
   viewPairs: false,              // show mates joined in one row
+  cardPair: true,                // read details: the read and its mate side by side
   pairs: { maxSpan: 10000 },     // pairs spanning more than this (bp) are shown as single reads
   language: 'en',                // en | ru
 };
@@ -1614,6 +1673,15 @@ function groupKey(rec) {
 // Reads in a layout item: the item itself, or both mates of a pair unit.
 function readsOf(it) { return it.reads || [it]; }
 function refAtFactory() { const ref = S.data.ref; return p => ref.at(p); }
+// Soft-clipped bases that differ from the reference (all of them where the reference is unknown).
+function clipMismatches(rec) {
+  if (rec._clipMM) return rec._clipMM;
+  const out = [], [L, R] = clipLens(rec), ref = S.data.ref;
+  const add = (pos, qi) => { const b = readBaseAt(rec, qi), rb = ref.at(pos); if (b !== 78 && b !== rb) out.push({ pos, b, q: rec.qual[qi] }); };
+  for (let i = 0; i < L; i++) add(rec.pos - L + i, i);
+  for (let i = 0; i < R; i++) add(rec.end + i, rec.lseq - R + i);
+  return (rec._clipMM = out);
+}
 function feats(rec) { if (!rec.feats) rec.feats = computeFeatures(rec, refAtFactory()); return rec.feats; }
 
 // Full rebuild: filters → downsampling → coverage → groups → layout → sort → instances.
@@ -1630,15 +1698,19 @@ function rebuild() {
   const cov = d.cov;
   // Stable layout: rows are kept while nothing that decides placement changes (see ReadLayout).
   const sorting = P.sortBy !== 'start' && S.sortPos != null;
-  const sig = JSON.stringify([S.bamSeq, S.view.refId, P.groupBy, P.groupTag, P.sortBy, sorting ? S.sortPos : null, P.filters, P.downsample, LANG, P.viewPairs, P.viewPairs ? P.pairs.maxSpan : 0]);
+  const sig = JSON.stringify([S.bamSeq, S.view.refId, P.groupBy, P.groupTag, P.sortBy, sorting ? S.sortPos : null, P.filters, P.downsample, LANG, P.viewPairs, P.viewPairs ? P.pairs.maxSpan : 0, !!P.showSoftClips]);
   if (!S.layout || S.layout.sig !== sig) S.layout = new ReadLayout(sig, 2);
   // Layout items: reads, or in pair view units holding both mates ({ key, pos, end, reads, mate }).
-  const items = P.viewPairs ? pairUnits(reads, P.pairs.maxSpan) : reads;
-  const keyOf = P.viewPairs ? (u => u.key) : readKey, firstRead = P.viewPairs ? (u => u.reads[0]) : (r => r);
+  // With soft clips shown, items span the clipped bases too, so the layout leaves room for them.
+  const clips = !!P.showSoftClips, units = P.viewPairs || clips;
+  const items = P.viewPairs ? pairUnits(reads, P.pairs.maxSpan, clips)
+    : clips ? reads.map(r => { const [a, b] = readExtent(r, true); return { key: readKey(r), pos: a, end: b, reads: [r], mate: null }; }).sort((x, y) => x.pos - y.pos || (x.key < y.key ? -1 : 1))
+    : reads;
+  const keyOf = units ? (u => u.key) : readKey, firstRead = units ? (u => u.reads[0]) : (r => r);
   let prio = null;
   if (sorting) {
     const k = sortKeyFactory(S.sortPos), p0 = S.sortPos;
-    prio = { pos: p0, key: P.viewPairs ? (u => { const r = u.reads.find(x => x.pos <= p0 && x.end > p0); return r ? k(r) : [7, 0]; }) : k };
+    prio = { pos: p0, key: units ? (u => { const r = u.reads.find(x => x.pos <= p0 && x.end > p0); return r ? k(r) : [7, 0]; }) : k };
   }
   const { groups, totalRows: rowCursor } = S.layout.update(items, it => groupKey(firstRead(it)), prio, keyOf);
   // instances: bodies → lines → features on top
@@ -1648,7 +1720,7 @@ function rebuild() {
     const R = g.start + ri;
     for (const it of row) {
       for (const rec of readsOf(it)) bodies.push([rec, R, gi]);
-      if (it.reads) links.push([it, R, gi]);
+      if (it.reads && (it.reads.length === 2 || it.mate)) links.push([it, R, gi]);
     }
   }));
   // pair view: a line between mates (to the mate's place when it is not loaded); overlap of mates shaded
@@ -1677,6 +1749,11 @@ function rebuild() {
       }
     }
     if (r > segStart) ib.add(segStart - d.start, r - d.start, R, gi, 0, 1, 1, col, a);
+    if (P.showSoftClips) { // clipped bases: a lighter, slightly thinner continuation of the read
+      const [L, Rc] = clipLens(rec);
+      if (L) ib.add(rec.pos - L - d.start, rec.pos - d.start, R, gi, 0.1, 0.9, 1, col, a * 0.45);
+      if (Rc) ib.add(rec.end - d.start, rec.end + Rc - d.start, R, gi, 0.1, 0.9, 1, col, a * 0.45);
+    }
   }
   for (const [t, x0, x1, R, gi, a] of marks) ib.add(x0 - d.start, x1 - d.start, R, gi, t === 2 ? 0.44 : 0.48, t === 2 ? 0.56 : 0.52, 0, t === 2 ? COL.del : COL.skip, a);
   for (const [rec, R, gi] of bodies) {
@@ -1684,8 +1761,9 @@ function rebuild() {
     for (const f of feats(rec)) {
       if (f.t === 0) ib.add(f.pos - d.start, f.pos + 1 - d.start, R, gi, 0, 1, flaggedPos(cov, d, f.pos) ? 1 : -1, COL.base[f.b] || COL.base[78], a * qualAlpha(f.q));
       else if (f.t === 1) ib.add(f.pos - d.start, f.pos - d.start, R, gi, -0.08, 1.08, 2, COL.ins, Math.max(a, 0.6));
-      else if ((f.t === 4 || f.t === 5) && P.showSoftClips && f.len >= 1) ib.add(f.pos - d.start, f.pos - d.start, R, gi, 0, 1, 1.5, COL.clip, Math.max(a, 0.7));
+      else if ((f.t === 4 || f.t === 5) && !P.showSoftClips && f.len >= 1) ib.add(f.pos - d.start, f.pos - d.start, R, gi, 0, 1, 1.5, COL.clip, Math.max(a, 0.7));
     }
+    if (P.showSoftClips) for (const m of clipMismatches(rec)) ib.add(m.pos - d.start, m.pos + 1 - d.start, R, gi, 0.1, 0.9, -1, COL.base[m.b] || COL.base[78], a * qualAlpha(m.q));
   }
   for (const [u, R, gi] of links) {
     if (u.reads.length !== 2) continue;
@@ -1803,7 +1881,7 @@ async function ensureData() {
     const reads = res ? res.reads : [];
     // Reference bases only where they are used: under reads (mismatches, allele highlight) and the
     // view itself when it is narrow enough to show bases. A 46 Mb window with a few reads reads a few kb.
-    const want = reads.map(r => [Math.max(ls, r.pos), Math.min(le, r.end)]);
+    const want = reads.map(r => { const [a, b] = readExtent(r, P.showSoftClips); return [Math.max(ls, a), Math.min(le, b)]; }).filter(x => x[1] > x[0]);
     if (span <= REF_VIEW_BP) want.push([ls, le]);
     const parts = mergeIntervals(want, 2000), ref = new SparseRef(), name = S.contigs[S.view.refId].name;
     let fromMD = false, ri = 0;
@@ -2001,6 +2079,7 @@ function drawReadsOverlay(rt) {
         for (const rec of g.rows[ri].flatMap(readsOf)) {
           if (rec.end < vs || rec.pos > ve) continue;
           const a = mapqAlpha(rec.mapq);
+          if (P.showSoftClips) for (const m of clipMismatches(rec)) { ctx.globalAlpha = a * qualAlpha(m.q); ctx.fillStyle = '#fff'; ctx.fillText(String.fromCharCode(m.b), (m.pos - vs + 0.5) * ppb, y + 0.5); }
           for (const f of feats(rec)) {
             if (f.t === 0) { ctx.globalAlpha = a * qualAlpha(f.q); ctx.fillStyle = '#fff'; ctx.fillText(String.fromCharCode(f.b), (f.pos - vs + 0.5) * ppb, y + 0.5); }
             else if (f.t === 1 && ppb >= 10) { ctx.globalAlpha = 1; ctx.fillStyle = COL.css.fg; ctx.font = '600 9px ' + MONO; ctx.fillText(String(f.len), (f.pos - vs) * ppb, y - rh / 2 - 1); ctx.font = '600 ' + Math.min(12, rh - 1) + 'px ' + MONO; }
@@ -2024,7 +2103,7 @@ function drawReadsOverlay(rt) {
   if (S.selected) {
     const L = S.selected;
     const y = rt + gg + L.row * rh + L.gi * gg - S.scroll;
-    const x0 = (L.rec.pos - S.view.start) * ppb, x1 = (L.rec.end - S.view.start) * ppb;
+    const [e0, e1] = readExtent(L.rec, P.showSoftClips), x0 = (e0 - S.view.start) * ppb, x1 = (e1 - S.view.start) * ppb;
     ctx.strokeStyle = COL.css.accent; ctx.lineWidth = 2; ctx.strokeRect(x0 - 1, y - 1, x1 - x0 + 2, Math.max(2, rh - (rh >= 5 ? 1 : 0)) + 2); ctx.lineWidth = 1;
   }
   ctx.restore();
@@ -2144,8 +2223,9 @@ function hitTest(x, y) {
     for (let k = best; k != null && k >= 0 && k >= best - 3; k--) {
       if (row[k].end + slop <= bp) continue;
       const rs = readsOf(row[k]);
-      const hit = rs.find(r => r.pos - slop <= bp && r.end + slop > bp)
-        || rs.reduce((a, r) => Math.min(Math.abs(r.pos - bp), Math.abs(r.end - bp)) < Math.min(Math.abs(a.pos - bp), Math.abs(a.end - bp)) ? r : a);
+      const ext = r => readExtent(r, P.showSoftClips);
+      const hit = rs.find(r => { const [a, b] = ext(r); return a - slop <= bp && b + slop > bp; })
+        || rs.reduce((a, r) => { const [ra, rb] = ext(r), [aa, ab] = ext(a); return Math.min(Math.abs(ra - bp), Math.abs(rb - bp)) < Math.min(Math.abs(aa - bp), Math.abs(ab - bp)) ? r : a; });
       return { rec: hit, row: g.start + ri, gi };
     }
   }
@@ -2160,44 +2240,117 @@ function onClick(x, y) {
 
 const FLAG_BITS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048];
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-function cardText(rec, pos) {
-  const refs = S.bam.refs, tags = recTags(rec);
-  const lines = [];
-  if (pos != null) {
-    const at = queryAt(rec, pos), rb = S.data ? S.data.ref.at(pos) : 0, refTxt = rb ? ' · ' + t('card.ref') + ' ' + String.fromCharCode(rb) : '';
-    const where = `${S.contigs[S.view.refId].name}:${fmtInt(pos + 1)}`;
-    if (at && at.del) lines.push([t('card.clicked'), `${where} · ${t('card.del')}${refTxt}`, 'hl']);
-    else if (at) {
-      const q = rec.qual[at.qi];
-      lines.push([t('card.clicked'), `${where} · ${String.fromCharCode(readBaseAt(rec, at.qi))}${refTxt}`, 'hl'], [t('card.bq'), q === 255 ? '—' : String(q), 'hl']);
-    }
-  }
-  lines.push(
-    [t('card.name'), rec.name], [t('card.pos'), `${refs[rec.refID].name}:${fmtInt(rec.pos + 1)}-${fmtInt(rec.end)}`], ['CIGAR', cigarString(rec)],
-    ['MAPQ', rec.mapq], [t('card.flag'), `${rec.flag} (${FLAG_BITS.filter(b => rec.flag & b).map(b => t('flag.' + b)).join(', ') || '—'})`],
-    [t('card.len'), rec.lseq + ' ' + t('unit.bp')]);
-  if (rec.flag & 1) lines.push([t('card.mate'), rec.mateRef >= 0 ? `${refs[rec.mateRef].name}:${fmtInt(rec.matePos + 1)}` : t('card.mateUnmapped')], [t('card.tlen'), rec.tlen]);
-  for (const k of Object.keys(tags)) lines.push([k, Array.isArray(tags[k]) ? tags[k].join(',') : tags[k]]);
-  return lines;
-}
+// ---- Read details, laid out like IGV's popup: "key = value" lines in blocks ----
 function readBaseAt(rec, qi) { const b = rec.seq[qi >> 1]; return '=ACMGRSVTWYHKDBN'.charCodeAt(qi & 1 ? b & 15 : b >> 4); }
-function showCard(rec, x, y) {
-  const c = $('card');
-  const pos = Math.floor(S.view.start + x * S.view.bpPerPx);
-  const lines = cardText(rec, pos);
-  const rows = lines.map(([k, v, cls]) => `<dt${cls ? ' class="' + cls + '"' : ''}>${esc(k)}</dt><dd${cls ? ' class="' + cls + '"' : ''}>${esc(v)}</dd>`).join('');
-  const mate = (rec.flag & 1) && rec.mateRef >= 0;
-  c.innerHTML = `<dl>${rows}</dl><div class="card-actions">${mate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button><button class="btn ghost" id="closeCard">${esc(t('btn.close'))}</button></div>`;
+function rgSamples() {
+  if (S.bam._rg) return S.bam._rg;
+  const m = new Map();
+  for (const line of S.bam.headerText.split('\n')) if (line.startsWith('@RG')) { const id = line.match(/\tID:([^\t]+)/), sm = line.match(/\tSM:([^\t]+)/); if (id) m.set(id[1], sm ? sm[1] : ''); }
+  return (S.bam._rg = m);
+}
+// Contig name as shown: the reference's name for contigs matched to it, the BAM's otherwise.
+function contigName(bamRef) { const v = S.bamBack ? S.bamBack[bamRef] : -1; return v >= 0 ? S.contigs[v].name : S.bam.refs[bamRef].name; }
+// The loaded mate of a read, if it is in the current window.
+function findMate(rec) {
+  if (!(rec.flag & 1) || !S.data) return null;
+  const want = rec.flag & 64 ? 128 : 64;
+  return S.data.reads.find(r => r !== rec && r.name === rec.name && (r.flag & want) && !(r.flag & 0x900)) || null;
+}
+// Pair orientation as IGV writes it: strand + read number of the left read, then of the right one.
+function pairOrientation2(rec) {
+  if (!(rec.flag & 1) || rec.flag & 8 || rec.mateRef !== rec.refID) return '';
+  const me = (rec.flag & 16 ? 'R' : 'F') + (rec.flag & 64 ? '1' : '2'), mate = (rec.flag & 32 ? 'R' : 'F') + (rec.flag & 64 ? '2' : '1');
+  return rec.pos <= rec.matePos ? me + mate : mate + me;
+}
+// Lines of one alignment: ['kv', key, value] | ['sep'] | ['txt', text].
+function alignmentLines(rec) {
+  const L = [], kv = (k, v) => L.push(['kv', k, v]), tags = recTags(rec), f = rec.flag;
+  const strand = r => (r.flag & 16 ? '(-)' : '(+)');
+  kv(t('card.readName'), rec.name);
+  if (tags.RG !== undefined) { const sm = rgSamples().get(String(tags.RG)); if (sm) kv(t('card.sample'), sm); kv(t('card.rg'), tags.RG); }
+  kv(t('card.readLen'), rec.lseq + 'bp');
+  kv(t('card.flags'), f);
+  L.push(['sep']);
+  kv(t('card.mapping'), (f & 256 ? t('card.secondary') : f & 2048 ? t('card.supplementary') : t('card.primary')) + ' @ MAPQ ' + rec.mapq);
+  if (f & 1024) kv(t('card.dup'), t('card.yes'));
+  if (f & 512) kv(t('card.qcfail'), t('card.yes'));
+  kv(t('card.refSpan'), `${contigName(rec.refID)}:${fmtInt(rec.pos + 1)}-${fmtInt(rec.end)} ${strand(rec)} = ${rec.end - rec.pos}bp`);
+  kv(t('card.cigar'), cigarString(rec));
+  const [sl, sr] = clipLens(rec), [hl, hr] = hardClipLens(rec), clip = [];
+  if (sl || hl) clip.push(t('card.left') + ' ' + [sl ? sl + ' ' + t('card.soft') : '', hl ? hl + ' ' + t('card.hard') : ''].filter(Boolean).join(', '));
+  if (sr || hr) clip.push(t('card.right') + ' ' + [sr ? sr + ' ' + t('card.soft') : '', hr ? hr + ' ' + t('card.hard') : ''].filter(Boolean).join(', '));
+  kv(t('card.clipping'), clip.length ? clip.join('; ') : t('card.none'));
+  if (f & 1) {
+    L.push(['sep']);
+    const mapped = !(f & 8) && rec.mateRef >= 0;
+    kv(t('card.mateMapped'), mapped ? t('card.yes') : t('card.no'));
+    if (mapped) kv(t('card.mateStart'), `${contigName(rec.mateRef)}:${fmtInt(rec.matePos + 1)} ${f & 32 ? '(-)' : '(+)'}`);
+    kv(t('card.insert'), rec.tlen);
+    L.push(['txt', f & 64 ? t('card.first') : f & 128 ? t('card.second') : '']);
+    const po = pairOrientation2(rec); if (po) kv(t('card.pairOr'), po);
+  }
+  L.push(['sep']);
+  const hidden = [];
+  for (const k of Object.keys(tags)) { if (k === 'RG') { hidden.push(k); continue; } kv(k, Array.isArray(tags[k]) ? tags[k].join(',') : tags[k]); }
+  if (hidden.length) L.push(['txt', t('card.hidden') + ': ' + hidden.join(', ')]);
+  return L;
+}
+// The clicked base: Location and "Base = A @ QV 14", as IGV shows them under the clicked read.
+function baseLines(rec, pos) {
+  const L = [['kv', t('card.location'), `${S.contigs[S.view.refId].name}:${fmtInt(pos + 1)}`]];
+  const [cl, cr] = clipLens(rec);
+  let qi = null, note = '';
+  const at = queryAt(rec, pos);
+  if (at && at.del) { L.push(['kv', t('card.base'), t('card.deletion')]); return L; }
+  if (at) qi = at.qi;
+  else if (P.showSoftClips && pos < rec.pos && pos >= rec.pos - cl) { qi = pos - (rec.pos - cl); note = ' (' + t('card.softclip') + ')'; }
+  else if (P.showSoftClips && pos >= rec.end && pos < rec.end + cr) { qi = rec.lseq - cr + (pos - rec.end); note = ' (' + t('card.softclip') + ')'; }
+  if (qi != null && rec.lseq) { const q = rec.qual[qi]; L.push(['kv', t('card.base'), String.fromCharCode(readBaseAt(rec, qi)) + (q === 255 ? '' : ' @ QV ' + q) + note]); }
+  return L;
+}
+function linesHtml(lines, cls) {
+  return lines.map(l => l[0] === 'sep' ? '<div class="sep"></div>' : l[0] === 'txt' ? (l[1] ? `<div class="ln">${esc(l[1])}</div>` : '')
+    : `<div class="ln${cls ? ' ' + cls : ''}">${esc(l[1])} = ${esc(String(l[2]))}</div>`).join('');
+}
+function linesText(lines) { return lines.map(l => l[0] === 'sep' ? '----------------------' : l[0] === 'txt' ? l[1] : `${l[1]} = ${l[2]}`).filter(x => x !== '').join('\n'); }
+
+let cardState = null;
+function showCard(rec, x, y) { cardState = { rec, x, y, pos: Math.floor(S.view.start + x * S.view.bpPerPx) }; renderCard(true); }
+function renderCard(place) {
+  const { rec, x, y, pos } = cardState, c = $('card');
+  const paired = !!(rec.flag & 1) && !(rec.flag & 0x900);
+  const mate = paired && P.cardPair ? findMate(rec) : null;
+  const cols = [];
+  if (P.cardPair && paired) {
+    const mateRec = mate;
+    const left = !mateRec || rec.pos <= mateRec.pos ? rec : mateRec, right = left === rec ? mateRec : rec;
+    for (const [r, title] of [[left, t('card.leftAln')], [right, t('card.rightAln')]]) {
+      if (!r) { cols.push({ title, lines: [['txt', (rec.flag & 8) ? t('card.mateUnmapped2') : t('card.mateNotLoaded')]], base: null }); continue; }
+      cols.push({ title, lines: alignmentLines(r), base: r === rec ? baseLines(rec, pos) : null });
+    }
+  } else cols.push({ title: '', lines: alignmentLines(rec), base: baseLines(rec, pos) });
+  const seg = paired ? `<div class="seg" role="group" aria-label="${esc(t('card.show'))}"><button class="btn${P.cardPair ? '' : ' on'}" data-pair="0" aria-pressed="${!P.cardPair}">${esc(t('card.showRead'))}</button><button class="btn${P.cardPair ? ' on' : ''}" data-pair="1" aria-pressed="${P.cardPair}">${esc(t('card.showPair'))}</button></div>` : '';
+  const goMate = paired && rec.mateRef >= 0 && !(rec.flag & 8);
+  c.classList.toggle('wide', cols.length > 1);
+  c.innerHTML = seg + `<div class="cols" style="--n:${cols.length}">` + cols.map(col =>
+    `<div class="col">${col.title ? `<h3>${esc(col.title)}</h3>` : ''}${linesHtml(col.lines)}${col.base ? '<div class="loc">' + linesHtml(col.base, 'b') + '</div>' : ''}</div>`).join('') + '</div>' +
+    `<div class="card-actions">${goMate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button><button class="btn ghost" id="closeCard">${esc(t('btn.close'))}</button></div>`;
   c.hidden = false;
-  const r = stage.getBoundingClientRect(), cw = c.offsetWidth, ch = c.offsetHeight;
-  c.style.left = Math.max(8, Math.min(r.width - cw - 8, x + 14)) + 'px';
-  c.style.top = Math.max(8, Math.min(r.height - ch - 8, y + 14)) + 'px';
+  if (place) {
+    const r = stage.getBoundingClientRect(), cw = c.offsetWidth, ch = c.offsetHeight;
+    c.style.left = Math.max(8, Math.min(r.width - cw - 8, x + 14)) + 'px';
+    c.style.top = Math.max(8, Math.min(r.height - ch - 8, y + 14)) + 'px';
+  } else { // keep it on screen after a width change
+    const r = stage.getBoundingClientRect(), cw = c.offsetWidth;
+    c.style.left = Math.max(8, Math.min(r.width - cw - 8, parseFloat(c.style.left) || 8)) + 'px';
+  }
+  c.querySelectorAll('[data-pair]').forEach(b => b.onclick = () => { P.cardPair = b.dataset.pair === '1'; saveProfile(); renderCard(false); });
   $('closeCard').onclick = () => { S.selected = null; hideCard(); draw(); };
   $('copyRead').onclick = () => {
-    const txt = lines.map(([k, v]) => k + '\t' + v).join('\n');
+    const txt = cols.map(col => (col.title ? col.title + '\n' : '') + linesText(col.lines) + (col.base ? '\n' + linesText(col.base) : '')).join('\n\n');
     navigator.clipboard.writeText(txt).then(() => toast(t('copied')), () => toast(t('copyFail')));
   };
-  if (mate) $('toMate').onclick = () => {
+  if (goMate) $('toMate').onclick = () => {
     hideCard(); S.selected = null;
     const v = S.bamBack[rec.mateRef];
     if (v < 0) { toast(t('sample.mateNoContig', { name: S.bam.refs[rec.mateRef].name })); draw(); return; }
@@ -2410,6 +2563,7 @@ function openMenu(x, y) {
   const item = (act, val, on, label, kind) => `<button class="mi" role="${kind}" aria-checked="${on}" data-act="${act}" data-val="${val}"><span class="mk" aria-hidden="true">${on ? (kind === 'menuitemcheckbox' ? '✓' : '●') : ''}</span>${esc(label)}</button>`;
   m.innerHTML =
     item('pairs', '', !!P.viewPairs, t('menu.pairs'), 'menuitemcheckbox') +
+    item('clips', '', !!P.showSoftClips, t('menu.clips'), 'menuitemcheckbox') +
     `<div class="ms">${esc(t('menu.colorBy'))}</div>` +
     ['none', 'strand', 'pair', 'tag'].map(v => item('color', v, P.colorBy === v, t('color.' + v), 'menuitemradio')).join('') +
     `<div class="mt"><label for="ctxTag">${esc(t('view.colorTag'))}</label><input id="ctxTag" type="text" maxlength="2" spellcheck="false" autocomplete="off" value="${esc(P.colorTag)}"></div>` +
@@ -2427,11 +2581,13 @@ function openMenu(x, y) {
 function closeMenu() { $('ctx').hidden = true; }
 $('ctx').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
-  const act = b.dataset.act, val = b.dataset.val, pos = +$('ctx').dataset.pos;
+  const act = b.dataset.act, val = b.dataset.val, pos = +$('ctx').dataset.pos; let reloadNeeded = false;
   if (act === 'pairs') P.viewPairs = !P.viewPairs;
+  else if (act === 'clips') { P.showSoftClips = !P.showSoftClips; reloadNeeded = true; }
   else if (act === 'color') P.colorBy = val;
   else if (act === 'sort') { P.sortBy = val; S.sortPos = val === 'start' ? null : pos; }
-  saveProfile(); syncPanel(); closeMenu(); hideCard(); S.selected = null; rebuild(); draw();
+  saveProfile(); syncPanel(); closeMenu(); hideCard(); S.selected = null;
+  if (reloadNeeded) reloadData(); else { rebuild(); draw(); }
 });
 $('ctx').addEventListener('keydown', e => {
   const items = [...$('ctx').querySelectorAll('.mi')], i = items.indexOf(document.activeElement);
@@ -2475,7 +2631,7 @@ const CONTROLS = [
   ['groupBy', 'groupBy', 'str', 'rebuild'], ['groupTag', 'groupTag', 'str', 'rebuild'],
   ['sortBy', 'sortBy', 'str', 'rebuild'],
   ['mqLow', 'mapqAlpha.low', 'num', 'rebuild'], ['mqHigh', 'mapqAlpha.high', 'num', 'rebuild'], ['mqMinAlpha', 'mapqAlpha.minAlpha', 'num', 'rebuild'],
-  ['bqShade', 'baseQualityShading', 'bool', 'rebuild'], ['softClips', 'showSoftClips', 'bool', 'rebuild'],
+  ['bqShade', 'baseQualityShading', 'bool', 'rebuild'], ['softClips', 'showSoftClips', 'bool', 'reload'],
   ['minMapq', 'filters.minMapq', 'num', 'reload'], ['hideDup', 'filters.hideDuplicates', 'bool', 'reload'],
   ['hideSec', 'filters.hideSecondary', 'bool', 'reload'], ['hideSupp', 'filters.hideSupplementary', 'bool', 'reload'], ['hideQc', 'filters.hideQcFail', 'bool', 'reload'],
   ['dsOn', 'downsample.enabled', 'bool', 'reload'], ['dsMax', 'downsample.maxReads', 'num', 'reload'], ['dsWin', 'downsample.window', 'num', 'reload'],

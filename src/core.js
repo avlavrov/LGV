@@ -890,31 +890,58 @@ function cigarStrRefLen(str) {
   }
   return n;
 }
+// Soft-clipped lengths at the left and right end of a record (hard clips are not shown).
+function clipLens(r) {
+  if (r._clips) return r._clips;
+  const c = r.cigar, n = c.length; let L = 0, R = 0;
+  for (let i = 0; i < n; i++) { const op = c[i] & 15; if (op === 5) continue; if (op === 4) L = c[i] >>> 4; break; }
+  for (let i = n - 1; i >= 0; i--) { const op = c[i] & 15; if (op === 5) continue; if (op === 4) R = c[i] >>> 4; break; }
+  return (r._clips = [L, R]);
+}
+// Hard-clipped lengths at both ends.
+function hardClipLens(r) {
+  const c = r.cigar, n = c.length;
+  return [n && (c[0] & 15) === 5 ? c[0] >>> 4 : 0, n > 1 && (c[n - 1] & 15) === 5 ? c[n - 1] >>> 4 : 0];
+}
+// Drawn extent of a read: the aligned part, plus soft clips when they are shown.
+function readExtent(r, clips) { if (!clips) return [r.pos, r.end]; const [L, R] = clipLens(r); return [r.pos - L, r.end + R]; }
+// Soft clips of a CIGAR string (the MC tag), for the mate's drawn extent.
+function cigarStrClips(str) {
+  const m = str.match(/^(?:\d+H)?(\d+)S/), e = str.match(/(\d+)S(?:\d+H)?$/);
+  const L = m ? +m[1] : 0, R = e && e.index > 0 ? +e[1] : 0; // an all-S CIGAR counts once, on the left
+  return [L, R];
+}
+
 // Can this read be shown joined with its mate? Primary, paired, mate mapped on the same contig.
 function pairable(r) { return (r.flag & 1) && !(r.flag & 4) && !(r.flag & 8) && !(r.flag & 0x900) && r.mateRef === r.refID; }
 // Where the mate lies: exact with the MC tag, otherwise assumed as long as this read.
-function mateExtent(r) {
-  const mc = recTags(r).MC, len = typeof mc === 'string' ? cigarStrRefLen(mc) : r.end - r.pos;
-  return [r.matePos, r.matePos + Math.max(1, len)];
+function mateExtent(r, clips) {
+  const mc = recTags(r).MC, has = typeof mc === 'string';
+  const len = has ? cigarStrRefLen(mc) : r.end - r.pos;
+  let s = r.matePos, e = r.matePos + Math.max(1, len);
+  if (clips && has) { const [L, R] = cigarStrClips(mc); s -= L; e += R; }
+  return [s, e];
 }
 // Groups reads into layout units for pair view. A unit spans both mates (one taken from the mate
 // fields when the mate itself is not loaded), so its size does not change when the mate arrives.
 // Pairs spanning more than maxSpan, and reads that cannot pair, stay single.
 // Returns units sorted by start: { key, pos, end, reads: [rec, rec?], mate: [start, end] | null }.
-function pairUnits(reads, maxSpan) {
+function pairUnits(reads, maxSpan, clips) {
   const open = new Map(), units = [];
   for (const r of reads) {
+    const [rs, re] = readExtent(r, clips);
     if (pairable(r)) {
       const u = open.get(r.name);
       if (u) {
         u.reads.push(r); open.delete(r.name);
-        u.pos = Math.min(u.reads[0].pos, r.pos); u.end = Math.max(u.reads[0].end, r.end); u.mate = null;
+        const [s0, e0] = readExtent(u.reads[0], clips);
+        u.pos = Math.min(s0, rs); u.end = Math.max(e0, re); u.mate = null;
         continue;
       }
-      const m = mateExtent(r), pos = Math.min(r.pos, m[0]), end = Math.max(r.end, m[1]);
+      const m = mateExtent(r, clips), pos = Math.min(rs, m[0]), end = Math.max(re, m[1]);
       if (end - pos <= maxSpan) { const nu = { key: 'P\u0001' + r.name, pos, end, reads: [r], mate: m }; open.set(r.name, nu); units.push(nu); continue; }
     }
-    units.push({ key: readKey(r), pos: r.pos, end: r.end, reads: [r], mate: null });
+    units.push({ key: readKey(r), pos: rs, end: re, reads: [r], mate: null });
   }
   units.sort((a, b) => a.pos - b.pos || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   return units;
@@ -941,4 +968,4 @@ class MinHeap {
 // Plain packing of a list (no persistence), lowest free row first.
 function packRows(reads, padBp) { const g = new ReadLayout(null, padBp).update(reads, () => '').groups[0]; return g ? g.rows : []; }
 
-if (typeof module !== 'undefined') module.exports = { pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
