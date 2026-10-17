@@ -423,6 +423,7 @@ function render() {
   let tl = performance.now(); tp.reads = tl - t0;
   const part = (k, f) => { f(); const n = performance.now(); tp[k] = n - tl; tl = n; };
   part('ruler', () => { drawRuler(); drawRefTrack(); });
+  drawRubber();
   part('coverage', drawCoverage);
   part('labels', () => { drawReadsOverlay(rt); drawMessage(); });
   S.stats.drawMs = performance.now() - t0;
@@ -456,6 +457,24 @@ function drawRuler() {
     if (x1 - x0 > 3) { ctx.moveTo(Math.round(x1) - 0.5, RULER_H); ctx.lineTo(Math.round(x1) - 0.5, H); }
     ctx.stroke(); ctx.setLineDash([]);
   }
+}
+
+// Region being selected on the ruler: shaded band with its length.
+function drawRubber() {
+  const r = S.rubber; if (!r || !r.moved) return;
+  const x0 = Math.min(r.x0, r.x1), x1 = Math.max(r.x0, r.x1);
+  ctx.save();
+  ctx.fillStyle = COL.css.accent; ctx.globalAlpha = 0.14; ctx.fillRect(x0, 0, x1 - x0, H);
+  ctx.globalAlpha = 1; ctx.strokeStyle = COL.css.accent; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(Math.round(x0) + 0.5, 0); ctx.lineTo(Math.round(x0) + 0.5, H); ctx.moveTo(Math.round(x1) - 0.5, 0); ctx.lineTo(Math.round(x1) - 0.5, H); ctx.stroke();
+  const a = Math.floor(S.view.start + x0 * S.view.bpPerPx), b = Math.ceil(S.view.start + x1 * S.view.bpPerPx);
+  const label = `${fmtInt(Math.max(1, a + 1))}–${fmtInt(b)} · ${fmtBp(b - a)}`;
+  ctx.font = '600 11px ' + SANS; const tw = ctx.measureText(label).width + 12;
+  const lx = Math.max(2, Math.min(W - tw - 2, (x0 + x1) / 2 - tw / 2));
+  ctx.fillStyle = COL.css.accent; ctx.fillRect(lx, covTop() + 2, tw, 18);
+  ctx.fillStyle = COL.css.bg; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(label, lx + 6, covTop() + 11.5);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
 }
 
 function drawRefTrack() {
@@ -610,13 +629,23 @@ let drag = null;
 // Genome gestures only start on the canvas itself: panels, cards and messages on top of
 // the stage keep their own clicks, scrolling and text selection.
 const onCanvas = e => e.target === ov;
+// The ruler band (coordinates + reference bases): drag selects a region to zoom into, as in IGV;
+// a plain click centers the view there.
+const inRuler = y => y < covTop();
+const clampX = x => Math.max(0, Math.min(W, x));
 stage.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !S.contigs || !onCanvas(e)) return;
   stage.setPointerCapture(e.pointerId);
+  if (inRuler(e.offsetY)) { S.rubber = { x0: clampX(e.offsetX), x1: clampX(e.offsetX), moved: false }; draw(); return; }
   drag = { x: e.clientX, y: e.clientY, sx: S.view.start, sc: S.scroll, moved: false, inReads: e.offsetY > readsTop() };
 });
 stage.addEventListener('pointermove', e => {
-  if (!drag) return;
+  if (S.rubber) {
+    S.rubber.x1 = clampX(e.offsetX);
+    if (Math.abs(S.rubber.x1 - S.rubber.x0) > 3) S.rubber.moved = true;
+    draw(); return;
+  }
+  if (!drag) { stage.style.cursor = S.contigs && onCanvas(e) && inRuler(e.offsetY) ? 'crosshair' : ''; return; }
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
   if (!drag.moved) return;
@@ -624,7 +653,15 @@ stage.addEventListener('pointermove', e => {
   if (drag.inReads) { S.scroll = drag.sc - dy; clampScroll(); }
   requestLoad(); draw(); syncLocus();
 });
+stage.addEventListener('pointercancel', () => { if (S.rubber) { S.rubber = null; draw(); } drag = null; });
 stage.addEventListener('pointerup', e => {
+  if (S.rubber) {
+    const r = S.rubber; S.rubber = null;
+    const a = S.view.start + Math.min(r.x0, r.x1) * S.view.bpPerPx, b = S.view.start + Math.max(r.x0, r.x1) * S.view.bpPerPx;
+    if (r.moved) goto(S.view.refId, Math.floor(a), Math.ceil(b));
+    else { const c = S.view.start + r.x0 * S.view.bpPerPx, span = W * S.view.bpPerPx; goto(S.view.refId, c - span / 2, c + span / 2); }
+    return;
+  }
   if (!drag) return;
   const d = drag; drag = null;
   if (!d.moved) onClick(e.offsetX, e.offsetY);
@@ -710,7 +747,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === '-' || e.key === '_') zoomAt(W / 2, 2);
   else if (e.key === 's' || e.key === 'ы') sortHere(); // 'ы' / 'р': same keys on a Russian layout
   else if (e.key === 'h' || e.key === 'р') { P.hideToolbar = !P.hideToolbar; applyChrome(); saveProfile(); }
-  else if (e.key === 'Escape') { hideCard(); closePanels(); S.selected = null; draw(); }
+  else if (e.key === 'Escape') { hideCard(); closePanels(); S.selected = null; S.rubber = null; draw(); }
   else return;
   e.preventDefault();
 });

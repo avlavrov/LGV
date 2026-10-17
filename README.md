@@ -36,7 +36,7 @@ More languages are one dictionary in `src/i18n.js`.
 | F2 Local BAM + BAI | done, including drag and drop |
 | F3 Reference (GRCh38, GRCh37, T2T-CHM13) | done: files or link, plain or bgzip, public presets |
 | F4 Access token / presigned URL | done |
-| F5 Go to coordinate | done, contig names case-insensitive (chr1 = Chr1 = 1); gene names come with the gene track |
+| F5 Go to coordinate | done, contig names case-insensitive (chr1 = Chr1 = 1); drag on the ruler to zoom to a region, click it to center; gene names come with the gene track |
 | F6 No hard window limit | windows load on their own up to 64 MB of compressed data, larger on request; downsampling keeps deep regions fast; isolated sequencing errors fade when zoomed out |
 | F8 Coverage with allele highlight | done, threshold adjustable |
 | F9 Smooth read height | done, 1–24 px |
