@@ -44,7 +44,7 @@ More languages are one dictionary in `src/i18n.js`.
 | F11 Group and sort | groups: strand, first/second, pair orientation, tag; sort: base, MAPQ, strand, insert size |
 | F12 Filters | MAPQ, duplicates, secondary, supplementary, QC fail; downsampling |
 | F13 Mate | read details + go to mate; several regions on screen is the next step |
-| F14 Read details | all fields and tags, copy |
+| F14 Read details | the clicked base (position, read base, reference base, base quality), all fields and tags, copy |
 | F18 Display profile as JSON | kept in the browser, copied and applied as JSON |
 | F23 Screen space for data | one bar of controls, hidden with H |
 
@@ -83,6 +83,9 @@ Targeted panels reach thousands of reads per base. CGV handles them the way IGV 
   window, so the rest of a 16 kb index bin is never fetched or inflated.
 - **Block cache:** record start positions in BGZF blocks are remembered, so revisiting or
   panning near a region skips straight to the right place.
+- **Sparse coverage and reference:** coverage is kept in 64 kb blocks only where reads are,
+  and reference bases are read only under reads (plus the view when it is under 200 kb).
+  A 46 Mb window with a few reads uses a few blocks and a few kb of FASTA, not gigabytes.
 - **Load limit by size:** a window loads on its own when the index points to at most 64 MB
   of compressed alignments; larger windows ask first.
 

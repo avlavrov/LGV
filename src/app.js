@@ -3,7 +3,7 @@
 
 // ======================= Display profile =======================
 const DEFAULT_PROFILE = {
-  version: 1,
+  version: 2,
   readHeight: 10,                // px, smooth 1–24
   colorBy: 'pair',               // none | strand | pair | tag
   colorTag: 'HP',
@@ -35,13 +35,15 @@ function mergeProfile(base, over) {
 let P = DEFAULT_PROFILE;
 try { const s = localStorage.getItem(PROFILE_KEY); if (s) P = mergeProfile(DEFAULT_PROFILE, JSON.parse(s)); } catch (e) { P = clone(DEFAULT_PROFILE); }
 if (P === DEFAULT_PROFILE) P = clone(DEFAULT_PROFILE);
+// profile v1 kept the old 8 px default read height; v2 defaults to 10 px
+if (P.version < 2) { if (P.readHeight === 8) P.readHeight = 10; P.version = 2; try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
 function saveProfile() { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable: the profile lives until reload */ } }
 
 // ======================= State =======================
 const S = {
   bam: null, fasta: null, bamName: '', isDemo: false,
   view: { refId: 0, start: 0, bpPerPx: 1 },
-  data: null,          // { refId, start, end, reads, refArr, insert }
+  data: null,          // { refId, start, end, reads, ref (SparseRef), cov (SparseCoverage), insert }
   shown: null,         // { reads, cov, groups, inst }
   scroll: 0, sortPos: null, selected: null,
   loading: false, loadToken: 0, forceLoad: false,
@@ -201,7 +203,7 @@ function groupKey(rec) {
   }
 }
 
-function refAtFactory() { const d = S.data; return p => { const j = p - d.start; return j >= 0 && j < d.refArr.length ? d.refArr[j] : 0; }; }
+function refAtFactory() { const ref = S.data.ref; return p => ref.at(p); }
 function feats(rec) { if (!rec.feats) rec.feats = computeFeatures(rec, refAtFactory()); return rec.feats; }
 
 // Full rebuild: filters → downsampling → coverage → groups → layout → sort → instances.
@@ -261,12 +263,12 @@ function rebuild() {
 }
 
 // A position where non-reference alleles pass the threshold (same rule as the coverage highlight).
+const CNT = new Uint32Array(6), CNT2 = new Uint32Array(6);
 function flaggedPos(cov, d, pos) {
-  const j = (pos - d.start) * 6, refc = d.refArr[pos - d.start];
-  if (j < 0 || j >= cov.length || !refc) return false;
-  const t = cov[j] + cov[j + 1] + cov[j + 2] + cov[j + 3] + cov[j + 4]; if (t < 2) return false;
+  const refc = d.ref.at(pos); if (!refc) return false;
+  const c = cov.counts(pos, CNT), t = c[0] + c[1] + c[2] + c[3] + c[4]; if (t < 2) return false;
   const ri = { 65: 0, 67: 1, 71: 2, 84: 3 }[refc]; if (ri === undefined) return false;
-  return (t - cov[j + ri]) / t >= P.coverage.alleleThreshold;
+  return (t - c[ri]) / t >= P.coverage.alleleThreshold;
 }
 
 // Sort key of a read at a position; smaller goes higher.
@@ -341,7 +343,7 @@ async function ensureData() {
   // decide by the amount of data the index points to, not by window length: 30x WGS and a
   // 3000x panel differ a hundredfold for the same window
   const bamRef = S.bam ? S.bamMap[S.view.refId] : -1;
-  if (!S.bam && span > 1e6) { S.data = null; S.shown = null; GL.n = 0; S.msg = null; draw(); return; } // reference only: bases are drawn when zoomed in
+  if (!S.bam && span > REF_VIEW_BP) { S.data = null; S.shown = null; GL.n = 0; S.msg = null; draw(); return; } // reference only: bases are drawn when zoomed in
   const est = bamRef >= 0 ? S.bam.estimateBytes(bamRef, ls, le) : 0;
   if (est > P.maxLoadMB * 1048576 && !S.forceLoad) {
     S.data = null; S.shown = null; GL.n = 0;
@@ -358,12 +360,26 @@ async function ensureData() {
       downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null,
     }) : null;
     const reads = res ? res.reads : [];
-    let refArr = null;
-    if (S.fasta) { try { refArr = await S.fasta.fetch(S.contigs[S.view.refId].name, ls, le); } catch (e) { refArr = null; } }
+    // Reference bases only where they are used: under reads (mismatches, allele highlight) and the
+    // view itself when it is narrow enough to show bases. A 46 Mb window with a few reads reads a few kb.
+    const want = reads.map(r => [Math.max(ls, r.pos), Math.min(le, r.end)]);
+    if (span <= REF_VIEW_BP) want.push([ls, le]);
+    const parts = mergeIntervals(want, 2000), ref = new SparseRef(), name = S.contigs[S.view.refId].name;
+    let fromMD = false, ri = 0;
+    for (const [a, b] of parts) {
+      let seq = null;
+      if (S.fasta) { try { seq = await S.fasta.fetch(name, a, b); } catch (e) { seq = null; } }
+      if (!seq || seq.length !== b - a) { // no reference: rebuild bases from the reads' MD tags
+        seq = new Uint8Array(b - a); fromMD = true;
+        while (ri < reads.length && reads[ri].end <= a) ri++;
+        for (let k = ri; k < reads.length && reads[k].pos < b; k++) fillRefFromMD(reads[k], seq, a);
+      }
+      ref.add(a, seq);
+    }
     if (token !== S.loadToken) return;
-    if (!refArr || refArr.length !== le - ls) { refArr = new Uint8Array(le - ls); for (const r of reads) fillRefFromMD(r, refArr, ls); S.refFromMD = !!S.bam; } else S.refFromMD = false;
-    S.data = { refId: S.view.refId, start: ls, end: le, reads, refArr, insert: insertSizeBounds(reads),
-      cov: res ? res.cov : new Uint32Array(0), total: res ? res.total : 0, sampled: res ? res.sampled : [] };
+    S.refFromMD = fromMD && !!S.bam;
+    S.data = { refId: S.view.refId, start: ls, end: le, reads, ref, insert: insertSizeBounds(reads),
+      cov: res ? res.cov : new SparseCoverage(ls, le), total: res ? res.total : 0, sampled: res ? res.sampled : [] };
     S.stats.loadMs = performance.now() - t0;
     S.loading = false; S.selected = null; hideCard();
     if (S.bam && bamRef < 0) S.msg = { text: t('sample.noContig', { name: S.contigs[S.view.refId].name }) };
@@ -375,6 +391,7 @@ async function ensureData() {
 }
 
 // Filters and downsampling act while reading, so changing them re-reads the window.
+const REF_VIEW_BP = 200000; // windows up to this size also load the reference between reads
 function reloadData() { if (!S.contigs) return; S.data = null; S.shown = null; GL.n = 0; S.selected = null; hideCard(); ensureData(); }
 
 // ======================= Rendering =======================
@@ -481,7 +498,7 @@ function drawRefTrack() {
   const b0 = Math.max(d.start, Math.floor(S.view.start)), b1 = Math.min(d.end, Math.ceil(viewEnd()));
   ctx.textAlign = 'center'; ctx.font = '600 11px ' + MONO;
   for (let b = b0; b < b1; b++) {
-    const c = d.refArr[b - d.start]; if (!c) continue;
+    const c = d.ref.at(b); if (!c) continue;
     const x = (b - S.view.start) * ppb;
     if (ppb >= 8) { ctx.fillStyle = COL.baseCss[c] || COL.css.muted; ctx.fillText(String.fromCharCode(c), x + ppb / 2, y + 10); }
     else { ctx.fillStyle = COL.baseCss[c] || COL.css.muted; ctx.fillRect(x, y + 2, Math.max(1, ppb - (ppb > 3 ? 1 : 0)), REF_H - 6); }
@@ -491,32 +508,28 @@ function drawRefTrack() {
 function drawCoverage() {
   const sh = S.shown, d = S.data; if (!sh || !d || !S.bam) return;
   const top = covTop(), h = P.coverage.height, bpp = S.view.bpPerPx, ppb = 1 / bpp;
-  const cov = sh.cov, thr = P.coverage.alleleThreshold;
+  const cov = sh.cov;
   const b0 = Math.max(d.start, Math.floor(S.view.start)), b1 = Math.min(d.end, Math.ceil(viewEnd()));
   let maxD = 1;
-  for (let b = b0; b < b1; b++) { const j = (b - d.start) * 6; const t = cov[j] + cov[j + 1] + cov[j + 2] + cov[j + 3] + cov[j + 4] + cov[j + 5]; if (t > maxD) maxD = t; }
+  cov.forEach(b0, b1, (pos, blk, o) => { const t = blk[o] + blk[o + 1] + blk[o + 2] + blk[o + 3] + blk[o + 4] + blk[o + 5]; if (t > maxD) maxD = t; });
   const scale = (h - 10) / maxD, base = top + h;
-  const flagged = (j) => flaggedPos(cov, d, d.start + j / 6);
-  const drawStack = (x, w, j) => {
-    let y = base;
-    for (const [k, c] of [[0, 65], [1, 67], [2, 71], [3, 84]]) { const hh = cov[j + k] * scale; if (hh > 0) { ctx.fillStyle = COL.baseCss[c]; ctx.fillRect(x, y - hh, w, hh); y -= hh; } }
+  const drawStack = (x, w, pos) => {
+    const c = cov.counts(pos, CNT2); let y = base;
+    for (const [k, ch] of [[0, 65], [1, 67], [2, 71], [3, 84]]) { const hh = c[k] * scale; if (hh > 0) { ctx.fillStyle = COL.baseCss[ch]; ctx.fillRect(x, y - hh, w, hh); y -= hh; } }
   };
   if (ppb >= 1) {
-    for (let b = b0; b < b1; b++) {
-      const j = (b - d.start) * 6, x = (b - S.view.start) * ppb, w = Math.max(1, ppb - (ppb > 4 ? 1 : 0));
-      if (flagged(j)) drawStack(x, w, j);
-      else { const t = cov[j] + cov[j + 1] + cov[j + 2] + cov[j + 3] + cov[j + 4]; ctx.fillStyle = COL.css.cov; ctx.fillRect(x, base - t * scale, w, t * scale); }
-    }
+    cov.forEach(b0, b1, (pos, blk, o) => {
+      const x = (pos - S.view.start) * ppb, w = Math.max(1, ppb - (ppb > 4 ? 1 : 0));
+      if (flaggedPos(cov, d, pos)) drawStack(x, w, pos);
+      else { const t = blk[o] + blk[o + 1] + blk[o + 2] + blk[o + 3] + blk[o + 4]; if (t) { ctx.fillStyle = COL.css.cov; ctx.fillRect(x, base - t * scale, w, t * scale); } }
+    });
   } else {
     for (let px = 0; px < W; px++) {
-      const s = Math.floor(S.view.start + px * bpp), e = Math.floor(S.view.start + (px + 1) * bpp);
-      let mx = 0, fj = -1;
-      for (let b = Math.max(s, d.start); b < Math.min(Math.max(e, s + 1), d.end); b++) {
-        const j = (b - d.start) * 6, t = cov[j] + cov[j + 1] + cov[j + 2] + cov[j + 3] + cov[j + 4];
-        if (t > mx) mx = t;
-        if (fj < 0 && flagged(j)) fj = j;
-      }
-      if (fj >= 0) drawStack(px, 1, fj); else if (mx) { ctx.fillStyle = COL.css.cov; ctx.fillRect(px, base - mx * scale, 1, mx * scale); }
+      const s0 = Math.floor(S.view.start + px * bpp), e0 = Math.max(Math.floor(S.view.start + (px + 1) * bpp), s0 + 1);
+      if (!cov.hasData(s0, e0)) continue; // empty stretches of a wide window cost nothing
+      let mx = 0, fpos = -1;
+      cov.forEach(s0, e0, (pos, blk, o) => { const t = blk[o] + blk[o + 1] + blk[o + 2] + blk[o + 3] + blk[o + 4]; if (t > mx) mx = t; if (fpos < 0 && t && flaggedPos(cov, d, pos)) fpos = pos; });
+      if (fpos >= 0) drawStack(px, 1, fpos); else if (mx) { ctx.fillStyle = COL.css.cov; ctx.fillRect(px, base - mx * scale, 1, mx * scale); }
     }
   }
   ctx.fillStyle = COL.css.muted; ctx.font = '10.5px ' + MONO; ctx.textAlign = 'left';
@@ -699,20 +712,32 @@ function onClick(x, y) {
 
 const FLAG_BITS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048];
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-function cardText(rec) {
+function cardText(rec, pos) {
   const refs = S.bam.refs, tags = recTags(rec);
-  const lines = [
+  const lines = [];
+  if (pos != null) {
+    const at = queryAt(rec, pos), rb = S.data ? S.data.ref.at(pos) : 0, refTxt = rb ? ' · ' + t('card.ref') + ' ' + String.fromCharCode(rb) : '';
+    const where = `${S.contigs[S.view.refId].name}:${fmtInt(pos + 1)}`;
+    if (at && at.del) lines.push([t('card.clicked'), `${where} · ${t('card.del')}${refTxt}`, 'hl']);
+    else if (at) {
+      const q = rec.qual[at.qi];
+      lines.push([t('card.clicked'), `${where} · ${String.fromCharCode(readBaseAt(rec, at.qi))}${refTxt}`, 'hl'], [t('card.bq'), q === 255 ? '—' : String(q), 'hl']);
+    }
+  }
+  lines.push(
     [t('card.name'), rec.name], [t('card.pos'), `${refs[rec.refID].name}:${fmtInt(rec.pos + 1)}-${fmtInt(rec.end)}`], ['CIGAR', cigarString(rec)],
     ['MAPQ', rec.mapq], [t('card.flag'), `${rec.flag} (${FLAG_BITS.filter(b => rec.flag & b).map(b => t('flag.' + b)).join(', ') || '—'})`],
-    [t('card.len'), rec.lseq + ' ' + t('unit.bp')],
-  ];
+    [t('card.len'), rec.lseq + ' ' + t('unit.bp')]);
   if (rec.flag & 1) lines.push([t('card.mate'), rec.mateRef >= 0 ? `${refs[rec.mateRef].name}:${fmtInt(rec.matePos + 1)}` : t('card.mateUnmapped')], [t('card.tlen'), rec.tlen]);
   for (const k of Object.keys(tags)) lines.push([k, Array.isArray(tags[k]) ? tags[k].join(',') : tags[k]]);
   return lines;
 }
+function readBaseAt(rec, qi) { const b = rec.seq[qi >> 1]; return '=ACMGRSVTWYHKDBN'.charCodeAt(qi & 1 ? b & 15 : b >> 4); }
 function showCard(rec, x, y) {
   const c = $('card');
-  const rows = cardText(rec).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+  const pos = Math.floor(S.view.start + x * S.view.bpPerPx);
+  const lines = cardText(rec, pos);
+  const rows = lines.map(([k, v, cls]) => `<dt${cls ? ' class="' + cls + '"' : ''}>${esc(k)}</dt><dd${cls ? ' class="' + cls + '"' : ''}>${esc(v)}</dd>`).join('');
   const mate = (rec.flag & 1) && rec.mateRef >= 0;
   c.innerHTML = `<dl>${rows}</dl><div class="card-actions">${mate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button><button class="btn ghost" id="closeCard">${esc(t('btn.close'))}</button></div>`;
   c.hidden = false;
@@ -721,7 +746,7 @@ function showCard(rec, x, y) {
   c.style.top = Math.max(8, Math.min(r.height - ch - 8, y + 14)) + 'px';
   $('closeCard').onclick = () => { S.selected = null; hideCard(); draw(); };
   $('copyRead').onclick = () => {
-    const txt = cardText(rec).map(([k, v]) => k + '\t' + v).join('\n');
+    const txt = lines.map(([k, v]) => k + '\t' + v).join('\n');
     navigator.clipboard.writeText(txt).then(() => toast(t('copied')), () => toast(t('copyFail')));
   };
   if (mate) $('toMate').onclick = () => {

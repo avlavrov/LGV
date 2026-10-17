@@ -116,11 +116,13 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     const flt = { minMapq: 0, hideDuplicates: true, hideSecondary: true, hideSupplementary: false, hideQcFail: true };
     const full = await bam.fetch(0, 11000, 13000, { filters: flt });
     const ref = C.computeCoverage(full.reads, 11000, 2000);
-    ok(full.cov.every((v, i) => v === ref[i]), 'coverage from the stream equals coverage from records');
+    let same = true; for (let j = 0; j < 2000; j++) for (let k = 0; k < 6; k++) if (full.cov.get(11000 + j, k) !== ref[j * 6 + k]) same = false;
+    ok(same, 'coverage from the stream equals coverage from records');
     const ds = await bam.fetch(0, 11000, 13000, { filters: flt, downsample: { max: 5, window: 50 } });
     const perWin = {}; for (const r of ds.reads) { const w = Math.floor(r.pos / 50); perWin[w] = (perWin[w] || 0) + 1; }
     ok(Math.max(...Object.values(perWin)) <= 5 && ds.total === full.reads.filter(r => r.pos >= 11000).length && ds.sampled.length > 0, `downsampling: ${ds.reads.length} of ${ds.total} kept, ${ds.sampled.length} windows sampled, max ${Math.max(...Object.values(perWin))} per window`);
-    ok(ds.cov.every((v, i) => v === full.cov[i]), 'coverage is the same with downsampling');
+    let same2 = true; for (let j = 11000; j < 13000; j++) for (let k = 0; k < 6; k++) if (ds.cov.get(j, k) !== full.cov.get(j, k)) same2 = false;
+    ok(same2, 'coverage is the same with downsampling');
     ok(ds.reads.every((r, i) => !i || ds.reads[i - 1].pos <= r.pos), 'downsampled reads stay sorted');
     const again = await bam.fetch(0, 11000, 13000, { filters: flt });
     ok(again.reads.length === full.reads.length && again.total === full.total, 'second fetch through the block cache gives the same reads');
@@ -171,6 +173,18 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     const keys = q => new Set(q.reads.filter(r => r.pos >= 11000 && r.pos < 14000).map(C.readKey));
     const k1 = keys(q1), k2 = keys(q2);
     ok(k1.size === k2.size && [...k1].every(k => k2.has(k)), `downsampling: ${k1.size} kept reads in 11000-14000 are the same for both queries`);
+  }
+  // sparse coverage over a huge window allocates blocks only where reads are
+  {
+    const huge = await bam.fetch(0, 0, 40000000 > 40000 ? 40000 : 0);
+    const wide = new C.SparseCoverage(0, 200000000);
+    ok(wide.blocks.size === 0 && wide.get(150000000, 0) === 0, 'empty sparse coverage costs nothing');
+    ok(huge.cov.blocks.size <= 1, `coverage blocks for the demo contig: ${huge.cov.blocks.size}`);
+    const r = new C.SparseRef(); r.add(100, new Uint8Array([65, 67])); r.add(10, new Uint8Array([71]));
+    ok(r.at(10) === 71 && r.at(101) === 67 && r.at(50) === 0, 'sparse reference lookup');
+    const rec = huge.reads.find(x => C.cigarString(x).includes('3D'));
+    const dpos = rec ? rec.pos + parseInt(C.cigarString(rec)) : -1;
+    ok(rec && C.queryAt(rec, dpos).del && C.queryAt(rec, rec.pos).qi === 0, 'base under a click: query index or deletion');
   }
   console.log(fails ? `\n${fails} FAILED` : '\nAll checks passed');
   process.exit(fails ? 1 : 0);

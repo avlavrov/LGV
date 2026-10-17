@@ -2,3 +2,4 @@ node_modules/
 big/
 *.log
 deep/
+sparse/

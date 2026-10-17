@@ -21,6 +21,9 @@ function revcomp(s) { const m = { A: 'T', C: 'G', G: 'C', T: 'A', N: 'N' }; let 
 
 // ---------- reference ----------
 const L = +(process.env.CGV_L || 40000), L2 = 2000;
+// CGV_OFFSET=<bp> places the data in the middle of a long contig padded with N (sparse, panel-like files)
+const OFF = +(process.env.CGV_OFFSET || 0), LTOT = L + 2 * OFF;
+const sh = (contig, p) => contig === 0 ? p + OFF : p;
 let ref = ''; for (let i = 0; i < L; i++) ref += randBase();
 // segmental duplication: 30000–30600 is copied to 33000–33600, so reads there get low MAPQ
 ref = ref.slice(0, 33000) + ref.slice(30000, 30600) + ref.slice(33600);
@@ -182,10 +185,10 @@ function encode(r) {
   const fix = Buffer.alloc(36);
   const body = Buffer.concat([name, cig, seqB, qualB, ...tags]);
   fix.writeInt32LE(32 + body.length, 0);
-  fix.writeInt32LE(r.contig, 4); fix.writeInt32LE(r.pos, 8);
-  fix[12] = name.length; fix[13] = r.mapq; fix.writeUInt16LE(reg2bin(r.pos, end), 14);
+  fix.writeInt32LE(r.contig, 4); fix.writeInt32LE(sh(r.contig, r.pos), 8);
+  fix[12] = name.length; fix[13] = r.mapq; fix.writeUInt16LE(reg2bin(sh(r.contig, r.pos), sh(r.contig, end)), 14);
   fix.writeUInt16LE(r.cigar.length, 16); fix.writeUInt16LE(flag, 18); fix.writeInt32LE(lseq, 20);
-  fix.writeInt32LE(m.contig, 24); fix.writeInt32LE(m.pos, 28); fix.writeInt32LE(tlen, 32);
+  fix.writeInt32LE(m.contig, 24); fix.writeInt32LE(sh(m.contig, m.pos), 28); fix.writeInt32LE(tlen, 32);
   return { buf: Buffer.concat([fix, body]), end };
 }
 
@@ -211,11 +214,11 @@ function crc32(buf) { let c, crc = 0xFFFFFFFF; for (let n = 0; n < buf.length; n
 
 reads.sort((a, b) => a.contig - b.contig || a.pos - b.pos);
 const bg = new Bgzf();
-const text = '@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:demo\tLN:' + L + '\n@SQ\tSN:demo2\tLN:' + L2 + '\n@RG\tID:demo\tSM:DEMO-SAMPLE\tPL:ILLUMINA\n@PG\tID:cgv-gen-demo\tPN:cgv-gen-demo\n';
+const text = '@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:demo\tLN:' + LTOT + '\n@SQ\tSN:demo2\tLN:' + L2 + '\n@RG\tID:demo\tSM:DEMO-SAMPLE\tPL:ILLUMINA\n@PG\tID:cgv-gen-demo\tPN:cgv-gen-demo\n';
 const hparts = [Buffer.from('BAM\x01', 'latin1')];
 let tb = Buffer.alloc(4); tb.writeInt32LE(text.length); hparts.push(tb, Buffer.from(text, 'latin1'));
 tb = Buffer.alloc(4); tb.writeInt32LE(2); hparts.push(tb);
-for (const [nm, ln] of [['demo', L], ['demo2', L2]]) { const a = Buffer.alloc(4); a.writeInt32LE(nm.length + 1); const b = Buffer.alloc(4); b.writeInt32LE(ln); hparts.push(a, Buffer.from(nm + '\0', 'latin1'), b); }
+for (const [nm, ln] of [['demo', LTOT], ['demo2', L2]]) { const a = Buffer.alloc(4); a.writeInt32LE(nm.length + 1); const b = Buffer.alloc(4); b.writeInt32LE(ln); hparts.push(a, Buffer.from(nm + '\0', 'latin1'), b); }
 bg.write(Buffer.concat(hparts)); bg.flush();
 
 const idx = [new Map(), new Map()], lin = [[], []];
@@ -223,10 +226,11 @@ for (const r of reads) {
   const { buf, end } = encode(r);
   bg.ensure(buf.length);
   const v0 = bg.voff(); bg.write(buf); const v1 = bg.voff();
-  const bin = reg2bin(r.pos, end), m = idx[r.contig];
+  const sp = sh(r.contig, r.pos), se = sh(r.contig, end);
+  const bin = reg2bin(sp, se), m = idx[r.contig];
   if (!m.has(bin)) m.set(bin, []);
   const ch = m.get(bin); if (ch.length && ch[ch.length - 1][1] === v0) ch[ch.length - 1][1] = v1; else ch.push([v0, v1]);
-  for (let w = r.pos >> 14; w <= (end - 1) >> 14; w++) if (lin[r.contig][w] === undefined) lin[r.contig][w] = v0;
+  for (let w = sp >> 14; w <= (se - 1) >> 14; w++) if (lin[r.contig][w] === undefined) lin[r.contig][w] = v0;
 }
 const bam = bg.finish();
 
@@ -243,8 +247,9 @@ for (let c = 0; c < 2; c++) {
 
 // ---------- FASTA ----------
 function fasta(name, s) { let o = '>' + name + '\n'; for (let i = 0; i < s.length; i += 60) o += s.slice(i, i + 60) + '\n'; return o; }
-const fa1 = fasta('demo', ref), fa2 = fasta('demo2', ref2);
-const fai = `demo\t${L}\t6\t60\t61\ndemo2\t${L2}\t${fa1.length + 7}\t60\t61\n`;
+const pad = 'N'.repeat(OFF);
+const fa1 = fasta('demo', OFF ? pad + ref + pad : ref), fa2 = fasta('demo2', ref2);
+const fai = `demo\t${LTOT}\t6\t60\t61\ndemo2\t${L2}\t${fa1.length + 7}\t60\t61\n`;
 
 fs.writeFileSync(path.join(OUT, 'demo.bam'), bam);
 fs.writeFileSync(path.join(OUT, 'demo.bam.bai'), Buffer.concat(bai));

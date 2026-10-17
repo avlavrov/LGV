@@ -209,7 +209,7 @@ class BamFile {
     opts = opts || {};
     const flt = opts.filters || null;
     const ds = opts.downsample && opts.downsample.max > 0 && opts.downsample.window > 0 ? opts.downsample : null;
-    const covLen = Math.max(0, end - beg), cov = new Uint32Array(covLen * 6);
+    const cov = new SparseCoverage(beg, end);
     const out = { reads: [], cov, total: 0, sampled: [] };
     let win = -1, n = 0, kept = [], rng = 1;
     const flush = () => {
@@ -226,7 +226,7 @@ class BamFile {
       if (refLen > this.maxSpan) this.maxSpan = refLen;
       if (pos + Math.max(refLen, 1) <= beg) return;
       if (flt && !passFlags(flag, mapq, flt)) return;
-      addCoverage(buf, dv, p, cov, beg, covLen);
+      addCoverage(buf, dv, p, cov);
       if (!ds || pos >= beg) out.total++;
       if (!ds) { out.reads.push(parseBamRecord(buf, dv, p)); return; }
       // Downsampling decides per window of read starts. A read starting before `beg` belongs to a window
@@ -355,24 +355,90 @@ function passFlags(flag, mapq, flt) {
   return true;
 }
 
+// Coverage over [start, end) stored in 64 kb blocks that exist only where reads are, so a
+// 50 Mb window with a few reads costs a few blocks, not gigabytes. 6 counters per base: A C G T N del.
+const COV_BLOCK = 65536;
+class SparseCoverage {
+  constructor(start, end) { this.start = start; this.end = end; this.blocks = new Map(); }
+  block(bi, create) {
+    let b = this.blocks.get(bi);
+    if (!b && create) { b = new Uint32Array(COV_BLOCK * 6); this.blocks.set(bi, b); }
+    return b;
+  }
+  // counter k (0..5) at a position
+  get(pos, k) { const b = this.blocks.get(Math.floor(pos / COV_BLOCK)); return b ? b[(pos % COV_BLOCK) * 6 + k] : 0; }
+  // all six counters at a position into out (an array of 6), returns out
+  counts(pos, out) {
+    const b = pos >= this.start && pos < this.end ? this.blocks.get(Math.floor(pos / COV_BLOCK)) : null;
+    if (!b) { out.fill(0); return out; }
+    const o = (pos % COV_BLOCK) * 6; for (let k = 0; k < 6; k++) out[k] = b[o + k];
+    return out;
+  }
+  // calls f(pos, block, offset) for every position in [a, b) that has a block; skips empty stretches fast
+  forEach(a, b, f) {
+    a = Math.max(a, this.start); b = Math.min(b, this.end);
+    for (let bi = Math.floor(a / COV_BLOCK); bi * COV_BLOCK < b; bi++) {
+      const blk = this.blocks.get(bi); if (!blk) continue;
+      const s0 = Math.max(a, bi * COV_BLOCK), s1 = Math.min(b, (bi + 1) * COV_BLOCK);
+      for (let pos = s0; pos < s1; pos++) f(pos, blk, (pos - bi * COV_BLOCK) * 6);
+    }
+  }
+  hasData(a, b) { a = Math.max(a, this.start); b = Math.min(b, this.end); for (let bi = Math.floor(a / COV_BLOCK); bi * COV_BLOCK < b; bi++) if (this.blocks.has(bi)) return true; return false; }
+}
+
 // Adds one record to coverage straight from the BAM buffer, without building an object.
 const NIB_IDX = new Uint8Array([4, 0, 1, 4, 2, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4]);
-function addCoverage(buf, dv, p, cov, cs, clen) {
+function addCoverage(buf, dv, p, cov) {
   const s = p + 4, lrn = buf[s + 8], ncig = dv.getUint16(s + 12, true), lseq = dv.getInt32(s + 16, true);
-  const cig = s + 32 + lrn, seq = cig + 4 * ncig;
-  let r = dv.getInt32(s + 4, true), q = 0;
+  const cig = s + 32 + lrn, seq = cig + 4 * ncig, lo = cov.start, hi = cov.end;
+  let r = dv.getInt32(s + 4, true), q = 0, bi = -1, blk = null;
+  const slot = pos => { const b = Math.floor(pos / COV_BLOCK); if (b !== bi) { bi = b; blk = cov.block(b, true); } return (pos - b * COV_BLOCK) * 6; };
   for (let i = 0; i < ncig; i++) {
     const c = dv.getUint32(cig + 4 * i, true), op = c & 15, n = c >>> 4;
     if (op === 0 || op === 7 || op === 8) {
       for (let k = 0; k < n; k++) {
-        const j = r + k - cs;
-        if (j >= 0 && j < clen) { const qi = q + k; const code = lseq ? (qi & 1 ? buf[seq + (qi >> 1)] & 15 : buf[seq + (qi >> 1)] >> 4) : 15; cov[j * 6 + NIB_IDX[code]]++; }
+        const pos = r + k;
+        if (pos >= lo && pos < hi) { const qi = q + k; const code = lseq ? (qi & 1 ? buf[seq + (qi >> 1)] & 15 : buf[seq + (qi >> 1)] >> 4) : 15; const o = slot(pos); blk[o + NIB_IDX[code]]++; }
       }
       r += n; q += n;
-    } else if (op === 2) { for (let k = 0; k < n; k++) { const j = r + k - cs; if (j >= 0 && j < clen) cov[j * 6 + 5]++; } r += n; }
+    } else if (op === 2) { for (let k = 0; k < n; k++) { const pos = r + k; if (pos >= lo && pos < hi) { const o = slot(pos); blk[o + 5]++; } } r += n; }
     else if (op === 3) r += n;
     else if (op === 1 || op === 4) q += n;
   }
+}
+
+// Reference bases kept only in stretches that are needed (under reads, or the view when zoomed in).
+class SparseRef {
+  constructor() { this.segs = []; this.last = null; } // segs: { s, a: Uint8Array } sorted by s, disjoint
+  add(s, a) { this.segs.push({ s, a }); this.segs.sort((x, y) => x.s - y.s); }
+  at(pos) {
+    const L = this.last;
+    if (L && pos >= L.s && pos < L.s + L.a.length) return L.a[pos - L.s];
+    let lo = 0, hi = this.segs.length - 1;
+    while (lo <= hi) { const m = (lo + hi) >> 1, g = this.segs[m]; if (pos < g.s) hi = m - 1; else if (pos >= g.s + g.a.length) lo = m + 1; else { this.last = g; return g.a[pos - g.s]; } }
+    return 0;
+  }
+}
+// Merges [s, e) intervals that are closer than `gap`.
+function mergeIntervals(list, gap) {
+  list.sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const [s, e] of list) { const l = out[out.length - 1]; if (l && s <= l[1] + gap) { if (e > l[1]) l[1] = e; } else out.push([s, e]); }
+  return out;
+}
+// Position of a read base at a reference position: { qi } for a base, { del: true } inside a
+// deletion, null outside the read or in a skipped region.
+function queryAt(rec, pos) {
+  if (pos < rec.pos || pos >= rec.end) return null;
+  let r = rec.pos, q = 0;
+  for (const c of rec.cigar) {
+    const op = c & 15, n = c >>> 4;
+    if (op === 0 || op === 7 || op === 8) { if (pos < r + n) return { qi: q + pos - r }; r += n; q += n; }
+    else if (op === 2) { if (pos < r + n) return { del: true }; r += n; }
+    else if (op === 3) { if (pos < r + n) return null; r += n; }
+    else if (op === 1 || op === 4) q += n;
+  }
+  return null;
 }
 
 function tryParseBamHeader(d) {
@@ -831,4 +897,4 @@ class MinHeap {
 // Plain packing of a list (no persistence), lowest free row first.
 function packRows(reads, padBp) { const g = new ReadLayout(null, padBp).update(reads, () => '').groups[0]; return g ? g.rows : []; }
 
-if (typeof module !== 'undefined') module.exports = { ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
