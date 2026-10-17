@@ -816,7 +816,9 @@ class ReadLayout {
   // reads covering `pos` first, in key order, one per row from the top (sorting). Used only when the
   // layout is fresh; afterwards the rows it made are kept like any others.
   // Returns { groups: [{ key, rows: [[rec...]], start, count, sets }], totalRows }.
-  update(reads, groupOf, prio) {
+  // keyOf(item) gives a stable identity (readKey for reads; a pair key for pairs). Items need pos and end.
+  update(reads, groupOf, prio, keyOf) {
+    keyOf = keyOf || readKey;
     const pad = this.pad, fresh = this.place.size === 0;
     const byGroup = new Map();
     for (const r of reads) { const k = groupOf(r); let a = byGroup.get(k); if (!a) byGroup.set(k, a = []); a.push(r); }
@@ -832,9 +834,10 @@ class ReadLayout {
       const pending = [];
       // 1. reads already placed keep their rows
       for (let i = 0; i < list.length; i++) {
-        const r = list[i], key = readKey(r), old = this.place.get(key);
-        if (old && old.g === k) { ensure(old.r); sets[old.r].add(r.pos, r.end); rowOf[i] = old.r; place.set(key, old); }
-        else pending.push(i);
+        const r = list[i], key = keyOf(r), old = this.place.get(key);
+        // an item keeps its row unless it grew (a pair whose mate arrived) and no longer fits there
+        if (old && old.g === k) { ensure(old.r); if (sets[old.r].fits(r.pos, r.end, pad)) { sets[old.r].add(r.pos, r.end); rowOf[i] = old.r; place.set(key, old); continue; } }
+        pending.push(i);
       }
       // 2. sorting: reads covering the sort position take rows from the top, in key order
       if (fresh && prio && pending.length) {
@@ -862,7 +865,7 @@ class ReadLayout {
           ensure(row); sets[row].add(r.pos, r.end); rowOf[i] = row;
         }
       }
-      for (let i = 0; i < list.length; i++) if (!place.has(readKey(list[i]))) place.set(readKey(list[i]), { g: k, r: rowOf[i] });
+      for (let i = 0; i < list.length; i++) { const key = keyOf(list[i]); if (!place.has(key)) place.set(key, { g: k, r: rowOf[i] }); }
       // rows never shrink while the layout lives, so groups below never jump up and down
       const n = Math.max(sets.length, this.size.get(k) || 0);
       this.size.set(k, n); ensure(n - 1);
@@ -874,6 +877,47 @@ class ReadLayout {
     this.place = place;
     return { groups, totalRows: start };
   }
+}
+
+// Reference length of a CIGAR string (for the MC tag: the mate's CIGAR).
+function cigarStrRefLen(str) {
+  let n = 0, num = 0;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    if (c >= 48 && c <= 57) { num = num * 10 + c - 48; continue; }
+    if (c === 77 || c === 68 || c === 78 || c === 61 || c === 88) n += num; // M D N = X
+    num = 0;
+  }
+  return n;
+}
+// Can this read be shown joined with its mate? Primary, paired, mate mapped on the same contig.
+function pairable(r) { return (r.flag & 1) && !(r.flag & 4) && !(r.flag & 8) && !(r.flag & 0x900) && r.mateRef === r.refID; }
+// Where the mate lies: exact with the MC tag, otherwise assumed as long as this read.
+function mateExtent(r) {
+  const mc = recTags(r).MC, len = typeof mc === 'string' ? cigarStrRefLen(mc) : r.end - r.pos;
+  return [r.matePos, r.matePos + Math.max(1, len)];
+}
+// Groups reads into layout units for pair view. A unit spans both mates (one taken from the mate
+// fields when the mate itself is not loaded), so its size does not change when the mate arrives.
+// Pairs spanning more than maxSpan, and reads that cannot pair, stay single.
+// Returns units sorted by start: { key, pos, end, reads: [rec, rec?], mate: [start, end] | null }.
+function pairUnits(reads, maxSpan) {
+  const open = new Map(), units = [];
+  for (const r of reads) {
+    if (pairable(r)) {
+      const u = open.get(r.name);
+      if (u) {
+        u.reads.push(r); open.delete(r.name);
+        u.pos = Math.min(u.reads[0].pos, r.pos); u.end = Math.max(u.reads[0].end, r.end); u.mate = null;
+        continue;
+      }
+      const m = mateExtent(r), pos = Math.min(r.pos, m[0]), end = Math.max(r.end, m[1]);
+      if (end - pos <= maxSpan) { const nu = { key: 'P\u0001' + r.name, pos, end, reads: [r], mate: m }; open.set(r.name, nu); units.push(nu); continue; }
+    }
+    units.push({ key: readKey(r), pos: r.pos, end: r.end, reads: [r], mate: null });
+  }
+  units.sort((a, b) => a.pos - b.pos || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return units;
 }
 
 // Number of rows of a group that hold a read overlapping [a, b): what the visible part needs.
@@ -897,4 +941,4 @@ class MinHeap {
 // Plain packing of a list (no persistence), lowest free row first.
 function packRows(reads, padBp) { const g = new ReadLayout(null, padBp).update(reads, () => '').groups[0]; return g ? g.rows : []; }
 
-if (typeof module !== 'undefined') module.exports = { SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

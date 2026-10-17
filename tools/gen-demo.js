@@ -175,6 +175,8 @@ function encode(r) {
   tags.push(Buffer.concat([Buffer.from('MDZ', 'latin1'), Buffer.from(md + '\0', 'latin1')]));
   tags.push(Buffer.from([72, 80, 67, r.hp])); // HP:C
   tags.push(Buffer.concat([Buffer.from('RGZ', 'latin1'), Buffer.from('demo\0', 'latin1')]));
+  // MC: the mate's CIGAR, as bwa mem and samtools fixmate write it
+  tags.push(Buffer.concat([Buffer.from('MCZ', 'latin1'), Buffer.from(m.cigar.map(([op, n]) => n + op).join('') + '\0', 'latin1')]));
   const nm = Buffer.alloc(4); nm.write('NMC', 0, 'latin1'); nm[3] = (md.match(/[ACGT]/g) || []).length; tags.push(nm);
   const lseq = r.seq.length;
   const seqB = Buffer.alloc((lseq + 1) >> 1);

@@ -186,6 +186,27 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     const dpos = rec ? rec.pos + parseInt(C.cigarString(rec)) : -1;
     ok(rec && C.queryAt(rec, dpos).del && C.queryAt(rec, rec.pos).qi === 0, 'base under a click: query index or deletion');
   }
+  // pair view units
+  {
+    const all = (await bam.fetch(0, 0, 40000)).reads;
+    const units = C.pairUnits(all, 10000);
+    const both = units.filter(u => u.reads.length === 2), single = units.filter(u => u.reads.length === 1);
+    ok(both.length > 3000 && both.every(u => u.reads[0].name === u.reads[1].name && u.pos === Math.min(u.reads[0].pos, u.reads[1].pos) && u.end === Math.max(u.reads[0].end, u.reads[1].end)), `pairs: ${both.length} pairs joined, extent spans both mates`);
+    ok(single.some(u => u.reads[0].mateRef !== u.reads[0].refID), 'mates on another contig stay single');
+    ok(units.every((u, i) => !i || units[i - 1].pos <= u.pos), 'pair units sorted by start');
+    // a half pair (mate not loaded) gets the same extent as the full pair when MC is present, so layout is stable
+    const win = all.filter(r => r.end > 12000 && r.pos < 13000), half = C.pairUnits(win, 10000).filter(u => u.reads.length === 1 && u.mate);
+    const full = new Map(units.map(u => [u.key, u]));
+    const hasMC = win.some(r => C.recTags(r).MC);
+    ok(half.length > 0 && (!hasMC || half.every(u => full.get(u.key).pos === u.pos && full.get(u.key).end === u.end)) || (half.length > 0 && !hasMC), `half pairs at the window edge: ${half.length} (MC tags ${hasMC ? 'present' : 'absent'})`);
+    const L = new C.ReadLayout('p', 2), A = L.update(C.pairUnits(win, 10000), () => '', null, u => u.key);
+    const B = L.update(C.pairUnits(all.filter(r => r.end > 11500 && r.pos < 13500), 10000), () => '', null, u => u.key);
+    const rows = res => { const m = new Map(); res.groups[0].rows.forEach((row, i) => row.forEach(u => m.set(u.key, i))); return m; };
+    const ra = rows(A), rb = rows(B); let moved = 0, n = 0; for (const [k, v] of ra) if (rb.has(k)) { n++; if (rb.get(k) !== v) moved++; }
+    const noOv = B.groups[0].rows.every(row => row.every((u, i) => !i || row[i - 1].end + 2 <= u.pos));
+    ok(noOv, `pair layout: no overlaps after the window grows; ${moved} of ${n} units moved (only grown pairs may move)`);
+    ok(C.cigarStrRefLen('10S50M2I3D40M5N10M') === 108, 'reference length of an MC cigar');
+  }
   console.log(fails ? `\n${fails} FAILED` : '\nAll checks passed');
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

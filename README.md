@@ -40,10 +40,10 @@ More languages are one dictionary in `src/i18n.js`.
 | F6 No hard window limit | windows load on their own up to 64 MB of compressed data, larger on request; downsampling keeps deep regions fast; isolated sequencing errors fade when zoomed out |
 | F8 Coverage with allele highlight | done, threshold adjustable |
 | F9 Smooth read height | done, 1–24 px |
-| F10 Coloring + MAPQ as a transparency gradient | strand, pair (orientation and insert size), tag; MAPQ works on top of any of them |
-| F11 Group and sort | groups: strand, first/second, pair orientation, tag; sort: base, MAPQ, strand, insert size |
+| F10 Coloring + MAPQ as a transparency gradient | right click on reads: strand, pair (orientation and insert size), tag; MAPQ works on top of any of them |
+| F11 Group and sort | groups (View): strand, first/second, pair orientation, tag; sort by (right click, at the clicked position): base, MAPQ, strand, insert size |
 | F12 Filters | MAPQ, duplicates, secondary, supplementary, QC fail; downsampling |
-| F13 Mate | read details + go to mate; several regions on screen is the next step |
+| F13 Mate | view as pairs (right click), read details + go to mate; several regions on screen is the next step |
 | F14 Read details | the clicked base (position, read base, reference base, base quality), all fields and tags, copy |
 | F18 Display profile as JSON | kept in the browser, copied and applied as JSON |
 | F23 Screen space for data | one bar of controls, hidden with H |
@@ -102,6 +102,13 @@ Targeted panels reach thousands of reads per base. CGV handles them the way IGV 
 - **Sorting is a layout, not a row shuffle:** reads covering the sort position take the top
   rows in sort order; all other reads pack around them. The sort stays exact at that
   position and the rest stays compact; panning afterwards keeps it.
+- **Pairs:** with *View as pairs* (right click on the reads), both mates share a row, joined by
+  a line; where they overlap the overlap is shaded. A pair is placed as one item whose span
+  comes from the mate position and its MC tag, so it does not change when the mate loads
+  later; a mate not loaded yet is shown by a line to where it lies. Pairs spanning more than
+  10 kb (`pairs.maxSpan` in the profile), mates on other contigs, unmapped mates and
+  secondary or supplementary alignments are shown as single reads. Downsampling picks reads
+  independently, so in deep downsampled regions some pairs show one mate.
 - **Downsampling is query-independent:** reads kept in a window never depend on where a
   query began, so reloads do not swap reads.
 

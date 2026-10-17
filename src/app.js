@@ -19,6 +19,8 @@ const DEFAULT_PROFILE = {
   maxReads: 300000,
   maxLoadMB: 64,                 // windows with more compressed alignment data ask before loading
   hideToolbar: false,
+  viewPairs: false,              // show mates joined in one row
+  pairs: { maxSpan: 10000 },     // pairs spanning more than this (bp) are shown as single reads
   language: 'en',                // en | ru
 };
 const PROFILE_KEY = 'cgv.profile.v1';
@@ -80,6 +82,7 @@ function readColors() {
     big: hexToRgb(g('--pair-large')), small: hexToRgb(g('--pair-small')), rf: hexToRgb(g('--pair-rf')), ff: hexToRgb(g('--pair-ff')), mu: hexToRgb(g('--pair-unmapped')),
     base: { 65: hexToRgb(g('--base-a')), 67: hexToRgb(g('--base-c')), 71: hexToRgb(g('--base-g')), 84: hexToRgb(g('--base-t')), 78: hexToRgb(g('--muted')) },
     cat: [1, 2, 3, 4, 5, 6, 7, 8].map(i => hexToRgb(g('--cat-' + i))),
+    link: hexToRgb(g('--muted')), overlap: hexToRgb(g('--fg')),
   };
   COL.baseCss = { 65: g('--base-a'), 67: g('--base-c'), 71: g('--base-g'), 84: g('--base-t'), 78: g('--muted') };
 }
@@ -203,6 +206,8 @@ function groupKey(rec) {
   }
 }
 
+// Reads in a layout item: the item itself, or both mates of a pair unit.
+function readsOf(it) { return it.reads || [it]; }
 function refAtFactory() { const ref = S.data.ref; return p => ref.at(p); }
 function feats(rec) { if (!rec.feats) rec.feats = computeFeatures(rec, refAtFactory()); return rec.feats; }
 
@@ -220,13 +225,39 @@ function rebuild() {
   const cov = d.cov;
   // Stable layout: rows are kept while nothing that decides placement changes (see ReadLayout).
   const sorting = P.sortBy !== 'start' && S.sortPos != null;
-  const sig = JSON.stringify([S.bamSeq, S.view.refId, P.groupBy, P.groupTag, P.sortBy, sorting ? S.sortPos : null, P.filters, P.downsample, LANG]);
+  const sig = JSON.stringify([S.bamSeq, S.view.refId, P.groupBy, P.groupTag, P.sortBy, sorting ? S.sortPos : null, P.filters, P.downsample, LANG, P.viewPairs, P.viewPairs ? P.pairs.maxSpan : 0]);
   if (!S.layout || S.layout.sig !== sig) S.layout = new ReadLayout(sig, 2);
-  const { groups, totalRows: rowCursor } = S.layout.update(reads, groupKey, sorting ? { pos: S.sortPos, key: sortKeyFactory(S.sortPos) } : null);
+  // Layout items: reads, or in pair view units holding both mates ({ key, pos, end, reads, mate }).
+  const items = P.viewPairs ? pairUnits(reads, P.pairs.maxSpan) : reads;
+  const keyOf = P.viewPairs ? (u => u.key) : readKey, firstRead = P.viewPairs ? (u => u.reads[0]) : (r => r);
+  let prio = null;
+  if (sorting) {
+    const k = sortKeyFactory(S.sortPos), p0 = S.sortPos;
+    prio = { pos: p0, key: P.viewPairs ? (u => { const r = u.reads.find(x => x.pos <= p0 && x.end > p0); return r ? k(r) : [7, 0]; }) : k };
+  }
+  const { groups, totalRows: rowCursor } = S.layout.update(items, it => groupKey(firstRead(it)), prio, keyOf);
   // instances: bodies → lines → features on top
   const ib = new InstBuf(Math.max(1024, reads.length * 3));
-  const bodies = [], marks = [];
-  groups.forEach((g, gi) => g.rows.forEach((row, ri) => { const R = g.start + ri; for (const rec of row) { bodies.push([rec, R, gi]); } }));
+  const bodies = [], marks = [], links = [];
+  groups.forEach((g, gi) => g.rows.forEach((row, ri) => {
+    const R = g.start + ri;
+    for (const it of row) {
+      for (const rec of readsOf(it)) bodies.push([rec, R, gi]);
+      if (it.reads) links.push([it, R, gi]);
+    }
+  }));
+  // pair view: a line between mates (to the mate's place when it is not loaded); overlap of mates shaded
+  for (const [u, R, gi] of links) {
+    const a = mapqAlpha(Math.min(...u.reads.map(r => r.mapq)));
+    if (u.reads.length === 2) {
+      const [l, r] = u.reads[0].pos <= u.reads[1].pos ? u.reads : [u.reads[1], u.reads[0]];
+      if (r.pos > l.end) ib.add(l.end - d.start, r.pos - d.start, R, gi, 0.47, 0.53, 0, COL.link, a);
+    } else if (u.mate) {
+      const r = u.reads[0], [m0, m1] = u.mate;
+      if (m0 >= r.end) ib.add(r.end - d.start, m0 - d.start, R, gi, 0.47, 0.53, 0, COL.link, a * 0.6);
+      else if (m1 <= r.pos) ib.add(m1 - d.start, r.pos - d.start, R, gi, 0.47, 0.53, 0, COL.link, a * 0.6);
+    }
+  }
   for (const [rec, R, gi] of bodies) {
     const col = readColor(rec), a = mapqAlpha(rec.mapq);
     // bodies per aligned block, broken at D/N
@@ -250,6 +281,11 @@ function rebuild() {
       else if (f.t === 1) ib.add(f.pos - d.start, f.pos - d.start, R, gi, -0.08, 1.08, 2, COL.ins, Math.max(a, 0.6));
       else if ((f.t === 4 || f.t === 5) && P.showSoftClips && f.len >= 1) ib.add(f.pos - d.start, f.pos - d.start, R, gi, 0, 1, 1.5, COL.clip, Math.max(a, 0.7));
     }
+  }
+  for (const [u, R, gi] of links) {
+    if (u.reads.length !== 2) continue;
+    const [p, q] = u.reads, o0 = Math.max(p.pos, q.pos), o1 = Math.min(p.end, q.end);
+    if (o1 > o0) ib.add(o0 - d.start, o1 - d.start, R, gi, 0, 1, 1, COL.overlap, 0.22);
   }
   S.shown = { reads, cov, groups, totalRows: rowCursor, sampled, total: d.total };
   if (GL_OK) {
@@ -557,7 +593,7 @@ function drawReadsOverlay(rt) {
       const lastRow = Math.min(g.rows.length - 1, Math.ceil((S.scroll + H - rt - gi * gg) / rh) - g.start + 1);
       for (let ri = firstRow; ri <= lastRow; ri++) {
         const y = rt + gg + (g.start + ri) * rh + gi * gg - S.scroll + (rh - (rh >= 5 ? 1 : 0)) / 2;
-        for (const rec of g.rows[ri]) {
+        for (const rec of g.rows[ri].flatMap(readsOf)) {
           if (rec.end < vs || rec.pos > ve) continue;
           const a = mapqAlpha(rec.mapq);
           for (const f of feats(rec)) {
@@ -679,6 +715,7 @@ stage.addEventListener('pointerup', e => {
 stage.addEventListener('dblclick', e => { if (S.contigs && onCanvas(e)) zoomAt(e.offsetX, 0.5); });
 stage.addEventListener('wheel', e => {
   if (!S.contigs || !onCanvas(e)) return;
+  closeMenu();
   e.preventDefault();
   const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY, dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
   if (e.ctrlKey || e.metaKey) { zoomAt(e.offsetX, Math.exp(dy * 0.01)); return; }
@@ -699,7 +736,13 @@ function hitTest(x, y) {
     const row = g.rows[ri];
     let lo = 0, hi = row.length - 1, best = null;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (row[m].pos <= bp + slop) { best = m; lo = m + 1; } else hi = m - 1; }
-    for (let k = best; k != null && k >= 0 && k >= best - 3; k--) if (row[k].end + slop > bp) return { rec: row[k], row: g.start + ri, gi };
+    for (let k = best; k != null && k >= 0 && k >= best - 3; k--) {
+      if (row[k].end + slop <= bp) continue;
+      const rs = readsOf(row[k]);
+      const hit = rs.find(r => r.pos - slop <= bp && r.end + slop > bp)
+        || rs.reduce((a, r) => Math.min(Math.abs(r.pos - bp), Math.abs(r.end - bp)) < Math.min(Math.abs(a.pos - bp), Math.abs(a.end - bp)) ? r : a);
+      return { rec: hit, row: g.start + ri, gi };
+    }
   }
   return null;
 }
@@ -769,7 +812,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === '-' || e.key === '_') zoomAt(W / 2, 2);
   else if (e.key === 's' || e.key === 'ы') sortHere(); // 'ы' / 'р': same keys on a Russian layout
   else if (e.key === 'h' || e.key === 'р') { P.hideToolbar = !P.hideToolbar; applyChrome(); saveProfile(); }
-  else if (e.key === 'Escape') { hideCard(); closePanels(); S.selected = null; S.rubber = null; draw(); }
+  else if (e.key === 'Escape') { hideCard(); closePanels(); closeMenu(); S.selected = null; S.rubber = null; draw(); }
   else return;
   e.preventDefault();
 });
@@ -955,6 +998,49 @@ function applyLanguage() {
   if (S.selected) { hideCard(); S.selected = null; }
 }
 
+// ======================= Context menu (right click on the reads) =======================
+// Pair view, coloring and sorting live here, as in IGV; sorting uses the clicked position.
+function openMenu(x, y) {
+  const m = $('ctx'), pos = Math.max(0, Math.floor(S.view.start + x * S.view.bpPerPx));
+  const item = (act, val, on, label, kind) => `<button class="mi" role="${kind}" aria-checked="${on}" data-act="${act}" data-val="${val}"><span class="mk" aria-hidden="true">${on ? (kind === 'menuitemcheckbox' ? '✓' : '●') : ''}</span>${esc(label)}</button>`;
+  m.innerHTML =
+    item('pairs', '', !!P.viewPairs, t('menu.pairs'), 'menuitemcheckbox') +
+    `<div class="ms">${esc(t('menu.colorBy'))}</div>` +
+    ['none', 'strand', 'pair', 'tag'].map(v => item('color', v, P.colorBy === v, t('color.' + v), 'menuitemradio')).join('') +
+    `<div class="mt"><label for="ctxTag">${esc(t('view.colorTag'))}</label><input id="ctxTag" type="text" maxlength="2" spellcheck="false" autocomplete="off" value="${esc(P.colorTag)}"></div>` +
+    `<div class="ms">${esc(t('menu.sortBy', { pos: fmtInt(pos + 1) }))}</div>` +
+    ['start', 'base', 'mapq', 'strand', 'insert'].map(v => item('sort', v, P.sortBy === v && (v === 'start' || S.sortPos === pos), t('sort.' + v), 'menuitemradio')).join('');
+  m.dataset.pos = pos; m.hidden = false;
+  const r = stage.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.width - w - 8, x + 2)) + 'px';
+  m.style.top = Math.max(8, Math.min(r.height - h - 8, y + 2)) + 'px';
+  const tag = $('ctxTag');
+  tag.oninput = () => { const v = tag.value.trim(); if (v.length === 2) { P.colorTag = v; saveProfile(); if (P.colorBy === 'tag') { rebuild(); draw(); } } };
+  tag.onkeydown = e => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); closeMenu(); } };
+  (m.querySelector('[aria-checked="true"]') || m.querySelector('.mi')).focus({ preventScroll: true });
+}
+function closeMenu() { $('ctx').hidden = true; }
+$('ctx').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act, val = b.dataset.val, pos = +$('ctx').dataset.pos;
+  if (act === 'pairs') P.viewPairs = !P.viewPairs;
+  else if (act === 'color') P.colorBy = val;
+  else if (act === 'sort') { P.sortBy = val; S.sortPos = val === 'start' ? null : pos; }
+  saveProfile(); syncPanel(); closeMenu(); hideCard(); S.selected = null; rebuild(); draw();
+});
+$('ctx').addEventListener('keydown', e => {
+  const items = [...$('ctx').querySelectorAll('.mi')], i = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const n = items.length; items[((i < 0 ? -1 : i) + (e.key === 'ArrowDown' ? 1 : -1) + n) % n].focus(); }
+  else if (e.key === 'Escape') { e.preventDefault(); closeMenu(); }
+});
+stage.addEventListener('contextmenu', e => {
+  if (!onCanvas(e)) return;
+  e.preventDefault();
+  if (!S.bam) return;
+  hideCard(); openMenu(e.offsetX, e.offsetY);
+});
+document.addEventListener('pointerdown', e => { if (!$('ctx').hidden && !$('ctx').contains(e.target)) closeMenu(); }, true);
+
 // ======================= Panels and settings =======================
 function closePanels() { $('panel').hidden = true; $('openPanel').hidden = true; $('viewBtn').setAttribute('aria-expanded', 'false'); $('openBtn').setAttribute('aria-expanded', 'false'); }
 function togglePanel(id, btn) { const el = $(id), was = el.hidden; closePanels(); el.hidden = !was; btn.setAttribute('aria-expanded', String(was)); if (id === 'panel' && was) syncPanel(); }
@@ -999,7 +1085,7 @@ function syncPanel() {
   $('mqMinAlphaOut').textContent = Math.round(P.mapqAlpha.minAlpha * 100) + '%';
   $('alleleThrOut').textContent = Math.round(P.coverage.alleleThreshold * 100) + '%';
   $('covHeightOut').textContent = P.coverage.height + ' px';
-  $('colorTagRow').hidden = P.colorBy !== 'tag'; $('groupTagRow').hidden = P.groupBy !== 'tag';
+  $('groupTagRow').hidden = P.groupBy !== 'tag';
   $('profileJson').value = JSON.stringify(P, null, 2);
   updateMqLegend();
 }
@@ -1022,7 +1108,6 @@ for (const [id, path, type, effect] of CONTROLS) {
     else { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => { if (id === 'sortBy' && S.sortPos == null) S.sortPos = Math.floor(viewCenter()); rebuild(); draw(); }, 30); }
   });
 }
-$('sortHere').onclick = sortHere;
 $('copyProfile').onclick = () => navigator.clipboard.writeText(JSON.stringify(P, null, 2)).then(() => toast(t('profile.copied')), () => { $('profileJson').select(); toast(t('copyFail')); });
 $('applyProfile').onclick = () => {
   try { P = mergeProfile(DEFAULT_PROFILE, JSON.parse($('profileJson').value)); saveProfile(); applyLanguage(); syncPanel(); applyChrome(); rebuild(); draw(); toast(t('profile.applied')); }
