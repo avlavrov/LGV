@@ -724,7 +724,7 @@ async function openBam(bamSrc, baiSrc, faSrc, faiSrc, opts) {
     const bam = await new BamFile(bamSrc, baiSrc).open();
     let fasta = null;
     if (faSrc && faiSrc) { try { fasta = await new IndexedFasta(faSrc, faiSrc, opts.gzi).open(); } catch (e) { toast(t('ref.failed', { msg: errText(e) })); } }
-    const keep = opts.keepRef && S.fasta && bam.refs.some(r => S.fasta.has(r.name));
+    const keep = opts.keepRef && S.fasta && S.fasta.linkTo(bam.refs).matched.length > 0;
     S.bam = bam; if (fasta || !keep) S.fasta = fasta; updateRefInfo(); S.data = null; S.shown = null; GL.n = 0; S.isDemo = !!opts.demo; S.sortPos = null;
     S.bamName = bamSrc.name; $('fileName').textContent = bamSrc.name + (bam.samples.length ? ' · ' + bam.samples.join(', ') : '');
     $('examples').hidden = !S.isDemo;
@@ -805,9 +805,18 @@ async function openReference(ref) {
       fasta = await new IndexedFasta(ref.fa).openUnindexed(ref.size, (done, total) =>
         toast(t('ref.indexing', { name, done: total ? Math.min(100, Math.round(done / total * 100)) + '%' : fmt(done) }), true));
     }
-    if (!S.bam.refs.some(r => fasta.has(r.name))) { toast(t('ref.mismatch')); return; }
+    const link = fasta.linkTo(S.bam.refs);
+    if (!link.matched.length) {
+      const list = (arr, n) => arr.slice(0, n).map(x => `${x.name} (${fmtInt(x.len)} ${t('unit.bp')})`).join(', ') + (arr.length > n ? ` … +${fmtInt(arr.length - n)}` : '');
+      toast(t('ref.mismatchList', { bam: list(S.bam.refs, 3), ref: list([...fasta.idx].map(([name, e]) => ({ name, len: e.len })), 3) }), true);
+      return;
+    }
+    const byLen = link.matched.filter(m => m[2] === 'length');
     S.fasta = fasta; S.data = null; S.shown = null; GL.n = 0; updateRefInfo(); closePanels();
-    toast(fasta.built ? t('ref.indexed', { name, n: fmtInt(fasta.idx.size) }) : t('ref.loaded', { name }));
+    let note = fasta.built ? t('ref.indexed', { name, n: fmtInt(fasta.idx.size) }) : t('ref.loaded', { name });
+    if (byLen.length) note += ' ' + t('ref.byLength', { pairs: byLen.slice(0, 3).map(m => m[0] + ' = ' + m[1]).join(', ') + (byLen.length > 3 ? ' …' : '') });
+    if (link.unmatched.length) note += ' ' + t('ref.partial', { n: fmtInt(link.unmatched.length), names: link.unmatched.slice(0, 3).join(', ') + (link.unmatched.length > 3 ? ' …' : '') });
+    toast(note);
     ensureData();
   } catch (e) { toast(t('ref.failed', { msg: errText(e) })); }
   finally { refBusy = false; }
@@ -914,6 +923,7 @@ $('showToolbar').onclick = () => { P.hideToolbar = false; saveProfile(); applyCh
 function applyChrome() { document.body.classList.toggle('bare', P.hideToolbar); $('showToolbar').hidden = !P.hideToolbar; requestAnimationFrame(resize); }
 
 let toastTimer = 0;
+$('toast').onclick = () => { $('toast').hidden = true; };
 function toast(msg, sticky) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastTimer); if (!sticky) toastTimer = setTimeout(() => el.hidden = true, msg.length > 90 ? 7000 : 3500); }
 
 // ======================= Theme =======================

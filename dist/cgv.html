@@ -110,7 +110,7 @@ textarea { width: 100%; min-height: 140px; border: 1px solid var(--line); border
 .keys dt { font-family: var(--mono); color: var(--muted); }
 .keys dd { margin: 0; }
 
-.toast { position: fixed; z-index: 20; left: 50%; bottom: max(18px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 12.5px; max-width: calc(100% - 32px); }
+.toast { position: fixed; z-index: 20; left: 50%; bottom: max(18px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 12.5px; max-width: min(720px, calc(100% - 32px)); cursor: pointer; overflow-wrap: anywhere; }
 #showToolbar { position: absolute; z-index: 6; top: max(6px, env(safe-area-inset-top, 0px)); right: max(6px, env(safe-area-inset-right, 0px)); opacity: .7; }
 #showToolbar:hover { opacity: 1; }
 body.bare .side { top: 0; }
@@ -286,6 +286,8 @@ const STRINGS = {
     'ref.presetHint': 'Public copies hosted by the IGV team (Broad Institute) on Amazon S3. Use only with data aligned to the same assembly.',
     'ref.loaded': 'Reference loaded: {name}', 'ref.failed': 'Reference not loaded: {msg}', 'ref.needBam': 'Open a BAM first, then add the reference',
     'ref.mismatch': 'The reference has none of the contigs in this BAM — check the assembly',
+    'ref.mismatchList': 'The reference has no sequence that matches the contigs in this BAM. BAM: {bam}. Reference: {ref}. Check that both use the same assembly and naming. (Click to close.)',
+    'ref.byLength': 'Matched by length because the names differ: {pairs}.', 'ref.partial': '{n} BAM contigs have no reference sequence: {names}.',
     'ref.indexing': 'Indexing {name}: {done}', 'ref.indexed': 'Reference indexed in the browser: {name}, {n} sequences. To skip this step next time, add the .fai (samtools faidx).',
     'view.title': 'View',
     'view.reads': 'Reads', 'view.readHeight': 'Read height', 'view.colorBy': 'Color by',
@@ -360,6 +362,8 @@ const STRINGS = {
     'ref.presetHint': 'Публичные копии, которые команда IGV (Broad Institute) держит на Amazon S3. Используйте только с данными, выровненными на ту же сборку.',
     'ref.loaded': 'Референс загружен: {name}', 'ref.failed': 'Референс не загружен: {msg}', 'ref.needBam': 'Сначала откройте BAM, потом добавьте референс',
     'ref.mismatch': 'В референсе нет ни одного контига из этого BAM — проверьте сборку',
+    'ref.mismatchList': 'В референсе нет последовательностей, совпадающих с контигами этого BAM. BAM: {bam}. Референс: {ref}. Проверьте, что сборка и названия одни и те же. (Нажмите, чтобы закрыть.)',
+    'ref.byLength': 'Сопоставлено по длине, так как имена разные: {pairs}.', 'ref.partial': 'Для {n} контигов BAM нет последовательности в референсе: {names}.',
     'ref.indexing': 'Индексирую {name}: {done}', 'ref.indexed': 'Референс проиндексирован в браузере: {name}, последовательностей: {n}. Чтобы в следующий раз не ждать, добавьте .fai (samtools faidx).',
     'view.title': 'Вид',
     'view.reads': 'Риды', 'view.readHeight': 'Высота рида', 'view.colorBy': 'Раскраска',
@@ -746,6 +750,36 @@ function contigKey(name) {
   return k === 'm' ? 'mt' : k;
 }
 
+// Name variants of one sequence: the whole name, the name without a version suffix (NG_012345.1),
+// and each field of an NCBI-style header (gi|224589800|ref|NC_000001.10|).
+function contigKeys(name) {
+  const out = new Set(), add = n => { if (!n) return; const k = contigKey(n); out.add(k); out.add(k.replace(/\.\d+$/, '')); };
+  add(name);
+  if (name.includes('|')) for (const f of name.split('|')) if (f && !/^(gi|ref|gb|emb|dbj|lcl|\d+)$/i.test(f)) add(f);
+  return [...out];
+}
+// Matches BAM contigs to reference sequences: by name (case, chr prefix, version and NCBI header
+// fields ignored), then, for what is left, by a length that only one sequence on each side has.
+function matchContigs(bamRefs, faRefs) {
+  const byKey = new Map();
+  for (const f of faRefs) for (const k of contigKeys(f.name)) if (!byKey.has(k)) byKey.set(k, f.name);
+  const matched = [], used = new Set(), left = [];
+  for (const b of bamRefs) {
+    let hit = null;
+    for (const k of contigKeys(b.name)) if (byKey.has(k)) { hit = byKey.get(k); break; }
+    if (hit) { matched.push([b.name, hit, 'name']); used.add(hit); } else left.push(b);
+  }
+  const count = (arr, len) => arr.filter(x => x.len === len).length;
+  const faLeft = faRefs.filter(f => !used.has(f.name));
+  for (const b of left) {
+    if (count(left, b.len) !== 1) continue;
+    const cand = faLeft.filter(f => f.len === b.len);
+    if (cand.length === 1) { matched.push([b.name, cand[0].name, 'length']); used.add(cand[0].name); }
+  }
+  const m = new Set(matched.map(x => x[0]));
+  return { matched, unmatched: bamRefs.filter(b => !m.has(b.name)).map(b => b.name) };
+}
+
 function passFlags(flag, mapq, flt) {
   if (mapq < flt.minMapq) return false;
   if (flt.hideDuplicates && flag & 1024) return false;
@@ -1033,11 +1067,19 @@ class IndexedFasta {
     return this;
   }
   entry(name) {
+    if (this.alias && this.alias.has(name)) return this.alias.get(name);
     if (this.idx.has(name)) return this.idx.get(name);
     if (!this._keys) { this._keys = new Map(); for (const [n, e] of this.idx) { const k = contigKey(n); if (!this._keys.has(k)) this._keys.set(k, e); } }
     return this._keys.get(contigKey(name)) || null;
   }
   has(name) { return !!this.entry(name); }
+  // Pairs the BAM's contigs with this reference's sequences, so lookups by BAM name work.
+  // Returns { matched: [[bamName, fastaName, how]], unmatched: [bamName] }.
+  linkTo(refs) {
+    const r = matchContigs(refs, [...this.idx].map(([name, e]) => ({ name, len: e.len })));
+    this.alias = new Map(r.matched.map(([b, f]) => [b, this.idx.get(f)]));
+    return r;
+  }
   // Uncompressed bytes [u0, u1) of the FASTA file.
   async _bytes(u0, u1) {
     if (!this.gzi) return this.src.read(u0, u1 - u0);
@@ -1126,7 +1168,7 @@ function packRows(reads, padBp) {
   return rows;
 }
 
-if (typeof module !== 'undefined') module.exports = { contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
 
 // CGV app: state, loading, WebGL read rendering, Canvas2D for ruler/coverage, UI.
 'use strict';
@@ -1854,7 +1896,7 @@ async function openBam(bamSrc, baiSrc, faSrc, faiSrc, opts) {
     const bam = await new BamFile(bamSrc, baiSrc).open();
     let fasta = null;
     if (faSrc && faiSrc) { try { fasta = await new IndexedFasta(faSrc, faiSrc, opts.gzi).open(); } catch (e) { toast(t('ref.failed', { msg: errText(e) })); } }
-    const keep = opts.keepRef && S.fasta && bam.refs.some(r => S.fasta.has(r.name));
+    const keep = opts.keepRef && S.fasta && S.fasta.linkTo(bam.refs).matched.length > 0;
     S.bam = bam; if (fasta || !keep) S.fasta = fasta; updateRefInfo(); S.data = null; S.shown = null; GL.n = 0; S.isDemo = !!opts.demo; S.sortPos = null;
     S.bamName = bamSrc.name; $('fileName').textContent = bamSrc.name + (bam.samples.length ? ' · ' + bam.samples.join(', ') : '');
     $('examples').hidden = !S.isDemo;
@@ -1935,9 +1977,18 @@ async function openReference(ref) {
       fasta = await new IndexedFasta(ref.fa).openUnindexed(ref.size, (done, total) =>
         toast(t('ref.indexing', { name, done: total ? Math.min(100, Math.round(done / total * 100)) + '%' : fmt(done) }), true));
     }
-    if (!S.bam.refs.some(r => fasta.has(r.name))) { toast(t('ref.mismatch')); return; }
+    const link = fasta.linkTo(S.bam.refs);
+    if (!link.matched.length) {
+      const list = (arr, n) => arr.slice(0, n).map(x => `${x.name} (${fmtInt(x.len)} ${t('unit.bp')})`).join(', ') + (arr.length > n ? ` … +${fmtInt(arr.length - n)}` : '');
+      toast(t('ref.mismatchList', { bam: list(S.bam.refs, 3), ref: list([...fasta.idx].map(([name, e]) => ({ name, len: e.len })), 3) }), true);
+      return;
+    }
+    const byLen = link.matched.filter(m => m[2] === 'length');
     S.fasta = fasta; S.data = null; S.shown = null; GL.n = 0; updateRefInfo(); closePanels();
-    toast(fasta.built ? t('ref.indexed', { name, n: fmtInt(fasta.idx.size) }) : t('ref.loaded', { name }));
+    let note = fasta.built ? t('ref.indexed', { name, n: fmtInt(fasta.idx.size) }) : t('ref.loaded', { name });
+    if (byLen.length) note += ' ' + t('ref.byLength', { pairs: byLen.slice(0, 3).map(m => m[0] + ' = ' + m[1]).join(', ') + (byLen.length > 3 ? ' …' : '') });
+    if (link.unmatched.length) note += ' ' + t('ref.partial', { n: fmtInt(link.unmatched.length), names: link.unmatched.slice(0, 3).join(', ') + (link.unmatched.length > 3 ? ' …' : '') });
+    toast(note);
     ensureData();
   } catch (e) { toast(t('ref.failed', { msg: errText(e) })); }
   finally { refBusy = false; }
@@ -2044,6 +2095,7 @@ $('showToolbar').onclick = () => { P.hideToolbar = false; saveProfile(); applyCh
 function applyChrome() { document.body.classList.toggle('bare', P.hideToolbar); $('showToolbar').hidden = !P.hideToolbar; requestAnimationFrame(resize); }
 
 let toastTimer = 0;
+$('toast').onclick = () => { $('toast').hidden = true; };
 function toast(msg, sticky) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastTimer); if (!sticky) toastTimer = setTimeout(() => el.hidden = true, msg.length > 90 ? 7000 : 3500); }
 
 // ======================= Theme =======================

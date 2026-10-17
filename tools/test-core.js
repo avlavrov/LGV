@@ -126,6 +126,18 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     ok(again.reads.length === full.reads.length && again.total === full.total, 'second fetch through the block cache gives the same reads');
     ok(['demo', 'Demo', 'DEMO'].every(n => bam.refId(n) === 0) && C.contigKey('Chr7') === C.contigKey('7') && C.contigKey('chrM') === C.contigKey('MT'), 'contig names are case-insensitive, chr prefix and M/MT optional');
   }
+  // matching BAM contigs to differently named reference sequences
+  {
+    const bamRefs = [{ name: 'LRG_1730', len: 5000 }, { name: 'chr7', len: 159345973 }, { name: 'NG_012345.1', len: 777 }, { name: 'Contig9', len: 4242 }];
+    const fa = [{ name: 'gi|224589800|ref|NC_000007.13|', len: 1 }, { name: 'LRG_1730t1', len: 5000 }, { name: 'Chr7', len: 159345973 }, { name: 'NG_012345', len: 777 }, { name: 'other', len: 999 }];
+    const m = C.matchContigs(bamRefs, fa), got = Object.fromEntries(m.matched.map(x => [x[0], x[1] + '/' + x[2]]));
+    ok(got.chr7 === 'Chr7/name' && got['NG_012345.1'] === 'NG_012345/name' && got.LRG_1730 === 'LRG_1730t1/length' && m.unmatched.join() === 'Contig9',
+      'contig matching: case, version, unique length; ' + JSON.stringify(got) + ' unmatched ' + m.unmatched);
+    const ncbi = C.matchContigs([{ name: 'NC_000007.13', len: 10 }], [{ name: 'gi|224589800|ref|NC_000007.13|', len: 10 }]);
+    ok(ncbi.matched.length === 1 && ncbi.matched[0][2] === 'name', 'NCBI-style FASTA headers match by accession');
+    const amb = C.matchContigs([{ name: 'a', len: 5 }, { name: 'b', len: 5 }], [{ name: 'x', len: 5 }, { name: 'y', len: 5 }]);
+    ok(amb.matched.length === 0, 'equal lengths on several contigs are not guessed');
+  }
   console.log(fails ? `\n${fails} FAILED` : '\nAll checks passed');
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

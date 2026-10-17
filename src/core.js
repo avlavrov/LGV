@@ -311,6 +311,36 @@ function contigKey(name) {
   return k === 'm' ? 'mt' : k;
 }
 
+// Name variants of one sequence: the whole name, the name without a version suffix (NG_012345.1),
+// and each field of an NCBI-style header (gi|224589800|ref|NC_000001.10|).
+function contigKeys(name) {
+  const out = new Set(), add = n => { if (!n) return; const k = contigKey(n); out.add(k); out.add(k.replace(/\.\d+$/, '')); };
+  add(name);
+  if (name.includes('|')) for (const f of name.split('|')) if (f && !/^(gi|ref|gb|emb|dbj|lcl|\d+)$/i.test(f)) add(f);
+  return [...out];
+}
+// Matches BAM contigs to reference sequences: by name (case, chr prefix, version and NCBI header
+// fields ignored), then, for what is left, by a length that only one sequence on each side has.
+function matchContigs(bamRefs, faRefs) {
+  const byKey = new Map();
+  for (const f of faRefs) for (const k of contigKeys(f.name)) if (!byKey.has(k)) byKey.set(k, f.name);
+  const matched = [], used = new Set(), left = [];
+  for (const b of bamRefs) {
+    let hit = null;
+    for (const k of contigKeys(b.name)) if (byKey.has(k)) { hit = byKey.get(k); break; }
+    if (hit) { matched.push([b.name, hit, 'name']); used.add(hit); } else left.push(b);
+  }
+  const count = (arr, len) => arr.filter(x => x.len === len).length;
+  const faLeft = faRefs.filter(f => !used.has(f.name));
+  for (const b of left) {
+    if (count(left, b.len) !== 1) continue;
+    const cand = faLeft.filter(f => f.len === b.len);
+    if (cand.length === 1) { matched.push([b.name, cand[0].name, 'length']); used.add(cand[0].name); }
+  }
+  const m = new Set(matched.map(x => x[0]));
+  return { matched, unmatched: bamRefs.filter(b => !m.has(b.name)).map(b => b.name) };
+}
+
 function passFlags(flag, mapq, flt) {
   if (mapq < flt.minMapq) return false;
   if (flt.hideDuplicates && flag & 1024) return false;
@@ -598,11 +628,19 @@ class IndexedFasta {
     return this;
   }
   entry(name) {
+    if (this.alias && this.alias.has(name)) return this.alias.get(name);
     if (this.idx.has(name)) return this.idx.get(name);
     if (!this._keys) { this._keys = new Map(); for (const [n, e] of this.idx) { const k = contigKey(n); if (!this._keys.has(k)) this._keys.set(k, e); } }
     return this._keys.get(contigKey(name)) || null;
   }
   has(name) { return !!this.entry(name); }
+  // Pairs the BAM's contigs with this reference's sequences, so lookups by BAM name work.
+  // Returns { matched: [[bamName, fastaName, how]], unmatched: [bamName] }.
+  linkTo(refs) {
+    const r = matchContigs(refs, [...this.idx].map(([name, e]) => ({ name, len: e.len })));
+    this.alias = new Map(r.matched.map(([b, f]) => [b, this.idx.get(f)]));
+    return r;
+  }
   // Uncompressed bytes [u0, u1) of the FASTA file.
   async _bytes(u0, u1) {
     if (!this.gzi) return this.src.read(u0, u1 - u0);
@@ -691,4 +729,4 @@ function packRows(reads, padBp) {
   return rows;
 }
 
-if (typeof module !== 'undefined') module.exports = { contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
