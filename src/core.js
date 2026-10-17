@@ -628,19 +628,11 @@ class IndexedFasta {
     return this;
   }
   entry(name) {
-    if (this.alias && this.alias.has(name)) return this.alias.get(name);
     if (this.idx.has(name)) return this.idx.get(name);
     if (!this._keys) { this._keys = new Map(); for (const [n, e] of this.idx) { const k = contigKey(n); if (!this._keys.has(k)) this._keys.set(k, e); } }
     return this._keys.get(contigKey(name)) || null;
   }
   has(name) { return !!this.entry(name); }
-  // Pairs the BAM's contigs with this reference's sequences, so lookups by BAM name work.
-  // Returns { matched: [[bamName, fastaName, how]], unmatched: [bamName] }.
-  linkTo(refs) {
-    const r = matchContigs(refs, [...this.idx].map(([name, e]) => ({ name, len: e.len })));
-    this.alias = new Map(r.matched.map(([b, f]) => [b, this.idx.get(f)]));
-    return r;
-  }
   // Uncompressed bytes [u0, u1) of the FASTA file.
   async _bytes(u0, u1) {
     if (!this.gzi) return this.src.read(u0, u1 - u0);

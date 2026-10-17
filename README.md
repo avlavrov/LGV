@@ -14,10 +14,16 @@ data. To view your own data, press **Open**:
   files onto the window. Files are read in pieces straight from disk and never uploaded.
 - **By link**: an HTTPS link to a BAM. The server must allow CORS and Range requests.
   An access token can be given; it is not saved.
-- **Reference**: add a FASTA at any time, separately from the BAM. One `.fa` / `.fasta` file is enough: without a `.fai` CGV indexes it in the browser in one pass (plain, bgzip or gzip). With an index it opens instantly — `.fa` + `.fai`, or
-  bgzip-compressed `.fa.gz` + `.fai` + `.gzi`, from disk or by link. Public GRCh38, GRCh37
-  and T2T-CHM13 v2.0 copies (hosted by the IGV team on Amazon S3) are offered as presets.
-  Without a reference, CGV rebuilds reference bases from MD tags where reads cover them.
+- **Reference**: the reference sets the genome, as in IGV. Loading one switches the genome
+  and closes open samples; the reference itself can be browsed right away. Samples opened
+  afterwards are matched to it: contig names are compared without case, `chr` prefix or
+  version suffix (and with NCBI header fields), then remaining contigs pair up by a length
+  only one sequence on each side has. A sample with no matching contig is refused with
+  both lists shown. One `.fa` / `.fasta` file is enough: without a `.fai` CGV indexes it in
+  the browser in one pass (plain, bgzip or gzip); with `.fai` (and `.gzi` for `.fa.gz`) it
+  opens at once. Public GRCh38, GRCh37 and T2T-CHM13 v2.0 copies (hosted by the IGV team
+  on Amazon S3) are offered as presets. Without a reference, the sample's header gives the
+  coordinates and reference bases are rebuilt from MD tags where reads cover them.
 
 The interface is in English; Russian is available under **View → Screen → Language**.
 More languages are one dictionary in `src/i18n.js`.
