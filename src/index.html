@@ -112,6 +112,9 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 textarea { width: 100%; min-height: 140px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font: 11px/1.45 var(--mono); padding: 8px; resize: vertical; }
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.field textarea.links { grid-column: 1 / -1; min-height: 52px; font: 12px/1.4 var(--mono); }
+.folder-list { margin-top: 10px; display: grid; gap: 4px; }
+.folder-list .chk { display: flex; gap: 8px; align-items: center; font: 12px var(--mono); overflow-wrap: anywhere; }
 .drop-zone { display: grid; place-items: center; gap: 6px; padding: 18px 12px; border: 1.5px dashed var(--line); border-radius: 8px; text-align: center; color: var(--muted); cursor: pointer; }
 .drop-zone:hover { border-color: var(--accent); color: var(--fg); }
 .drop-zone strong { color: var(--fg); }
@@ -164,11 +167,15 @@ body.bare .side { top: 0; }
       <h2 data-i18n="open.disk">From disk</h2>
       <label class="drop-zone" for="pickFiles"><strong data-i18n="open.pick">Choose .bam and .bai</strong><span data-i18n="open.pickSub">you can add .fa and .fai</span><span data-i18n="open.pickDrop">or drop files onto the screen</span></label>
       <input id="pickFiles" type="file" multiple accept=".bam,.bai,.fa,.fasta,.fna,.gz,.fai,.gzi" hidden>
+      <div class="row-actions"><label class="btn" for="pickFolder" data-i18n="open.folder">Choose a folder</label></div>
+      <input id="pickFolder" type="file" webkitdirectory multiple hidden>
+      <p class="hint" data-i18n="open.indexHint"></p>
+      <div id="folderList" class="folder-list" hidden></div>
       <p class="hint" data-i18n="open.diskHint">Files are read in pieces straight from disk and are never uploaded.</p>
     </section>
     <section>
       <h2 data-i18n="open.url">By link</h2>
-      <div class="field"><label for="urlBam" data-i18n="open.urlBam">BAM</label><input id="urlBam" type="url" placeholder="https://…/sample.bam"></div>
+      <div class="field"><label for="urlBam" data-i18n="open.urlBam">BAM</label><textarea id="urlBam" class="links" rows="2" spellcheck="false" autocomplete="off" placeholder="https://…/sample.bam"></textarea></div>
       <div class="field"><label for="urlBai" data-i18n="open.urlBai">Index (if not next to the BAM)</label><input id="urlBai" type="url" data-i18n-ph="open.urlBaiPh" placeholder="default: link + .bai"></div>
       <div class="field"><label for="urlAuth" data-i18n="open.urlAuth">Access token (optional)</label><input id="urlAuth" type="password" autocomplete="off" placeholder="Bearer …"></div>
       <div class="row-actions"><button class="btn primary" id="openUrl" data-i18n="open.urlBtn">Open link</button></div>

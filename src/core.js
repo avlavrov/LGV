@@ -48,7 +48,7 @@ class UrlSource {
 const CGV_ERR_EN = {
   network: 'Cannot reach {name}. Check the link and that the server allows CORS and Range requests.',
   auth: 'Access denied ({status}): {name}. The link has expired or a token is needed.',
-  notfound: 'File not found (404): {name}', http: 'The server answered {status} for {name}',
+  notfound: 'File not found (404): {name}', noIndex: 'No index found for {name} (tried {tried})', http: 'The server answered {status} for {name}',
   bgzf: 'The file is damaged or not BGZF (offset {offset})', bsize: 'A BGZF block has no BSIZE field',
   notBai: 'This is not a BAI index (.bai)', notBam: 'This is not a BAM file (no BAM signature)', header: 'Could not read the BAM header',
   headerCut: 'The BAM header is cut short — the file is incomplete', headerBig: 'The BAM header is too large',
@@ -174,10 +174,26 @@ const CIGAR_OPS = 'MIDNSHP=X';
 
 class BamFile {
   constructor(bamSource, baiSource) { this.src = bamSource; this.baiSrc = baiSource; this.maxSpan = 0; }
+  // baiSource may be a list of candidates (e.g. sample.bam.bai, then sample.bai): the first one that
+  // exists is used.
   async open() {
-    const [idx] = await Promise.all([this.baiSrc.readAll(), this._readHeader()]);
+    const [idx] = await Promise.all([this._readIndex(), this._readHeader()]);
     this.index = new BaiIndex(idx);
     return this;
+  }
+  async _readIndex() {
+    const list = Array.isArray(this.baiSrc) ? this.baiSrc : [this.baiSrc];
+    let first = null;
+    for (const s of list) {
+      try { const b = await s.readAll(); this.baiSrc = s; return b; }
+      catch (e) {
+        // a missing object answers 404, or 403 on buckets without listing rights, or fails CORS
+        if (list.length === 1 || !['notfound', 'auth', 'http', 'network'].includes(e.code)) throw e;
+        if (!first || first.code === 'notfound') first = e;
+      }
+    }
+    if (first.code === 'notfound' || first.code === 'auth') throw new CgvError('noIndex', { name: this.src.name, tried: list.map(s => s.name).join(', ') });
+    throw first;
   }
   async _readHeader() {
     let size = 1 << 16;

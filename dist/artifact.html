@@ -112,6 +112,9 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 textarea { width: 100%; min-height: 140px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font: 11px/1.45 var(--mono); padding: 8px; resize: vertical; }
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.field textarea.links { grid-column: 1 / -1; min-height: 52px; font: 12px/1.4 var(--mono); }
+.folder-list { margin-top: 10px; display: grid; gap: 4px; }
+.folder-list .chk { display: flex; gap: 8px; align-items: center; font: 12px var(--mono); overflow-wrap: anywhere; }
 .drop-zone { display: grid; place-items: center; gap: 6px; padding: 18px 12px; border: 1.5px dashed var(--line); border-radius: 8px; text-align: center; color: var(--muted); cursor: pointer; }
 .drop-zone:hover { border-color: var(--accent); color: var(--fg); }
 .drop-zone strong { color: var(--fg); }
@@ -164,11 +167,15 @@ body.bare .side { top: 0; }
       <h2 data-i18n="open.disk">From disk</h2>
       <label class="drop-zone" for="pickFiles"><strong data-i18n="open.pick">Choose .bam and .bai</strong><span data-i18n="open.pickSub">you can add .fa and .fai</span><span data-i18n="open.pickDrop">or drop files onto the screen</span></label>
       <input id="pickFiles" type="file" multiple accept=".bam,.bai,.fa,.fasta,.fna,.gz,.fai,.gzi" hidden>
+      <div class="row-actions"><label class="btn" for="pickFolder" data-i18n="open.folder">Choose a folder</label></div>
+      <input id="pickFolder" type="file" webkitdirectory multiple hidden>
+      <p class="hint" data-i18n="open.indexHint"></p>
+      <div id="folderList" class="folder-list" hidden></div>
       <p class="hint" data-i18n="open.diskHint">Files are read in pieces straight from disk and are never uploaded.</p>
     </section>
     <section>
       <h2 data-i18n="open.url">By link</h2>
-      <div class="field"><label for="urlBam" data-i18n="open.urlBam">BAM</label><input id="urlBam" type="url" placeholder="https://…/sample.bam"></div>
+      <div class="field"><label for="urlBam" data-i18n="open.urlBam">BAM</label><textarea id="urlBam" class="links" rows="2" spellcheck="false" autocomplete="off" placeholder="https://…/sample.bam"></textarea></div>
       <div class="field"><label for="urlBai" data-i18n="open.urlBai">Index (if not next to the BAM)</label><input id="urlBai" type="url" data-i18n-ph="open.urlBaiPh" placeholder="default: link + .bai"></div>
       <div class="field"><label for="urlAuth" data-i18n="open.urlAuth">Access token (optional)</label><input id="urlAuth" type="password" autocomplete="off" placeholder="Bearer …"></div>
       <div class="row-actions"><button class="btn primary" id="openUrl" data-i18n="open.urlBtn">Open link</button></div>
@@ -284,7 +291,13 @@ const STRINGS = {
     'open.title': 'Open data',
     'open.disk': 'From disk', 'open.pick': 'Choose .bam and .bai', 'open.pickSub': 'you can add a .fa / .fasta reference', 'open.pickDrop': 'or drop files onto the screen',
     'open.diskHint': 'Files are read in pieces straight from disk and are never uploaded.',
-    'open.url': 'By link', 'open.urlBam': 'BAM', 'open.urlBai': 'Index (if not next to the BAM)', 'open.urlBaiPh': 'default: link + .bai',
+    'open.url': 'By link', 'open.urlBai': 'Index (if not next to the BAM)',
+    'open.folder': 'Choose a folder', 'open.indexHint': 'Each .bam is paired with its index by name (sample.bam.bai or sample.bai). Choose several samples at once, or a whole folder: a web page can read only the files you choose, so for the index to be found it has to be chosen too.',
+    'open.urlBam': 'BAM — one or more links, one per line', 'open.urlBaiPh': 'default: next to the BAM (.bam.bai, then .bai)',
+    'files.noIndex': 'No index (.bai) chosen for {names}. A web page can read only the files you choose: select the .bam together with its .bai, or choose the whole folder.',
+    'files.noIndexSome': 'Skipped, no index chosen: {names}.', 'files.needBam': 'Choose the .bam together with its .bai',
+    'folder.found': 'Samples in this folder: {n}. Choose which to open.', 'folder.noIndex': 'no index next to it', 'folder.open': 'Open selected', 'folder.none': 'Nothing selected',
+    'tracks.n': '{n} samples', 'sample.failed': 'Could not open {name}: {msg}',
     'open.urlAuth': 'Access token (optional)', 'open.urlBtn': 'Open link',
     'open.urlHint': 'The server must allow CORS and Range requests. The token is not saved. On claude.ai, loading by link is blocked by the platform security policy — open cgv.html locally to use links.',
     'open.demo': 'Demo', 'open.demoBtn': 'Synthetic demo data', 'open.demoHint': '40 kb of made-up sequence, 30×, five known variants.',
@@ -361,7 +374,7 @@ const STRINGS = {
     'unit.bp': 'bp', 'unit.kb': 'kb', 'unit.mb': 'Mb',
     'err.network': 'Cannot reach {name}. Check the link and that the server allows CORS and Range requests.',
     'err.auth': 'Access denied ({status}): {name}. The link has expired or a token is needed.',
-    'err.notfound': 'File not found (404): {name}', 'err.http': 'The server answered {status} for {name}',
+    'err.notfound': 'File not found (404): {name}', 'err.noIndex': 'No index found for {name} (tried {tried})', 'err.http': 'The server answered {status} for {name}',
     'err.bgzf': 'The file is damaged or not BGZF (offset {offset})', 'err.bsize': 'A BGZF block has no BSIZE field',
     'err.notBai': 'This is not a BAI index (.bai)', 'err.notBam': 'This is not a BAM file (no BAM signature)', 'err.header': 'Could not read the BAM header',
     'err.headerCut': 'The BAM header is cut short — the file is incomplete', 'err.headerBig': 'The BAM header is too large',
@@ -377,7 +390,14 @@ const STRINGS = {
     'open.title': 'Открыть данные',
     'open.disk': 'С диска', 'open.pick': 'Выберите .bam и .bai', 'open.pickSub': 'можно добавить референс .fa / .fasta', 'open.pickDrop': 'или перетащите файлы на экран',
     'open.diskHint': 'Файлы читаются кусками прямо с диска и никуда не отправляются.',
-    'open.url': 'По ссылке', 'open.urlBam': 'BAM', 'open.urlBai': 'Индекс (если не рядом с BAM)', 'open.urlBaiPh': 'по умолчанию: ссылка + .bai',
+    'open.url': 'По ссылке', 'open.urlBai': 'Индекс (если не рядом с BAM)',
+    'open.folder': 'Выбрать папку', 'open.indexHint': 'Каждый .bam сопоставляется со своим индексом по имени (sample.bam.bai или sample.bai). Выберите сразу несколько образцов или целую папку: веб-страница может читать только выбранные вами файлы, поэтому индекс тоже нужно выбрать.',
+    'open.urlBam': 'BAM — одна или несколько ссылок, по одной в строке', 'open.urlBaiPh': 'по умолчанию: рядом с BAM (.bam.bai, затем .bai)',
+    'files.noIndex': 'Для {names} не выбран индекс (.bai). Веб-страница может читать только выбранные вами файлы: выберите .bam вместе с .bai или выберите всю папку.',
+    'files.noIndexSome': 'Пропущены, нет индекса: {names}.', 'files.needBam': 'Выберите .bam вместе с его .bai',
+    'folder.found': 'Образцов в папке: {n}. Отметьте, какие открыть.', 'folder.noIndex': 'рядом нет индекса', 'folder.open': 'Открыть выбранные', 'folder.none': 'Ничего не выбрано',
+    'tracks.n': 'образцов: {n}', 'sample.failed': 'Не удалось открыть {name}: {msg}',
+    'err.noIndex': 'Не найден индекс для {name} (проверены {tried})',
     'open.urlAuth': 'Токен доступа (необязательно)', 'open.urlBtn': 'Открыть по ссылке',
     'open.urlHint': 'Сервер должен разрешать CORS и Range-запросы. Токен не сохраняется. На claude.ai загрузка по ссылке заблокирована политикой безопасности платформы — для ссылок откройте cgv.html локально.',
     'open.demo': 'Демо', 'open.demoBtn': 'Синтетические демо-данные', 'open.demoHint': '40 т.п.н. выдуманной последовательности, 30×, пять известных вариантов.',
@@ -530,7 +550,7 @@ class UrlSource {
 const CGV_ERR_EN = {
   network: 'Cannot reach {name}. Check the link and that the server allows CORS and Range requests.',
   auth: 'Access denied ({status}): {name}. The link has expired or a token is needed.',
-  notfound: 'File not found (404): {name}', http: 'The server answered {status} for {name}',
+  notfound: 'File not found (404): {name}', noIndex: 'No index found for {name} (tried {tried})', http: 'The server answered {status} for {name}',
   bgzf: 'The file is damaged or not BGZF (offset {offset})', bsize: 'A BGZF block has no BSIZE field',
   notBai: 'This is not a BAI index (.bai)', notBam: 'This is not a BAM file (no BAM signature)', header: 'Could not read the BAM header',
   headerCut: 'The BAM header is cut short — the file is incomplete', headerBig: 'The BAM header is too large',
@@ -656,10 +676,26 @@ const CIGAR_OPS = 'MIDNSHP=X';
 
 class BamFile {
   constructor(bamSource, baiSource) { this.src = bamSource; this.baiSrc = baiSource; this.maxSpan = 0; }
+  // baiSource may be a list of candidates (e.g. sample.bam.bai, then sample.bai): the first one that
+  // exists is used.
   async open() {
-    const [idx] = await Promise.all([this.baiSrc.readAll(), this._readHeader()]);
+    const [idx] = await Promise.all([this._readIndex(), this._readHeader()]);
     this.index = new BaiIndex(idx);
     return this;
+  }
+  async _readIndex() {
+    const list = Array.isArray(this.baiSrc) ? this.baiSrc : [this.baiSrc];
+    let first = null;
+    for (const s of list) {
+      try { const b = await s.readAll(); this.baiSrc = s; return b; }
+      catch (e) {
+        // a missing object answers 404, or 403 on buckets without listing rights, or fails CORS
+        if (list.length === 1 || !['notfound', 'auth', 'http', 'network'].includes(e.code)) throw e;
+        if (!first || first.code === 'notfound') first = e;
+      }
+    }
+    if (first.code === 'notfound' || first.code === 'auth') throw new CgvError('noIndex', { name: this.src.name, tried: list.map(s => s.name).join(', ') });
+    throw first;
   }
   async _readHeader() {
     let size = 1 << 16;
@@ -1497,12 +1533,14 @@ if (P.version < 2) { if (P.readHeight === 8) P.readHeight = 10; P.version = 2; t
 function saveProfile() { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable: the profile lives until reload */ } }
 
 // ======================= State =======================
+// Samples are tracks, stacked under one ruler and reference. All tracks show the same window.
+// Track: { id, bam, name, demo, map (view contig → BAM ref), back (BAM ref → view contig),
+//          data { reads, cov, insert, total, sampled }, shown, layout, scroll, msg, vao, fbuf, cbuf, n }
 const S = {
-  bam: null, fasta: null, bamName: '', isDemo: false,
+  tracks: [], trackSeq: 0, fasta: null,
   view: { refId: 0, start: 0, bpPerPx: 1 },
-  data: null,          // { refId, start, end, reads, ref (SparseRef), cov (SparseCoverage), insert }
-  shown: null,         // { reads, cov, groups, inst }
-  scroll: 0, sortPos: null, selected: null,
+  data: null,          // the loaded window, shared by all tracks: { refId, start, end, ref (SparseRef) }
+  sortPos: null, selected: null, // selected: { T, rec, row, gi }
   loading: false, loadToken: 0, forceLoad: false,
   stats: { reads: 0, loadMs: 0, buildMs: 0, drawMs: 0, bytes: 0 },
   msg: null,
@@ -1514,10 +1552,19 @@ const stage = $('stage'), glCanvas = $('gl'), ov = $('ov'), ctx = ov.getContext(
 let W = 0, H = 0, DPR = 1;
 
 // track geometry (CSS px)
-const RULER_H = 26, REF_H = 14;
-function covTop() { return RULER_H + REF_H + 4; }
-function readsTop() { return covTop() + P.coverage.height + 6; }
+const RULER_H = 26, REF_H = 14, TRACK_HDR = 18;
+function covTop() { return RULER_H + REF_H + 4; } // where the tracks begin
 function groupGap() { return P.groupBy === 'none' ? 0 : 20; }
+// Vertical place of track i: the space under the ruler is shared equally. With one track there is
+// no header and the layout is the same as before tracks existed.
+function trackGeom(i) {
+  const N = Math.max(1, S.tracks.length), top = covTop(), slot = (H - top) / N, y0 = top + i * slot;
+  const hdr = N > 1 ? TRACK_HDR : 0;
+  const covH = N > 1 ? Math.max(14, Math.min(P.coverage.height, Math.round((slot - hdr) * 0.3))) : P.coverage.height;
+  const ct = y0 + hdr, rt = ct + covH + 6;
+  return { y0, hdr, covTop: ct, covH, readsTop: rt, bottom: Math.max(rt, y0 + slot - (i < N - 1 ? 4 : 0)), end: y0 + slot };
+}
+function trackAtY(y) { for (let i = 0; i < S.tracks.length; i++) { const g = trackGeom(i); if (y >= g.y0 && y < g.end) return i; } return -1; }
 
 // ======================= Colors (from CSS tokens) =======================
 let COL = {};
@@ -1581,20 +1628,27 @@ function initGL() {
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
   GL.prog = prog;
   GL.u = {}; for (const n of ['u_viewStart', 'u_bpPerPx', 'u_rowH', 'u_gap', 'u_grpGap', 'u_scroll', 'u_top', 'u_size', 'u_mmFade']) GL.u[n] = gl.getUniformLocation(prog, n);
-  GL.vao = gl.createVertexArray(); gl.bindVertexArray(GL.vao);
-  const quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  GL.quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, GL.quad);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-  GL.fbuf = gl.createBuffer(); GL.cbuf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, GL.fbuf);
-  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 28, 0); gl.vertexAttribDivisor(1, 1);
-  gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 28, 16); gl.vertexAttribDivisor(2, 1);
-  gl.bindBuffer(gl.ARRAY_BUFFER, GL.cbuf);
-  gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.UNSIGNED_BYTE, true, 0, 0); gl.vertexAttribDivisor(3, 1);
+  Object.assign(GL, makeVao());
   gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  GL.n = 0;
   return true;
 }
+// One vertex array + instance buffers; each track has its own.
+function makeVao() {
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, GL.quad);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  const fbuf = gl.createBuffer(), cbuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, fbuf);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 28, 0); gl.vertexAttribDivisor(1, 1);
+  gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 28, 16); gl.vertexAttribDivisor(2, 1);
+  gl.bindBuffer(gl.ARRAY_BUFFER, cbuf);
+  gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.UNSIGNED_BYTE, true, 0, 0); gl.vertexAttribDivisor(3, 1);
+  gl.bindVertexArray(null);
+  return { vao, fbuf, cbuf, n: 0 };
+}
+function freeVao(o) { if (!GL_OK || !o.vao) return; gl.deleteVertexArray(o.vao); gl.deleteBuffer(o.fbuf); gl.deleteBuffer(o.cbuf); o.vao = null; }
 const GL_OK = (() => { try { return initGL(); } catch (e) { console.error(e); return false; } })();
 // Which GPU path the browser uses: a software renderer is the usual cause of slow frames.
 const GL_RENDERER = (() => { if (!GL_OK) return ''; try { const d = gl.getExtension('WEBGL_debug_renderer_info'); return String(gl.getParameter(d ? d.UNMASKED_RENDERER_WEBGL : gl.RENDERER)); } catch (e) { return ''; } })();
@@ -1634,12 +1688,12 @@ function mapqAlpha(m) {
 function qualAlpha(q) { if (!P.baseQualityShading || q === 255) return 1; if (q < 5) return 0.2; if (q < 20) return 0.2 + 0.8 * (q - 5) / 15; return 1; }
 function hashStr(s) { let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 
-function readColor(rec) {
+function readColor(rec, T) {
   switch (P.colorBy) {
     case 'strand': return rec.flag & F_REV ? COL.rev : COL.fwd;
     case 'tag': { const v = recTags(rec)[P.colorTag]; return v === undefined ? COL.read : COL.cat[hashStr(v) % 8]; }
     case 'pair': {
-      const o = pairOrientation(rec), ins = S.data.insert;
+      const o = pairOrientation(rec), ins = T.data.insert;
       if (o === 'other') return COL.cat[(rec.mateRef >>> 0) % 8];
       if (o === 'mateUnmapped') return COL.mu;
       if (o === 'RF') return COL.rf;
@@ -1675,22 +1729,29 @@ function clipMismatches(rec) {
 }
 function feats(rec) { if (!rec.feats) rec.feats = computeFeatures(rec, refAtFactory()); return rec.feats; }
 
-// Full rebuild: filters → downsampling → coverage → groups → layout → sort → instances.
 function rebuild() {
-  const d = S.data; if (!d) { S.shown = null; GL.n = 0; return; }
   const t0 = performance.now();
+  for (const T of S.tracks) rebuildTrack(T);
+  S.stats.buildMs = performance.now() - t0;
+  S.stats.reads = S.tracks.reduce((a, T) => a + (T.data ? T.data.total : 0), 0);
+  clampScroll();
+}
+// Rebuild of one track: layout → sort → instances. Filters and downsampling acted while loading.
+function rebuildTrack(T) {
+  const d = S.data, td = T.data;
+  if (!d || !td) { T.shown = null; T.n = 0; return; }
   // reads are already filtered (and downsampled) while loading; coverage came with them
-  let reads = d.reads;
-  let sampled = reads.length < d.total;
+  let reads = td.reads;
+  let sampled = reads.length < td.total;
   if (reads.length > P.maxReads) { // safety cap; the choice depends on each read alone, not on its neighbours
     const keep = Math.floor(4294967296 * P.maxReads / reads.length);
     reads = reads.filter(r => hashStr(readKey(r)) < keep); sampled = true;
   }
-  const cov = d.cov;
+  const cov = td.cov;
   // Stable layout: rows are kept while nothing that decides placement changes (see ReadLayout).
   const sorting = P.sortBy !== 'start' && S.sortPos != null;
-  const sig = JSON.stringify([S.bamSeq, S.view.refId, P.groupBy, P.groupTag, P.sortBy, sorting ? S.sortPos : null, P.filters, P.downsample, LANG, P.viewPairs, P.viewPairs ? P.pairs.maxSpan : 0, !!P.showSoftClips]);
-  if (!S.layout || S.layout.sig !== sig) S.layout = new ReadLayout(sig, 2);
+  const sig = JSON.stringify([T.id, S.view.refId, P.groupBy, P.groupTag, P.sortBy, sorting ? S.sortPos : null, P.filters, P.downsample, LANG, P.viewPairs, P.viewPairs ? P.pairs.maxSpan : 0, !!P.showSoftClips]);
+  if (!T.layout || T.layout.sig !== sig) T.layout = new ReadLayout(sig, 2);
   // Layout items: reads, or in pair view units holding both mates ({ key, pos, end, reads, mate }).
   // With soft clips shown, items span the clipped bases too, so the layout leaves room for them.
   const clips = !!P.showSoftClips, units = P.viewPairs || clips;
@@ -1703,7 +1764,7 @@ function rebuild() {
     const k = sortKeyFactory(S.sortPos), p0 = S.sortPos;
     prio = { pos: p0, key: units ? (u => { const r = u.reads.find(x => x.pos <= p0 && x.end > p0); return r ? k(r) : [7, 0]; }) : k };
   }
-  const { groups, totalRows: rowCursor } = S.layout.update(items, it => groupKey(firstRead(it)), prio, keyOf);
+  const { groups, totalRows: rowCursor } = T.layout.update(items, it => groupKey(firstRead(it)), prio, keyOf);
   // instances: bodies → lines → features on top
   const ib = new InstBuf(Math.max(1024, reads.length * 3));
   const bodies = [], marks = [], links = [];
@@ -1727,7 +1788,7 @@ function rebuild() {
     }
   }
   for (const [rec, R, gi] of bodies) {
-    const col = readColor(rec), a = mapqAlpha(rec.mapq);
+    const col = readColor(rec, T), a = mapqAlpha(rec.mapq);
     // bodies per aligned block, broken at D/N
     let r = rec.pos, segStart = rec.pos;
     for (const c of rec.cigar) {
@@ -1761,15 +1822,13 @@ function rebuild() {
     const [p, q] = u.reads, o0 = Math.max(p.pos, q.pos), o1 = Math.min(p.end, q.end);
     if (o1 > o0) ib.add(o0 - d.start, o1 - d.start, R, gi, 0, 1, 1, COL.overlap, 0.22);
   }
-  S.shown = { reads, cov, groups, totalRows: rowCursor, sampled, total: d.total };
+  T.shown = { reads, cov, groups, totalRows: rowCursor, sampled, total: td.total };
   if (GL_OK) {
-    gl.bindBuffer(gl.ARRAY_BUFFER, GL.fbuf); gl.bufferData(gl.ARRAY_BUFFER, ib.f.subarray(0, ib.n * 7), gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, GL.cbuf); gl.bufferData(gl.ARRAY_BUFFER, ib.c.subarray(0, ib.n * 4), gl.STATIC_DRAW);
-    GL.n = ib.n;
+    if (!T.vao) Object.assign(T, makeVao());
+    gl.bindBuffer(gl.ARRAY_BUFFER, T.fbuf); gl.bufferData(gl.ARRAY_BUFFER, ib.f.subarray(0, ib.n * 7), gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, T.cbuf); gl.bufferData(gl.ARRAY_BUFFER, ib.c.subarray(0, ib.n * 4), gl.STATIC_DRAW);
+    T.n = ib.n;
   }
-  S.stats.buildMs = performance.now() - t0;
-  S.stats.reads = d.total;
-  clampScroll();
 }
 
 // A position where non-reference alleles pass the threshold (same rule as the coverage highlight).
@@ -1797,7 +1856,7 @@ function sortKeyFactory(pos) {
 
 // ======================= View =======================
 // Coordinates come from the reference when one is loaded, otherwise from the BAM header.
-// S.contigs: [{ name, len }]; S.bamMap[viewContig] = BAM ref id or -1; S.bamBack[bamRef] = view contig or -1.
+// S.contigs: [{ name, len }]; per track T.map[viewContig] = BAM ref id or -1; T.back[bamRef] = view contig or -1.
 function refLen() { return S.contigs ? S.contigs[S.view.refId].len : 0; }
 function contigId(name) {
   if (!S.contigs) return -1;
@@ -1816,18 +1875,19 @@ function clampView() {
 }
 // Without groups the scroll range follows the rows the visible part uses, so a deep spot off screen
 // does not leave empty space under a coverage dip. With groups their offsets stay fixed.
-function contentHeight() {
-  const sh = S.shown; if (!sh) return 0;
+function contentHeight(T) {
+  const sh = T.shown; if (!sh) return 0;
   if (sh.groups.length === 1) return rowsInUse(sh.groups[0], S.view.start, viewEnd()) * P.readHeight;
   return sh.totalRows * P.readHeight + sh.groups.length * groupGap();
 }
-function clampScroll() { const maxS = Math.max(0, contentHeight() - (H - readsTop()) + 24); S.scroll = Math.min(maxS, Math.max(0, S.scroll)); }
+function clampTrackScroll(T, i) { const g = trackGeom(i), maxS = Math.max(0, contentHeight(T) - (g.bottom - g.readsTop) + 24); T.scroll = Math.min(maxS, Math.max(0, T.scroll || 0)); }
+function clampScroll() { S.tracks.forEach(clampTrackScroll); }
 function goto(refId, start, end) {
   S.view.refId = refId;
   const span = Math.max(20, end - start);
   S.view.bpPerPx = span / Math.max(1, W);
   S.view.start = start;
-  clampView(); S.scroll = 0; requestLoad(); draw(); syncLocus();
+  clampView(); for (const T of S.tracks) T.scroll = 0; requestLoad(); draw(); syncLocus();
 }
 function zoomAt(px, factor) {
   const bp = S.view.start + px * S.view.bpPerPx;
@@ -1847,16 +1907,20 @@ async function ensureData() {
   if (d && d.refId === S.view.refId && vs >= d.start && ve <= d.end) return;
   const span = ve - vs, margin = Math.round(Math.min(span, 20000) / 2);
   let ls = Math.max(0, vs - margin); const le = Math.min(refLen(), ve + margin);
+  const tracks = S.tracks.slice(), refId = S.view.refId;
   // with downsampling, reads starting before the query start are left out (see BamFile.fetch), so the
   // query starts one read length earlier, on a window boundary; reads kept never depend on the query
-  if (S.bam && P.downsample.enabled) { const w = P.downsample.window; ls = Math.max(0, Math.floor((ls - Math.max(S.bam.maxSpan, 1000)) / w) * w); }
+  if (tracks.length && P.downsample.enabled) {
+    const w = P.downsample.window, back = Math.max(1000, ...tracks.map(T => T.bam.maxSpan));
+    ls = Math.max(0, Math.floor((ls - back) / w) * w);
+  }
+  const clear = () => { S.data = null; for (const T of tracks) { T.data = null; T.shown = null; T.n = 0; } };
+  if (!tracks.length && span > REF_VIEW_BP) { clear(); S.msg = null; draw(); return; } // reference only: bases are drawn when zoomed in
   // decide by the amount of data the index points to, not by window length: 30x WGS and a
   // 3000x panel differ a hundredfold for the same window
-  const bamRef = S.bam ? S.bamMap[S.view.refId] : -1;
-  if (!S.bam && span > REF_VIEW_BP) { S.data = null; S.shown = null; GL.n = 0; S.msg = null; draw(); return; } // reference only: bases are drawn when zoomed in
-  const est = bamRef >= 0 ? S.bam.estimateBytes(bamRef, ls, le) : 0;
+  const est = tracks.reduce((a, T) => a + (T.map[refId] >= 0 ? T.bam.estimateBytes(T.map[refId], ls, le) : 0), 0);
   if (est > P.maxLoadMB * 1048576 && !S.forceLoad) {
-    S.data = null; S.shown = null; GL.n = 0;
+    clear();
     const size = fmtBytes(est);
     S.msg = { text: t('wide', { span: fmtBp(span), size }), action: t('wide.btn', { size }) };
     draw(); return;
@@ -1865,34 +1929,43 @@ async function ensureData() {
   const token = ++S.loadToken; S.loading = true; S.msg = null; draw();
   const t0 = performance.now();
   try {
-    const res = bamRef >= 0 ? await S.bam.fetch(bamRef, ls, le, {
-      filters: P.filters,
-      downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null,
-    }) : null;
-    const reads = res ? res.reads : [];
+    const opts = { filters: P.filters, downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null };
+    // samples load side by side; one that fails shows its error in its own track
+    const results = await Promise.all(tracks.map(async T => {
+      const br = T.map[refId];
+      if (br < 0) return { T, res: null, msg: t('sample.noContig', { name: S.contigs[refId].name }) };
+      try { return { T, res: await T.bam.fetch(br, ls, le, opts), msg: null }; }
+      catch (e) { return { T, res: null, msg: errText(e), error: true }; }
+    }));
+    if (token !== S.loadToken) return;
+    const all = results.flatMap(r => r.res ? r.res.reads : []);
     // Reference bases only where they are used: under reads (mismatches, allele highlight) and the
     // view itself when it is narrow enough to show bases. A 46 Mb window with a few reads reads a few kb.
-    const want = reads.map(r => { const [a, b] = readExtent(r, P.showSoftClips); return [Math.max(ls, a), Math.min(le, b)]; }).filter(x => x[1] > x[0]);
+    const want = all.map(r => { const [a, b] = readExtent(r, P.showSoftClips); return [Math.max(ls, a), Math.min(le, b)]; }).filter(x => x[1] > x[0]);
     if (span <= REF_VIEW_BP) want.push([ls, le]);
-    const parts = mergeIntervals(want, 2000), ref = new SparseRef(), name = S.contigs[S.view.refId].name;
-    let fromMD = false, ri = 0;
+    const parts = mergeIntervals(want, 2000), ref = new SparseRef(), name = S.contigs[refId].name;
+    let fromMD = false, ri = 0, sorted = null;
     for (const [a, b] of parts) {
       let seq = null;
       if (S.fasta) { try { seq = await S.fasta.fetch(name, a, b); } catch (e) { seq = null; } }
       if (!seq || seq.length !== b - a) { // no reference: rebuild bases from the reads' MD tags
         seq = new Uint8Array(b - a); fromMD = true;
-        while (ri < reads.length && reads[ri].end <= a) ri++;
-        for (let k = ri; k < reads.length && reads[k].pos < b; k++) fillRefFromMD(reads[k], seq, a);
+        if (!sorted) sorted = results.length > 1 ? all.slice().sort((x, y) => x.pos - y.pos) : all;
+        while (ri < sorted.length && sorted[ri].end <= a) ri++;
+        for (let k = ri; k < sorted.length && sorted[k].pos < b; k++) fillRefFromMD(sorted[k], seq, a);
       }
       ref.add(a, seq);
     }
     if (token !== S.loadToken) return;
-    S.refFromMD = fromMD && !!S.bam;
-    S.data = { refId: S.view.refId, start: ls, end: le, reads, ref, insert: insertSizeBounds(reads),
-      cov: res ? res.cov : new SparseCoverage(ls, le), total: res ? res.total : 0, sampled: res ? res.sampled : [] };
+    S.refFromMD = fromMD && tracks.length > 0;
+    S.data = { refId, start: ls, end: le, ref };
+    for (const { T, res, msg, error } of results) {
+      T.data = { reads: res ? res.reads : [], insert: insertSizeBounds(res ? res.reads : []),
+        cov: res ? res.cov : new SparseCoverage(ls, le), total: res ? res.total : 0, sampled: res ? res.sampled : [] };
+      T.msg = msg ? { text: msg, error: !!error } : null;
+    }
     S.stats.loadMs = performance.now() - t0;
     S.loading = false; S.selected = null; hideCard();
-    if (S.bam && bamRef < 0) S.msg = { text: t('sample.noContig', { name: S.contigs[S.view.refId].name }) };
     rebuild(); draw();
   } catch (e) {
     if (token !== S.loadToken) return;
@@ -1902,7 +1975,7 @@ async function ensureData() {
 
 // Filters and downsampling act while reading, so changing them re-reads the window.
 const REF_VIEW_BP = 200000; // windows up to this size also load the reference between reads
-function reloadData() { if (!S.contigs) return; S.data = null; S.shown = null; GL.n = 0; S.selected = null; hideCard(); ensureData(); }
+function reloadData() { if (!S.contigs) return; S.data = null; for (const T of S.tracks) { T.data = null; T.shown = null; T.n = 0; } S.selected = null; hideCard(); ensureData(); }
 
 // ======================= Rendering =======================
 let raf = 0;
@@ -1919,28 +1992,32 @@ function fmtInt(n) { return Math.round(n).toLocaleString(NUM_LOCALE[LANG]); }
 const frameTimes = [];
 function render() {
   const t0 = performance.now(), tp = {};
-  if (S.shown && !drag) clampScroll();
+  if (!drag) clampScroll();
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  const rt = readsTop();
-  // ---- reads (WebGL) ----
+  // ---- reads (WebGL), each track inside its own band ----
   if (GL_OK) {
     gl.viewport(0, 0, glCanvas.width, glCanvas.height);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-    if (S.shown && GL.n) {
-      gl.enable(gl.SCISSOR_TEST);
-      gl.scissor(0, 0, glCanvas.width, Math.max(0, Math.floor((H - rt) * DPR)));
-      gl.useProgram(GL.prog); gl.bindVertexArray(GL.vao);
+    if (S.data && S.tracks.some(T => T.shown && T.n)) {
+      gl.useProgram(GL.prog);
       gl.uniform1f(GL.u.u_viewStart, S.view.start - S.data.start);
       gl.uniform1f(GL.u.u_bpPerPx, S.view.bpPerPx);
       gl.uniform1f(GL.u.u_rowH, P.readHeight);
       gl.uniform1f(GL.u.u_gap, P.readHeight >= 5 ? 1 : 0);
       gl.uniform1f(GL.u.u_grpGap, groupGap());
-      gl.uniform1f(GL.u.u_scroll, S.scroll);
-      gl.uniform1f(GL.u.u_top, rt + groupGap());
       gl.uniform2f(GL.u.u_size, W, H);
       gl.uniform1f(GL.u.u_mmFade, 1.5);
-      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, GL.n);
+      gl.enable(gl.SCISSOR_TEST);
+      S.tracks.forEach((T, i) => {
+        if (!T.shown || !T.n) return;
+        const g = trackGeom(i);
+        gl.scissor(0, Math.max(0, Math.floor((H - g.bottom) * DPR)), glCanvas.width, Math.max(0, Math.floor((g.bottom - g.readsTop) * DPR)));
+        gl.bindVertexArray(T.vao);
+        gl.uniform1f(GL.u.u_scroll, T.scroll);
+        gl.uniform1f(GL.u.u_top, g.readsTop + groupGap());
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, T.n);
+      });
       gl.disable(gl.SCISSOR_TEST);
     }
   }
@@ -1948,8 +2025,8 @@ function render() {
   const part = (k, f) => { f(); const n = performance.now(); tp[k] = n - tl; tl = n; };
   part('ruler', () => { drawRuler(); drawRefTrack(); });
   drawRubber();
-  part('coverage', drawCoverage);
-  part('labels', () => { drawReadsOverlay(rt); drawMessage(); });
+  part('coverage', () => S.tracks.forEach((T, i) => drawCoverage(T, trackGeom(i))));
+  part('labels', () => { S.tracks.forEach((T, i) => { const g = trackGeom(i); drawTrackHeader(T, i, g); drawReadsOverlay(T, g); }); drawMessage(); });
   S.stats.drawMs = performance.now() - t0;
   S.stats.parts = tp;
   frameTimes.push(S.stats.drawMs); if (frameTimes.length > 15) frameTimes.shift();
@@ -2015,14 +2092,14 @@ function drawRefTrack() {
   }
 }
 
-function drawCoverage() {
-  const sh = S.shown, d = S.data; if (!sh || !d || !S.bam) return;
-  const top = covTop(), h = P.coverage.height, bpp = S.view.bpPerPx, ppb = 1 / bpp;
+function drawCoverage(T, g) {
+  const sh = T.shown, d = S.data; if (!sh || !d) return;
+  const top = g.covTop, h = g.covH, bpp = S.view.bpPerPx, ppb = 1 / bpp;
   const cov = sh.cov;
   const b0 = Math.max(d.start, Math.floor(S.view.start)), b1 = Math.min(d.end, Math.ceil(viewEnd()));
   let maxD = 1;
   cov.forEach(b0, b1, (pos, blk, o) => { const t = blk[o] + blk[o + 1] + blk[o + 2] + blk[o + 3] + blk[o + 4] + blk[o + 5]; if (t > maxD) maxD = t; });
-  const scale = (h - 10) / maxD, base = top + h;
+  const scale = Math.max(1, h - 10) / maxD, base = top + h;
   const drawStack = (x, w, pos) => {
     const c = cov.counts(pos, CNT2); let y = base;
     for (const [k, ch] of [[0, 65], [1, 67], [2, 71], [3, 84]]) { const hh = c[k] * scale; if (hh > 0) { ctx.fillStyle = COL.baseCss[ch]; ctx.fillRect(x, y - hh, w, hh); y -= hh; } }
@@ -2047,13 +2124,29 @@ function drawCoverage() {
   ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, base + 3.5); ctx.lineTo(W, base + 3.5); ctx.stroke();
 }
 
-function drawReadsOverlay(rt) {
-  const sh = S.shown; if (!sh) return;
-  ctx.save(); ctx.beginPath(); ctx.rect(0, rt, W, H - rt); ctx.clip();
-  const rh = P.readHeight, gg = groupGap(), bpp = S.view.bpPerPx, ppb = 1 / bpp, d = S.data;
+// Track header (only with several tracks): file name, samples, close button; a line above it.
+function drawTrackHeader(T, i, g) {
+  if (!g.hdr) return;
+  ctx.save();
+  if (i > 0) { ctx.strokeStyle = COL.css.fg; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, Math.round(g.y0) - 1.5); ctx.lineTo(W, Math.round(g.y0) - 1.5); ctx.stroke(); ctx.globalAlpha = 1; }
+  ctx.font = '600 11px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL.css.fg;
+  const y = g.y0 + g.hdr / 2 + 1;
+  let label = T.name + (T.bam.samples.length ? '  ·  ' + T.bam.samples.join(', ') : '');
+  const maxW = W - 48;
+  while (label.length > 4 && ctx.measureText(label).width > maxW) label = label.slice(0, -2);
+  ctx.fillText(label, 8, y);
+  ctx.fillStyle = COL.css.muted; ctx.font = '13px ' + SANS; ctx.textAlign = 'center'; ctx.fillText('×', W - 14, y);
+  ctx.restore();
+}
+function drawReadsOverlay(T, g) {
+  const sh = T.shown, rt = g.readsTop;
+  if (T.msg) { ctx.save(); ctx.font = '12px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = T.msg.error ? COL.css.accent : COL.css.muted; ctx.fillText(T.msg.text, 8, rt + 6); ctx.restore(); }
+  if (!sh) return;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, rt, W, g.bottom - rt); ctx.clip();
+  const rh = P.readHeight, gg = groupGap(), bpp = S.view.bpPerPx, ppb = 1 / bpp, d = T.data, scroll = T.scroll, Hh = g.bottom;
   // group labels
   if (gg) sh.groups.forEach((g, gi) => {
-    const y = rt + g.start * rh + gi * gg - S.scroll + gg;
+    const y = rt + g.start * rh + gi * gg - scroll + gg;
     ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, Math.round(y - gg + 3) + 0.5); ctx.lineTo(W, Math.round(y - gg + 3) + 0.5); ctx.stroke();
     ctx.font = '600 11px ' + SANS; ctx.textAlign = 'left'; ctx.fillStyle = COL.css.fg;
     ctx.fillText(g.key + '  ·  ' + fmtInt(g.count), 8, y - 6);
@@ -2063,10 +2156,10 @@ function drawReadsOverlay(rt) {
     ctx.font = '600 ' + Math.min(12, rh - 1) + 'px ' + MONO; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const vs = S.view.start, ve = viewEnd();
     sh.groups.forEach((g, gi) => {
-      const firstRow = Math.max(0, Math.floor((S.scroll - gi * gg) / rh) - g.start - 1);
-      const lastRow = Math.min(g.rows.length - 1, Math.ceil((S.scroll + H - rt - gi * gg) / rh) - g.start + 1);
+      const firstRow = Math.max(0, Math.floor((scroll - gi * gg) / rh) - g.start - 1);
+      const lastRow = Math.min(g.rows.length - 1, Math.ceil((scroll + Hh - rt - gi * gg) / rh) - g.start + 1);
       for (let ri = firstRow; ri <= lastRow; ri++) {
-        const y = rt + gg + (g.start + ri) * rh + gi * gg - S.scroll + (rh - (rh >= 5 ? 1 : 0)) / 2;
+        const y = rt + gg + (g.start + ri) * rh + gi * gg - scroll + (rh - (rh >= 5 ? 1 : 0)) / 2;
         for (const rec of g.rows[ri].flatMap(readsOf)) {
           if (rec.end < vs || rec.pos > ve) continue;
           const a = mapqAlpha(rec.mapq);
@@ -2091,9 +2184,9 @@ function drawReadsOverlay(rt) {
     ctx.globalAlpha = 1;
   }
   // selected read
-  if (S.selected) {
+  if (S.selected && S.selected.T === T) {
     const L = S.selected;
-    const y = rt + gg + L.row * rh + L.gi * gg - S.scroll;
+    const y = rt + gg + L.row * rh + L.gi * gg - scroll;
     const [e0, e1] = readExtent(L.rec, P.showSoftClips), x0 = (e0 - S.view.start) * ppb, x1 = (e1 - S.view.start) * ppb;
     ctx.strokeStyle = COL.css.accent; ctx.lineWidth = 2; ctx.strokeRect(x0 - 1, y - 1, x1 - x0 + 2, Math.max(2, rh - (rh >= 5 ? 1 : 0)) + 2); ctx.lineWidth = 1;
   }
@@ -2114,12 +2207,13 @@ function drawMessage() {
 }
 
 function updateStatus() {
-  const st = S.stats, sh = S.shown;
+  const st = S.stats, shown = S.tracks.filter(T => T.shown);
+  const sh = shown.length ? { sampled: shown.some(T => T.shown.sampled), n: shown.reduce((a, T) => a + T.shown.reads.length, 0) } : null;
   let s = '';
   // median of recent frames: one slow frame (first draw, a busy moment) does not stick in the status
   const med = frameTimes.length ? [...frameTimes].sort((a, b) => a - b)[frameTimes.length >> 1] : 0;
-  if (sh && S.bam) s = t('status', { reads: fmtInt(st.reads), sampled: sh.sampled ? t('status.sampled', { n: fmtInt(sh.reads.length) }) : '', load: Math.round(st.loadMs), build: Math.round(st.buildMs), frame: med.toFixed(1) });
-  if (sh && S.bam && med > 40 && st.parts) s += ' (' + Object.entries(st.parts).map(([k, v]) => t('part.' + k) + ' ' + Math.round(v)).join(', ') + ')';
+  if (sh) s = t('status', { reads: fmtInt(st.reads), sampled: sh.sampled ? t('status.sampled', { n: fmtInt(sh.n) }) : '', load: Math.round(st.loadMs), build: Math.round(st.buildMs), frame: med.toFixed(1) });
+  if (sh && med > 40 && st.parts) s += ' (' + Object.entries(st.parts).map(([k, v]) => t('part.' + k) + ' ' + Math.round(v)).join(', ') + ')';
   if (S.refFromMD && sh) s += ' · ' + t('ref.fromMd');
   const el = $('status'); el.textContent = s;
   el.title = 'WebGL: ' + (GL_RENDERER || '—') + (GL_SOFTWARE ? ' · ' + t('gl.software') : '');
@@ -2158,7 +2252,8 @@ stage.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !S.contigs || !onCanvas(e)) return;
   stage.setPointerCapture(e.pointerId);
   if (inRuler(e.offsetY)) { S.rubber = { x0: clampX(e.offsetX), x1: clampX(e.offsetX), moved: false }; draw(); return; }
-  drag = { x: e.clientX, y: e.clientY, sx: S.view.start, sc: S.scroll, moved: false, inReads: e.offsetY > readsTop() };
+  const ti = trackAtY(e.offsetY), T = S.tracks[ti];
+  drag = { x: e.clientX, y: e.clientY, sx: S.view.start, T, ti, sc: T ? T.scroll : 0, moved: false, inReads: !!T && e.offsetY > trackGeom(ti).readsTop };
 });
 stage.addEventListener('pointermove', e => {
   if (S.rubber) {
@@ -2171,7 +2266,7 @@ stage.addEventListener('pointermove', e => {
   if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
   if (!drag.moved) return;
   S.view.start = drag.sx - dx * S.view.bpPerPx; clampView();
-  if (drag.inReads) { S.scroll = drag.sc - dy; clampScroll(); }
+  if (drag.inReads && S.tracks[drag.ti] === drag.T) { drag.T.scroll = drag.sc - dy; clampTrackScroll(drag.T, drag.ti); }
   requestLoad(); draw(); syncLocus();
 });
 stage.addEventListener('pointercancel', () => { if (S.rubber) { S.rubber = null; draw(); } drag = null; });
@@ -2195,16 +2290,18 @@ stage.addEventListener('wheel', e => {
   const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY, dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
   if (e.ctrlKey || e.metaKey) { zoomAt(e.offsetX, Math.exp(dy * 0.01)); return; }
   if (e.shiftKey || Math.abs(dx) > Math.abs(dy)) { pan(e.shiftKey ? dy : dx); return; }
-  S.scroll += dy; clampScroll(); draw();
+  const ti = trackAtY(e.offsetY); if (ti < 0) return;
+  S.tracks[ti].scroll += dy; clampTrackScroll(S.tracks[ti], ti); draw();
 }, { passive: false });
 
 function hitTest(x, y) {
-  const sh = S.shown; if (!sh) return null;
-  const rt = readsTop(), rh = P.readHeight, gg = groupGap();
-  if (y < rt) return null;
+  const ti = trackAtY(y), T = S.tracks[ti]; if (!T || !T.shown) return null;
+  const sh = T.shown, tg = trackGeom(ti);
+  const rt = tg.readsTop, rh = P.readHeight, gg = groupGap();
+  if (y < rt || y > tg.bottom) return null;
   for (let gi = 0; gi < sh.groups.length; gi++) {
     const g = sh.groups[gi];
-    const gy = rt + gg + g.start * rh + gi * gg - S.scroll;
+    const gy = rt + gg + g.start * rh + gi * gg - T.scroll;
     const ri = Math.floor((y - gy) / rh);
     if (ri < 0 || ri >= g.rows.length) continue;
     const bp = S.view.start + x * S.view.bpPerPx, slop = 2 * S.view.bpPerPx;
@@ -2217,35 +2314,37 @@ function hitTest(x, y) {
       const ext = r => readExtent(r, P.showSoftClips);
       const hit = rs.find(r => { const [a, b] = ext(r); return a - slop <= bp && b + slop > bp; })
         || rs.reduce((a, r) => { const [ra, rb] = ext(r), [aa, ab] = ext(a); return Math.min(Math.abs(ra - bp), Math.abs(rb - bp)) < Math.min(Math.abs(aa - bp), Math.abs(ab - bp)) ? r : a; });
-      return { rec: hit, row: g.start + ri, gi };
+      return { T, rec: hit, row: g.start + ri, gi };
     }
   }
   return null;
 }
 
 function onClick(x, y) {
+  const ti = trackAtY(y);
+  if (ti >= 0) { const g = trackGeom(ti); if (g.hdr && y < g.y0 + g.hdr && x > W - 28) { closeTrack(S.tracks[ti]); return; } }
   const h = hitTest(x, y);
   if (!h) { S.selected = null; hideCard(); draw(); return; }
-  S.selected = h; showCard(h.rec, x, y); draw();
+  S.selected = h; showCard(h.rec, h.T, x, y); draw();
 }
 
 const FLAG_BITS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048];
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 // ---- Read details, laid out like IGV's popup: "key = value" lines in blocks ----
 function readBaseAt(rec, qi) { const b = rec.seq[qi >> 1]; return '=ACMGRSVTWYHKDBN'.charCodeAt(qi & 1 ? b & 15 : b >> 4); }
-function rgSamples() {
-  if (S.bam._rg) return S.bam._rg;
+function rgSamples(bam) {
+  if (bam._rg) return bam._rg;
   const m = new Map();
-  for (const line of S.bam.headerText.split('\n')) if (line.startsWith('@RG')) { const id = line.match(/\tID:([^\t]+)/), sm = line.match(/\tSM:([^\t]+)/); if (id) m.set(id[1], sm ? sm[1] : ''); }
-  return (S.bam._rg = m);
+  for (const line of bam.headerText.split('\n')) if (line.startsWith('@RG')) { const id = line.match(/\tID:([^\t]+)/), sm = line.match(/\tSM:([^\t]+)/); if (id) m.set(id[1], sm ? sm[1] : ''); }
+  return (bam._rg = m);
 }
 // Contig name as shown: the reference's name for contigs matched to it, the BAM's otherwise.
-function contigName(bamRef) { const v = S.bamBack ? S.bamBack[bamRef] : -1; return v >= 0 ? S.contigs[v].name : S.bam.refs[bamRef].name; }
+function contigName(bamRef, T) { const v = T.back[bamRef]; return v >= 0 ? S.contigs[v].name : T.bam.refs[bamRef].name; }
 // The loaded mate of a read, if it is in the current window.
-function findMate(rec) {
-  if (!(rec.flag & 1) || !S.data) return null;
+function findMate(rec, T) {
+  if (!(rec.flag & 1) || !T.data) return null;
   const want = rec.flag & 64 ? 128 : 64;
-  return S.data.reads.find(r => r !== rec && r.name === rec.name && (r.flag & want) && !(r.flag & 0x900)) || null;
+  return T.data.reads.find(r => r !== rec && r.name === rec.name && (r.flag & want) && !(r.flag & 0x900)) || null;
 }
 // Pair orientation as IGV writes it: strand + read number of the left read, then of the right one.
 function pairOrientation2(rec) {
@@ -2254,18 +2353,18 @@ function pairOrientation2(rec) {
   return rec.pos <= rec.matePos ? me + mate : mate + me;
 }
 // Lines of one alignment: ['kv', key, value] | ['sep'] | ['txt', text].
-function alignmentLines(rec) {
+function alignmentLines(rec, T) {
   const L = [], kv = (k, v) => L.push(['kv', k, v]), tags = recTags(rec), f = rec.flag;
   const strand = r => (r.flag & 16 ? '(-)' : '(+)');
   kv(t('card.readName'), rec.name);
-  if (tags.RG !== undefined) { const sm = rgSamples().get(String(tags.RG)); if (sm) kv(t('card.sample'), sm); kv(t('card.rg'), tags.RG); }
+  if (tags.RG !== undefined) { const sm = rgSamples(T.bam).get(String(tags.RG)); if (sm) kv(t('card.sample'), sm); kv(t('card.rg'), tags.RG); }
   kv(t('card.readLen'), rec.lseq + 'bp');
   kv(t('card.flags'), f);
   L.push(['sep']);
   kv(t('card.mapping'), (f & 256 ? t('card.secondary') : f & 2048 ? t('card.supplementary') : t('card.primary')) + ' @ MAPQ ' + rec.mapq);
   if (f & 1024) kv(t('card.dup'), t('card.yes'));
   if (f & 512) kv(t('card.qcfail'), t('card.yes'));
-  kv(t('card.refSpan'), `${contigName(rec.refID)}:${fmtInt(rec.pos + 1)}-${fmtInt(rec.end)} ${strand(rec)} = ${rec.end - rec.pos}bp`);
+  kv(t('card.refSpan'), `${contigName(rec.refID, T)}:${fmtInt(rec.pos + 1)}-${fmtInt(rec.end)} ${strand(rec)} = ${rec.end - rec.pos}bp`);
   kv(t('card.cigar'), cigarString(rec));
   const [sl, sr] = clipLens(rec), [hl, hr] = hardClipLens(rec), clip = [];
   if (sl || hl) clip.push(t('card.left') + ' ' + [sl ? sl + ' ' + t('card.soft') : '', hl ? hl + ' ' + t('card.hard') : ''].filter(Boolean).join(', '));
@@ -2275,7 +2374,7 @@ function alignmentLines(rec) {
     L.push(['sep']);
     const mapped = !(f & 8) && rec.mateRef >= 0;
     kv(t('card.mateMapped'), mapped ? t('card.yes') : t('card.no'));
-    if (mapped) kv(t('card.mateStart'), `${contigName(rec.mateRef)}:${fmtInt(rec.matePos + 1)} ${f & 32 ? '(-)' : '(+)'}`);
+    if (mapped) kv(t('card.mateStart'), `${contigName(rec.mateRef, T)}:${fmtInt(rec.matePos + 1)} ${f & 32 ? '(-)' : '(+)'}`);
     kv(t('card.insert'), rec.tlen);
     L.push(['txt', f & 64 ? t('card.first') : f & 128 ? t('card.second') : '']);
     const po = pairOrientation2(rec); if (po) kv(t('card.pairOr'), po);
@@ -2306,20 +2405,20 @@ function linesHtml(lines, cls) {
 function linesText(lines) { return lines.map(l => l[0] === 'sep' ? '----------------------' : l[0] === 'txt' ? l[1] : `${l[1]} = ${l[2]}`).filter(x => x !== '').join('\n'); }
 
 let cardState = null;
-function showCard(rec, x, y) { cardState = { rec, x, y, pos: Math.floor(S.view.start + x * S.view.bpPerPx) }; renderCard(true); }
+function showCard(rec, T, x, y) { cardState = { rec, T, x, y, pos: Math.floor(S.view.start + x * S.view.bpPerPx) }; renderCard(true); }
 function renderCard(place) {
-  const { rec, x, y, pos } = cardState, c = $('card');
+  const { rec, T, x, y, pos } = cardState, c = $('card');
   const paired = !!(rec.flag & 1) && !(rec.flag & 0x900);
-  const mate = paired && P.cardPair ? findMate(rec) : null;
+  const mate = paired && P.cardPair ? findMate(rec, T) : null;
   const cols = [];
   if (P.cardPair && paired) {
     const mateRec = mate;
     const left = !mateRec || rec.pos <= mateRec.pos ? rec : mateRec, right = left === rec ? mateRec : rec;
     for (const [r, title] of [[left, t('card.leftAln')], [right, t('card.rightAln')]]) {
       if (!r) { cols.push({ title, lines: [['txt', (rec.flag & 8) ? t('card.mateUnmapped2') : t('card.mateNotLoaded')]], base: null }); continue; }
-      cols.push({ title, lines: alignmentLines(r), base: r === rec ? baseLines(rec, pos) : null });
+      cols.push({ title, lines: alignmentLines(r, T), base: r === rec ? baseLines(rec, pos) : null });
     }
-  } else cols.push({ title: '', lines: alignmentLines(rec), base: baseLines(rec, pos) });
+  } else cols.push({ title: '', lines: alignmentLines(rec, T), base: baseLines(rec, pos) });
   const seg = paired ? `<div class="seg" role="group" aria-label="${esc(t('card.show'))}"><button class="btn${P.cardPair ? '' : ' on'}" data-pair="0" aria-pressed="${!P.cardPair}">${esc(t('card.showRead'))}</button><button class="btn${P.cardPair ? ' on' : ''}" data-pair="1" aria-pressed="${P.cardPair}">${esc(t('card.showPair'))}</button></div>` : '';
   const goMate = paired && rec.mateRef >= 0 && !(rec.flag & 8);
   c.classList.toggle('wide', cols.length > 1);
@@ -2343,8 +2442,8 @@ function renderCard(place) {
   };
   if (goMate) $('toMate').onclick = () => {
     hideCard(); S.selected = null;
-    const v = S.bamBack[rec.mateRef];
-    if (v < 0) { toast(t('sample.mateNoContig', { name: S.bam.refs[rec.mateRef].name })); draw(); return; }
+    const v = T.back[rec.mateRef];
+    if (v < 0) { toast(t('sample.mateNoContig', { name: T.bam.refs[rec.mateRef].name })); draw(); return; }
     goto(v, rec.matePos - 150, rec.matePos + 300);
   };
 }
@@ -2355,8 +2454,8 @@ document.addEventListener('keydown', e => {
   if (!S.contigs) return;
   if (e.key === 'ArrowLeft') pan(-W * 0.15);
   else if (e.key === 'ArrowRight') pan(W * 0.15);
-  else if (e.key === 'ArrowUp') { S.scroll -= 60; clampScroll(); draw(); }
-  else if (e.key === 'ArrowDown') { S.scroll += 60; clampScroll(); draw(); }
+  else if (e.key === 'ArrowUp') { for (const T of S.tracks) T.scroll -= 60; clampScroll(); draw(); }
+  else if (e.key === 'ArrowDown') { for (const T of S.tracks) T.scroll += 60; clampScroll(); draw(); }
   else if (e.key === '+' || e.key === '=') zoomAt(W / 2, 0.5);
   else if (e.key === '-' || e.key === '_') zoomAt(W / 2, 2);
   else if (e.key === 's' || e.key === 'ы') sortHere(); // 'ы' / 'р': same keys on a Russian layout
@@ -2384,16 +2483,18 @@ function resize() {
 new ResizeObserver(resize).observe(stage);
 
 // ======================= Opening data =======================
-// Opens a sample. With a reference loaded, the sample's contigs are matched to the reference's
-// (name variants, then unique length); without one, the sample's own header gives the coordinates.
+// Adds a sample as a new track. Its contigs are matched to the current coordinate system — the
+// reference, or the first sample's header when no reference is loaded (name variants, then unique
+// length); the very first sample without a reference gives the coordinates itself.
 async function openBam(bamSrc, baiSrc, opts) {
   opts = opts || {};
-  S.loadToken++; S.loading = true; S.msg = null; draw();
+  S.loading = true; S.msg = null; draw();
   try {
     const bam = await new BamFile(bamSrc, baiSrc).open();
     const back = new Int32Array(bam.refs.length).fill(-1);
     let map, note = '';
-    if (S.fasta) {
+    const own = !S.fasta && !S.tracks.length; // first sample with no reference: its header is the genome
+    if (!own) {
       const link = matchContigs(bam.refs, S.contigs);
       if (!link.matched.length) {
         S.loading = false; draw();
@@ -2411,29 +2512,45 @@ async function openBam(bamSrc, baiSrc, opts) {
       S.contigs = bam.refs.map(r => ({ name: r.name, len: r.len })); S._ck = null;
       map = Int32Array.from(bam.refs, (r, i) => i); back.forEach((v, i) => { back[i] = i; });
     }
-    const keepView = !!S.fasta && S.viewSet && map[S.view.refId] >= 0;
-    S.bam = bam; S.bamMap = map; S.bamBack = back; S.bamSeq = (S.bamSeq || 0) + 1; S.layout = null;
-    S.data = null; S.shown = null; GL.n = 0; S.isDemo = !!opts.demo; S.sortPos = null; S.selected = null; hideCard();
-    S.bamName = bamSrc.name; updateFileLabel();
-    $('examples').hidden = !S.isDemo;
+    const keepView = !own && S.viewSet && map[S.view.refId] >= 0;
+    if (!opts.demo) for (const x of S.tracks.filter(x => x.demo)) closeTrack(x); // own data replaces the demo sample
+    const T = { id: ++S.trackSeq, bam, name: bamSrc.name, demo: !!opts.demo, map, back, data: null, shown: null, layout: null, scroll: 0, msg: null, vao: null, n: 0 };
+    S.tracks.push(T);
+    S.sortPos = S.tracks.length > 1 ? S.sortPos : null; S.selected = null; hideCard();
+    updateFileLabel();
+    $('examples').hidden = !S.tracks.some(x => x.demo);
     S.loading = false;
     if (note) toast(note.trim(), note.length > 90);
     const loc = opts.locus ? parseLocus(opts.locus) : null;
+    S.loadToken++; S.data = null; // every track loads the same window: load it again with the new one
     if (loc && !loc.error) goto(loc.id, loc.s, loc.e);
-    else if (keepView) { S.data = null; requestLoad(); draw(); }
+    else if (keepView) { requestLoad(); draw(); }
     else { const i = Math.max(0, map.findIndex(x => x >= 0)); goto(i, 0, Math.min(S.contigs[i].len, 10000)); }
     S.viewSet = true;
     return true;
   } catch (e) {
-    S.loading = false; S.msg = { text: errText(e), error: true }; draw();
+    S.loading = false;
+    if (S.tracks.length) toast(t('sample.failed', { name: bamSrc.name, msg: errText(e) }), true);
+    else { S.msg = { text: errText(e), error: true }; }
+    draw();
     return false;
   }
 }
+function closeTrack(T) {
+  const i = S.tracks.indexOf(T); if (i < 0) return;
+  S.tracks.splice(i, 1); freeVao(T);
+  if (S.selected && S.selected.T === T) { S.selected = null; hideCard(); }
+  $('examples').hidden = !S.tracks.some(x => x.demo);
+  updateFileLabel(); clampScroll(); rebuild(); draw();
+}
+function closeAllTracks() { for (const T of S.tracks) freeVao(T); S.tracks = []; S.selected = null; hideCard(); }
 function updateFileLabel() {
   const parts = [];
   if (S.fasta) parts.push(S.fasta.name);
-  if (S.bam) parts.push(S.bamName + (S.bam.samples.length ? ' · ' + S.bam.samples.join(', ') : ''));
+  if (S.tracks.length === 1) { const T = S.tracks[0]; parts.push(T.name + (T.bam.samples.length ? ' · ' + T.bam.samples.join(', ') : '')); }
+  else if (S.tracks.length > 1) parts.push(t('tracks.n', { n: S.tracks.length }));
   $('fileName').textContent = parts.join('  ·  ');
+  $('fileName').title = S.tracks.map(T => T.name).join('\n');
 }
 
 function b64ToBlob(b64) { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u]); }
@@ -2443,28 +2560,104 @@ async function openDemo() {
   if (ok) openBam(new FileSource(b64ToBlob(DEMO.bam), 'demo.bam'), new FileSource(b64ToBlob(DEMO.bai), 'demo.bam.bai'), { demo: true, locus: 'demo:11,941-12,060' });
 }
 
-function openLocalFiles(files) {
-  const by = ext => [...files].find(f => f.name.toLowerCase().endsWith(ext));
-  const cram = by('.cram');
-  if (cram) { toast(t('files.cram')); return; }
-  const bam = by('.bam'), bai = by('.bai');
+// Pairs each .bam with its index by name: sample.bam ↔ sample.bam.bai or sample.bai (case ignored).
+// A single .bam with a single index of any name is a pair too.
+function pairBams(files) {
+  const L = f => f.name.toLowerCase();
+  const bams = files.filter(f => L(f).endsWith('.bam'));
+  const idx = new Map(files.filter(f => L(f).endsWith('.bai')).map(f => [L(f), f]));
+  const pairs = [], missing = [];
+  for (const bam of bams) {
+    const n = L(bam), bai = idx.get(n + '.bai') || idx.get(n.slice(0, -4) + '.bai');
+    if (bai) pairs.push([bam, bai]); else missing.push(bam);
+  }
+  if (bams.length === 1 && missing.length === 1 && idx.size === 1) { pairs.push([bams[0], [...idx.values()][0]]); missing.length = 0; }
+  return { bams, pairs, missing };
+}
+// Files chosen or dropped: any number of samples (each with its index) and optionally a reference.
+// A folder with several samples first lists them, so a whole run directory is not opened at once.
+function openLocalFiles(fileList, fromFolder) {
+  const files = [...fileList], L = f => f.name.toLowerCase();
+  const { bams, pairs, missing } = pairBams(files);
   const ref = pickRefFiles(files);
-  if (!bam && ref) { openReference(ref); return; }
-  if (by('.csi') && !bai) { toast(t('files.csi')); return; }
-  if (!bam || !bai) { toast(t('files.needPair')); return; }
+  const crams = files.filter(f => L(f).endsWith('.cram'));
+  if (!bams.length) {
+    if (ref) { openReference(ref); return; }
+    toast(t(crams.length ? 'files.cram' : files.some(f => L(f).endsWith('.bai')) ? 'files.needBam' : 'files.needPair'));
+    return;
+  }
+  if (fromFolder && bams.length > 1) { showFolderList(files, pairs, missing); return; }
+  if (!pairs.length) {
+    const csi = files.some(f => L(f).endsWith('.csi'));
+    toast(csi ? t('files.csi') : t('files.noIndex', { names: missing.map(f => f.name).join(', ') }), true);
+    return;
+  }
   closePanels();
-  // a reference chosen together with the sample is loaded first; the sample is then matched to it
-  (ref ? openReference(ref, { noGoto: true }) : Promise.resolve(true)).then(ok => { if (ok) openBam(new FileSource(bam), new FileSource(bai)); });
+  const notes = [];
+  if (missing.length) notes.push(t('files.noIndexSome', { names: missing.map(f => f.name).join(', ') }));
+  if (crams.length) notes.push(t('files.cram'));
+  // a reference chosen together with the samples is loaded first; the samples are then matched to it
+  (ref ? openReference(ref, { noGoto: true }) : Promise.resolve(true)).then(async ok => {
+    if (!ok) return;
+    for (const [bam, bai] of pairs) await openBam(new FileSource(bam), new FileSource(bai));
+    if (notes.length) toast(notes.join(' '), true); // after the reference's own message
+  });
+}
+// A folder with several samples: a checklist in the Open panel.
+function showFolderList(files, pairs, missing) {
+  const box = $('folderList');
+  const rows = pairs.map(([bam], i) => `<label class="chk"><input type="checkbox" data-i="${i}"${i < 4 ? ' checked' : ''}> ${esc(bam.name)}</label>`).join('') +
+    missing.map(f => `<div class="hint">${esc(f.name)} — ${esc(t('folder.noIndex'))}</div>`).join('');
+  box.innerHTML = `<p class="hint">${esc(t('folder.found', { n: pairs.length + missing.length }))}</p>${rows}` +
+    (pairs.length ? `<div class="row-actions"><button class="btn primary" id="folderOpen">${esc(t('folder.open'))}</button></div>` : '');
+  box.hidden = false;
+  $('openPanel').hidden = false; $('openBtn').setAttribute('aria-expanded', 'true');
+  if (!pairs.length) return;
+  $('folderOpen').onclick = () => {
+    const chosen = [...box.querySelectorAll('input[data-i]:checked')].map(x => pairs[+x.dataset.i]);
+    if (!chosen.length) { toast(t('folder.none')); return; }
+    box.hidden = true; box.innerHTML = '';
+    const ref = pickRefFiles(files);
+    openLocalFiles([...chosen.flat(), ...(ref ? files.filter(f => /\.(fa|fasta|fna)(\.gz)?$|\.fai$|\.gzi$/i.test(f.name)) : [])]);
+  };
+}
+// Files of a dropped folder (and its subfolders, a few levels deep).
+async function droppedFiles(dt) {
+  const entries = [...dt.items].map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+  if (!entries.some(e => e.isDirectory)) return { files: [...dt.files], folder: false };
+  const out = [];
+  const walk = async (e, depth) => {
+    if (e.isFile) { out.push(await new Promise((res, rej) => e.file(res, rej))); return; }
+    if (depth > 3) return;
+    const reader = e.createReader();
+    for (;;) { const batch = await new Promise((res, rej) => reader.readEntries(res, rej)); if (!batch.length) break; for (const c of batch) await walk(c, depth + 1); }
+  };
+  for (const e of entries) await walk(e, 0);
+  return { files: out, folder: true };
 }
 
+// Links: one per line (or separated by spaces). The index is looked for next to each BAM:
+// sample.bam.bai, then sample.bai. The index field applies when there is one link.
 function openUrls() {
-  const u = $('urlBam').value.trim(); if (!u) { toast(t('url.need')); return; }
-  if (/\.cram(\?|$)/i.test(u)) { toast(t('files.cram')); return; }
-  const idx = $('urlBai').value.trim() || addSuffix(u, '.bai');
+  const links = $('urlBam').value.split(/\s+/).map(x => x.trim()).filter(Boolean);
+  if (!links.length) { toast(t('url.need')); return; }
   const auth = $('urlAuth').value.trim();
   const headers = auth ? { Authorization: /^bearer\s/i.test(auth) ? auth : 'Bearer ' + auth } : {};
-  openBam(new UrlSource(u, headers), new UrlSource(idx, headers));
+  const bams = links.filter(u => !/\.cram(\?|#|$)/i.test(u));
+  if (!bams.length) { toast(t('files.cram')); return; }
+  if (bams.length < links.length) toast(t('files.cram'));
+  const given = bams.length === 1 ? $('urlBai').value.trim() : '';
   closePanels();
+  (async () => {
+    for (const u of bams) {
+      const cands = given ? [given] : [addSuffix(u, '.bai'), swapExt(u, '.bam', '.bai')].filter((x, i, a) => x && a.indexOf(x) === i);
+      await openBam(new UrlSource(u, headers), cands.map(x => new UrlSource(x, headers)));
+    }
+  })();
+}
+function swapExt(url, from, to) {
+  try { const x = new URL(url); if (!x.pathname.toLowerCase().endsWith(from)) return null; x.pathname = x.pathname.slice(0, -from.length) + to; return x.toString(); }
+  catch (e) { return url.toLowerCase().endsWith(from) ? url.slice(0, -from.length) + to : null; }
 }
 function addSuffix(url, sfx) { try { const x = new URL(url); x.pathname += sfx; return x.toString(); } catch (e) { return url + sfx; } }
 
@@ -2505,11 +2698,11 @@ async function openReference(ref, opts) {
       fasta = await new IndexedFasta(ref.fa).openUnindexed(ref.size, (done, total) =>
         toast(t('ref.indexing', { name, done: total ? Math.min(100, Math.round(done / total * 100)) + '%' : fmt(done) }), true));
     }
-    const closed = !!S.bam;
+    const closed = S.tracks.length > 0;
     S.loadToken++;
     S.fasta = fasta; S.contigs = [...fasta.idx].map(([n, e]) => ({ name: n, len: e.len })); S._ck = null;
-    S.bam = null; S.bamMap = null; S.bamBack = null; S.bamName = ''; S.layout = null;
-    S.data = null; S.shown = null; GL.n = 0; S.selected = null; S.sortPos = null; S.isDemo = false; S.msg = null; S.loading = false;
+    closeAllTracks();
+    S.data = null; S.sortPos = null; S.msg = null; S.loading = false;
     hideCard(); updateRefInfo(); updateFileLabel(); $('examples').hidden = true; closePanels();
     if (!opts.quiet) {
       let note = fasta.built ? t('ref.indexed', { name, n: fmtInt(fasta.idx.size) }) : t('ref.loaded', { name });
@@ -2588,7 +2781,7 @@ $('ctx').addEventListener('keydown', e => {
 stage.addEventListener('contextmenu', e => {
   if (!onCanvas(e)) return;
   e.preventDefault();
-  if (!S.bam) return;
+  if (!S.tracks.length) return;
   hideCard(); openMenu(e.offsetX, e.offsetY);
 });
 document.addEventListener('pointerdown', e => { if (!$('ctx').hidden && !$('ctx').contains(e.target)) closeMenu(); }, true);
@@ -2600,11 +2793,16 @@ $('viewBtn').onclick = () => togglePanel('panel', $('viewBtn'));
 $('openBtn').onclick = () => togglePanel('openPanel', $('openBtn'));
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = closePanels);
 $('pickFiles').onchange = e => { if (e.target.files.length) openLocalFiles(e.target.files); e.target.value = ''; };
+$('pickFolder').onchange = e => { if (e.target.files.length) openLocalFiles(e.target.files, true); e.target.value = ''; };
 $('openUrl').onclick = openUrls;
 $('openDemo').onclick = () => { openDemo(); closePanels(); };
 stage.addEventListener('dragover', e => { e.preventDefault(); stage.classList.add('drop'); });
 stage.addEventListener('dragleave', () => stage.classList.remove('drop'));
-stage.addEventListener('drop', e => { e.preventDefault(); stage.classList.remove('drop'); if (e.dataTransfer.files.length) openLocalFiles(e.dataTransfer.files); });
+stage.addEventListener('drop', async e => {
+  e.preventDefault(); stage.classList.remove('drop');
+  try { const { files, folder } = await droppedFiles(e.dataTransfer); if (files.length) openLocalFiles(files, folder); }
+  catch (err) { if (e.dataTransfer.files.length) openLocalFiles(e.dataTransfer.files); }
+});
 
 $('locus').addEventListener('keydown', e => {
   if (e.key !== 'Enter' || !S.contigs) return;

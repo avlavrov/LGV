@@ -10,10 +10,18 @@ It runs in the browser with no server and no third-party dependencies.
 Open `dist/cgv.html` in Chrome, Edge, Firefox or Safari. It starts on synthetic demo
 data. To view your own data, press **Open**:
 
-- **From disk**: choose a `.bam` and its `.bai` (you can add `.fa` + `.fai`), or drop the
-  files onto the window. Files are read in pieces straight from disk and never uploaded.
-- **By link**: an HTTPS link to a BAM. The server must allow CORS and Range requests.
-  An access token can be given; it is not saved.
+- **From disk**: choose one or more `.bam` files with their indexes (you can add `.fa` +
+  `.fai`), choose a whole folder, or drop files or a folder onto the window. Each `.bam` is
+  paired with its index by name: `sample.bam.bai` or `sample.bai`. A web page can read only
+  the files it is given, so the index has to be chosen too (selecting the folder is the
+  easiest way); a folder with several samples first lists them to pick from. Files are read
+  in pieces straight from disk and never uploaded.
+- **By link**: one or more HTTPS links to BAM files, one per line. The index is looked for
+  next to each BAM (`.bam.bai`, then `.bai`) unless given. The server must allow CORS and
+  Range requests. An access token can be given; it is not saved.
+- **Several samples** are shown as tracks, one under another, under one ruler and reference,
+  all at the same position. Each track has its own coverage, reads and scrolling and is
+  closed with its ×. Sorting applies to all of them. Opening your own data replaces the demo.
 - **Reference**: the reference sets the genome, as in IGV. Loading one switches the genome
   and closes open samples; the reference itself can be browsed right away. Samples opened
   afterwards are matched to it: contig names are compared without case, `chr` prefix or
@@ -33,7 +41,7 @@ More languages are one dictionary in `src/i18n.js`.
 | Requirement | State |
 | --- | --- |
 | F1 BAM by HTTPS link (Range) | done; CRAM is the next step |
-| F2 Local BAM + BAI | done, including drag and drop |
+| F2 Local BAM + BAI | done: several samples at once as tracks, index paired by name, folder or drag and drop |
 | F3 Reference (GRCh38, GRCh37, T2T-CHM13) | done: files or link, plain or bgzip, public presets |
 | F4 Access token / presigned URL | done |
 | F5 Go to coordinate | done, contig names case-insensitive (chr1 = Chr1 = 1); drag on the ruler to zoom to a region, click it to center; gene names come with the gene track |
