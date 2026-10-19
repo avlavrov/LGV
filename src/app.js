@@ -110,15 +110,17 @@ function initGL() {
   layout(location=1) in vec4 a_x;      // x0, x1, row, grp
   layout(location=2) in vec3 a_y;      // yA, yB, minpx
   layout(location=3) in vec4 a_color;
-  uniform float u_viewStart, u_bpPerPx, u_rowH, u_gap, u_grpGap, u_scroll, u_top, u_mmFade;
+  uniform float u_viewInt, u_viewFrac, u_bpPerPx, u_rowH, u_gap, u_grpGap, u_scroll, u_top, u_mmFade;
   uniform vec2 u_size;
   out vec4 v_color;
   void main() {
     // minpx < 0: an isolated mismatch that fades when zoomed out
     float minpx = abs(a_y.z);
     float fade = a_y.z < 0.0 ? clamp(u_mmFade / u_bpPerPx, 0.0, 1.0) : 1.0;
-    float px0 = (a_x.x - u_viewStart) / u_bpPerPx;
-    float px1 = (a_x.y - u_viewStart) / u_bpPerPx;
+    // positions are whole numbers relative to the window start; the view start comes as a whole part
+    // and a fraction, so the subtraction stays exact in 32-bit floats even far into a large window
+    float px0 = ((a_x.x - u_viewInt) - u_viewFrac) / u_bpPerPx;
+    float px1 = ((a_x.y - u_viewInt) - u_viewFrac) / u_bpPerPx;
     if (px1 - px0 < minpx) { float c = (px0 + px1) * 0.5; px0 = c - minpx * 0.5; px1 = c + minpx * 0.5; }
     float h = max(u_rowH - u_gap, 1.0);
     float y0 = u_top + a_x.z * u_rowH + a_x.w * u_grpGap - u_scroll;
@@ -137,7 +139,7 @@ function initGL() {
   gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
   GL.prog = prog;
-  GL.u = {}; for (const n of ['u_viewStart', 'u_bpPerPx', 'u_rowH', 'u_gap', 'u_grpGap', 'u_scroll', 'u_top', 'u_size', 'u_mmFade']) GL.u[n] = gl.getUniformLocation(prog, n);
+  GL.u = {}; for (const n of ['u_viewInt', 'u_viewFrac', 'u_bpPerPx', 'u_rowH', 'u_gap', 'u_grpGap', 'u_scroll', 'u_top', 'u_size', 'u_mmFade']) GL.u[n] = gl.getUniformLocation(prog, n);
   GL.quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, GL.quad);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
   Object.assign(GL, makeVao());
@@ -567,7 +569,8 @@ function render() {
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     if (S.data && S.tracks.some(T => T.shown && T.n)) {
       gl.useProgram(GL.prog);
-      gl.uniform1f(GL.u.u_viewStart, S.view.start - S.data.start);
+      const vrel = S.view.start - S.data.start, vint = Math.floor(vrel);
+      gl.uniform1f(GL.u.u_viewInt, vint); gl.uniform1f(GL.u.u_viewFrac, vrel - vint);
       gl.uniform1f(GL.u.u_bpPerPx, S.view.bpPerPx);
       gl.uniform1f(GL.u.u_rowH, P.readHeight);
       gl.uniform1f(GL.u.u_gap, P.readHeight >= 5 ? 1 : 0);
