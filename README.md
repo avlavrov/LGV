@@ -94,6 +94,12 @@ Targeted panels reach thousands of reads per base. CGV handles them the way IGV 
 - **Sparse coverage and reference:** coverage is kept in 64 kb blocks only where reads are,
   and reference bases are read only under reads (plus the view when it is under 200 kb).
   A 46 Mb window with a few reads uses a few blocks and a few kb of FASTA, not gigabytes.
+- **Depth-only coverage for wide views:** above 1 Mb the coverage is counted from CIGAR ranges
+  instead of base by base (allele colors cannot be seen at that scale); zooming in below 1 Mb
+  loads the window again in detail.
+- **Web Workers:** samples are read and inflated in background workers, several in parallel, so
+  the page stays responsive while a window loads. Where workers cannot start, reading falls back
+  to the page.
 - **Load limit by size:** a window loads on its own when the index points to at most 64 MB
   of compressed alignments; larger windows ask first.
 

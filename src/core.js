@@ -226,6 +226,9 @@ class BamFile {
     const flt = opts.filters || null;
     const ds = opts.downsample && opts.downsample.max > 0 && opts.downsample.window > 0 ? opts.downsample : null;
     const cov = new SparseCoverage(beg, end);
+    // opts.depthOnly (wide windows): depth from CIGAR ranges, without counting bases one by one;
+    // several times cheaper, and allele colors cannot be seen at that scale anyway
+    const depth = opts.depthOnly ? new DepthDiff(beg, end) : null;
     const out = { reads: [], cov, total: 0, sampled: [] };
     let win = -1, n = 0, kept = [], rng = 1;
     const flush = () => {
@@ -242,7 +245,7 @@ class BamFile {
       if (refLen > this.maxSpan) this.maxSpan = refLen;
       if (pos + Math.max(refLen, 1) <= beg) return;
       if (flt && !passFlags(flag, mapq, flt)) return;
-      addCoverage(buf, dv, p, cov);
+      if (depth) depth.add(buf, dv, p); else addCoverage(buf, dv, p, cov);
       if (!ds || pos >= beg) out.total++;
       if (!ds) { out.reads.push(parseBamRecord(buf, dv, p)); return; }
       // Downsampling decides per window of read starts. A read starting before `beg` belongs to a window
@@ -259,6 +262,7 @@ class BamFile {
     // chunks are disjoint and in file order, so reads arrive sorted by position
     for (const c of this.index.chunks(refId, beg, end)) await this._scanChunk(c, refId, beg, end, visit);
     flush();
+    if (depth) depth.finish(cov);
     return out;
   }
   // Streams one index chunk in slabs, calling visit(buf, dv, p, pos) for records of refId that start
@@ -424,6 +428,33 @@ function addCoverage(buf, dv, p, cov) {
     } else if (op === 2) { for (let k = 0; k < n; k++) { const pos = r + k; if (pos >= lo && pos < hi) { const o = slot(pos); blk[o + 5]++; } } r += n; }
     else if (op === 3) r += n;
     else if (op === 1 || op === 4) q += n;
+  }
+}
+
+// Depth as a difference array: +1 where an aligned block starts, -1 where it ends; summed at the end
+// into the N counter of SparseCoverage, which is then marked depth-only (no allele counts).
+class DepthDiff {
+  constructor(start, end) { this.start = start; this.end = end; this.blocks = new Map(); }
+  _blk(b) { let x = this.blocks.get(b); if (!x) { x = new Int32Array(COV_BLOCK); this.blocks.set(b, x); } return x; }
+  _mark(pos, v) { if (pos < this.start) pos = this.start; if (pos >= this.end) return; const b = Math.floor(pos / COV_BLOCK); this._blk(b)[pos - b * COV_BLOCK] += v; }
+  add(buf, dv, p) {
+    const s = p + 4, lrn = buf[s + 8], ncig = dv.getUint16(s + 12, true), cig = s + 32 + lrn;
+    let r = dv.getInt32(s + 4, true);
+    for (let i = 0; i < ncig; i++) {
+      const c = dv.getUint32(cig + 4 * i, true), op = c & 15, n = c >>> 4;
+      if (op === 0 || op === 7 || op === 8) { if (r + n > this.start && r < this.end) { this._mark(r, 1); this._mark(r + n, -1); } r += n; }
+      else if (op === 2 || op === 3) r += n;
+    }
+  }
+  finish(cov) {
+    let run = 0, prev = null;
+    for (const b of [...this.blocks.keys()].sort((x, y) => x - y)) {
+      if (prev !== null && b !== prev + 1) run = 0; // aligned blocks never span a whole empty 64 kb block
+      const d = this.blocks.get(b), out = cov.block(b, true);
+      for (let i = 0; i < COV_BLOCK; i++) { run += d[i]; if (run) out[i * 6 + 4] = run; }
+      prev = b;
+    }
+    cov.depthOnly = true;
   }
 }
 
@@ -987,5 +1018,27 @@ class MinHeap {
 
 // Plain packing of a list (no persistence), lowest free row first.
 function packRows(reads, padBp) { const g = new ReadLayout(null, padBp).update(reads, () => '').groups[0]; return g ? g.rows : []; }
+
+
+// ======================= Worker =======================
+// The same file runs in a Web Worker (started from this script's own text): samples are read and
+// inflated there, in parallel and off the page's thread, so the view stays responsive while loading.
+// Messages: { id, op: 'open', key, bam, bai } and { id, op: 'fetch', key, args } → { id, ok, res | err }.
+if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && self instanceof WorkerGlobalScope) {
+  const files = new Map();
+  const src = d => d.url ? new UrlSource(d.url, d.headers) : new FileSource(d.blob, d.name);
+  self.onmessage = async e => {
+    const { id, op, key } = e.data;
+    try {
+      if (op === 'open') { files.set(key, await new BamFile(src(e.data.bam), src(e.data.bai)).open()); self.postMessage({ id, ok: true }); }
+      else if (op === 'close') files.delete(key);
+      else if (op === 'fetch') {
+        const bam = files.get(key), r = await bam.fetch(...e.data.args);
+        const blocks = [...r.cov.blocks], cov = { start: r.cov.start, end: r.cov.end, depthOnly: !!r.cov.depthOnly, blocks };
+        self.postMessage({ id, ok: true, res: { reads: r.reads, total: r.total, sampled: r.sampled, cov }, maxSpan: bam.maxSpan }, blocks.map(b => b[1].buffer));
+      }
+    } catch (err) { self.postMessage({ id, ok: false, err: { code: err.code || '', vars: err.vars || {}, message: String(err.message || err) } }); }
+  };
+}
 
 if (typeof module !== 'undefined') module.exports = { clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

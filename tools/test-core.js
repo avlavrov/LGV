@@ -124,6 +124,12 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     let same2 = true; for (let j = 11000; j < 13000; j++) for (let k = 0; k < 6; k++) if (ds.cov.get(j, k) !== full.cov.get(j, k)) same2 = false;
     ok(same2, 'coverage is the same with downsampling');
     ok(ds.reads.every((r, i) => !i || ds.reads[i - 1].pos <= r.pos), 'downsampled reads stay sorted');
+    {
+      const fullC = await bam.fetch(0, 5000, 30000, { filters: flt }), dep = await bam.fetch(0, 5000, 30000, { filters: flt, depthOnly: true });
+      let bad = 0; const A = new Uint32Array(6), B = new Uint32Array(6);
+      for (let pos = 5000; pos < 30000; pos++) { const a = fullC.cov.counts(pos, A), b = dep.cov.counts(pos, B); if (a[0] + a[1] + a[2] + a[3] + a[4] !== b[4]) bad++; }
+      ok(bad === 0 && dep.cov.depthOnly && dep.total === fullC.total, 'depth-only coverage equals the sum of base counts (' + bad + ' positions differ)');
+    }
     const again = await bam.fetch(0, 11000, 13000, { filters: flt });
     ok(again.reads.length === full.reads.length && again.total === full.total, 'second fetch through the block cache gives the same reads');
     ok(['demo', 'Demo', 'DEMO'].every(n => bam.refId(n) === 0) && C.contigKey('Chr7') === C.contigKey('7') && C.contigKey('chrM') === C.contigKey('MT'), 'contig names are case-insensitive, chr prefix and M/MT optional');

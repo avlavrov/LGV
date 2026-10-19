@@ -344,6 +344,7 @@ function rebuildTrack(T) {
 // A position where non-reference alleles pass the threshold (same rule as the coverage highlight).
 const CNT = new Uint32Array(6), CNT2 = new Uint32Array(6);
 function flaggedPos(cov, d, pos) {
+  if (cov.depthOnly) return false;
   const refc = d.ref.at(pos); if (!refc) return false;
   const c = cov.counts(pos, CNT), t = c[0] + c[1] + c[2] + c[3] + c[4]; if (t < 2) return false;
   const ri = { 65: 0, 67: 1, 71: 2, 84: 3 }[refc]; if (ri === undefined) return false;
@@ -407,6 +408,57 @@ function zoomAt(px, factor) {
 }
 function pan(dpx) { S.view.start += dpx * S.view.bpPerPx; clampView(); requestLoad(); draw(); syncLocus(); }
 
+// ======================= Workers =======================
+// Samples are read in Web Workers made from the core script's own text (see the end of core.js):
+// several samples inflate in parallel and the page stays responsive. Where workers cannot start
+// (a page policy, an old browser) everything runs on the page as before.
+const POOL = { workers: [], next: 0, seq: 0, wait: new Map(), ok: null };
+function workerPool() {
+  if (POOL.ok !== null) return POOL.ok;
+  try {
+    const code = $('cgv-core') && $('cgv-core').textContent;
+    if (!code || typeof Worker === 'undefined') throw new Error('no worker');
+    const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+    const n = Math.max(1, Math.min(6, navigator.hardwareConcurrency || 4));
+    for (let i = 0; i < n; i++) {
+      const w = new Worker(url);
+      w.onmessage = e => { const cb = POOL.wait.get(e.data.id); if (cb) { POOL.wait.delete(e.data.id); cb(e.data); } };
+      w.onerror = () => { for (const [id, cb] of POOL.wait) { POOL.wait.delete(id); cb({ ok: false, err: { code: 'worker', message: 'worker failed' } }); } };
+      POOL.workers.push(w);
+    }
+    POOL.ok = true;
+  } catch (e) { POOL.ok = false; }
+  return POOL.ok;
+}
+function callWorker(w, msg) {
+  return new Promise((resolve, reject) => {
+    const id = ++POOL.seq;
+    POOL.wait.set(id, m => m.ok ? resolve(m) : reject(Object.assign(new CgvError(m.err.code || 'worker', m.err.vars), m.err.code ? {} : { message: m.err.message })));
+    w.postMessage(Object.assign({ id }, msg));
+  });
+}
+const srcDesc = s => s instanceof UrlSource ? { url: s.url, headers: s.headers } : { blob: s.blob, name: s.name };
+// Gives a track its worker; on any failure the track simply reads on the page.
+async function attachWorker(T) {
+  if (!workerPool()) return;
+  const w = POOL.workers[POOL.next++ % POOL.workers.length];
+  try { await callWorker(w, { op: 'open', key: T.id, bam: srcDesc(T.bam.src), bai: srcDesc(T.bam.baiSrc) }); T.worker = w; }
+  catch (e) { T.worker = null; }
+}
+async function trackFetch(T, br, ls, le, opts) {
+  if (T.worker) {
+    try {
+      const m = await callWorker(T.worker, { op: 'fetch', key: T.id, args: [br, ls, le, opts] });
+      T.bam.maxSpan = Math.max(T.bam.maxSpan, m.maxSpan || 0);
+      const c = m.res.cov, cov = new SparseCoverage(c.start, c.end);
+      for (const [bi, blk] of c.blocks) cov.blocks.set(bi, blk);
+      if (c.depthOnly) cov.depthOnly = true;
+      return { reads: m.res.reads, total: m.res.total, sampled: m.res.sampled, cov };
+    } catch (e) { if (e.code !== 'worker') throw e; T.worker = null; } // the worker died: read on the page
+  }
+  return T.bam.fetch(br, ls, le, opts);
+}
+
 // ======================= Loading =======================
 let loadTimer = 0;
 function requestLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(ensureData, 120); }
@@ -414,8 +466,10 @@ async function ensureData() {
   if (!S.contigs || !W) return;
   const vs = Math.max(0, Math.floor(S.view.start)), ve = Math.min(refLen(), Math.ceil(viewEnd()));
   const d = S.data;
-  if (d && d.refId === S.view.refId && vs >= d.start && ve <= d.end) return;
-  const span = ve - vs, margin = Math.round(Math.min(span, 20000) / 2);
+  const span0 = ve - vs;
+  // a window loaded with depth-only coverage is loaded again in detail when zoomed in below COV_DETAIL_BP
+  if (d && d.refId === S.view.refId && vs >= d.start && ve <= d.end && !(d.depthOnly && span0 <= COV_DETAIL_BP)) return;
+  const span = span0, margin = Math.round(Math.min(span, 20000) / 2);
   let ls = Math.max(0, vs - margin); const le = Math.min(refLen(), ve + margin);
   const tracks = S.tracks.slice(), refId = S.view.refId;
   // with downsampling, reads starting before the query start are left out (see BamFile.fetch), so the
@@ -439,12 +493,13 @@ async function ensureData() {
   const token = ++S.loadToken; S.loading = true; S.msg = null; draw();
   const t0 = performance.now();
   try {
-    const opts = { filters: P.filters, downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null };
+    const depthOnly = span > COV_DETAIL_BP;
+    const opts = { depthOnly, filters: P.filters, downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null };
     // samples load side by side; one that fails shows its error in its own track
     const results = await Promise.all(tracks.map(async T => {
       const br = T.map[refId];
       if (br < 0) return { T, res: null, msg: t('sample.noContig', { name: S.contigs[refId].name }) };
-      try { return { T, res: await T.bam.fetch(br, ls, le, opts), msg: null }; }
+      try { return { T, res: await trackFetch(T, br, ls, le, opts), msg: null }; }
       catch (e) { return { T, res: null, msg: errText(e), error: true }; }
     }));
     if (token !== S.loadToken) return;
@@ -468,7 +523,7 @@ async function ensureData() {
     }
     if (token !== S.loadToken) return;
     S.refFromMD = fromMD && tracks.length > 0;
-    S.data = { refId, start: ls, end: le, ref };
+    S.data = { refId, start: ls, end: le, ref, depthOnly };
     for (const { T, res, msg, error } of results) {
       T.data = { reads: res ? res.reads : [], insert: insertSizeBounds(res ? res.reads : []),
         cov: res ? res.cov : new SparseCoverage(ls, le), total: res ? res.total : 0, sampled: res ? res.sampled : [] };
@@ -485,6 +540,7 @@ async function ensureData() {
 
 // Filters and downsampling act while reading, so changing them re-reads the window.
 const REF_VIEW_BP = 200000; // windows up to this size also load the reference between reads
+const COV_DETAIL_BP = 1000000; // wider views count coverage depth only (no allele colors), which loads several times faster
 function reloadData() { if (!S.contigs) return; S.data = null; for (const T of S.tracks) { T.data = null; T.shown = null; T.n = 0; } S.selected = null; hideCard(); ensureData(); }
 
 // ======================= Rendering =======================
@@ -1040,6 +1096,7 @@ async function openBam(bamSrc, baiSrc, opts) {
     const keepView = !own && S.viewSet && map[S.view.refId] >= 0;
     if (!opts.demo) for (const x of S.tracks.filter(x => x.demo)) closeTrack(x); // own data replaces the demo sample
     const T = { id: ++S.trackSeq, key, bam, name: bamSrc.name, demo: !!opts.demo, map, back, data: null, shown: null, layout: null, scroll: 0, msg: null, vao: null, n: 0 };
+    await attachWorker(T);
     S.tracks.push(T);
     S.sortPos = S.tracks.length > 1 ? S.sortPos : null; S.selected = null; hideCard();
     updateFileLabel();
@@ -1064,11 +1121,12 @@ async function openBam(bamSrc, baiSrc, opts) {
 function closeTrack(T) {
   const i = S.tracks.indexOf(T); if (i < 0) return;
   S.tracks.splice(i, 1); freeVao(T);
+  if (T.worker) T.worker.postMessage({ op: 'close', key: T.id });
   if (S.selected && S.selected.T === T) { S.selected = null; hideCard(); }
   $('examples').hidden = !S.tracks.some(x => x.demo);
   updateFileLabel(); clampScroll(); rebuild(); draw();
 }
-function closeAllTracks() { for (const T of S.tracks) freeVao(T); S.tracks = []; S.selected = null; hideCard(); }
+function closeAllTracks() { for (const T of S.tracks) { freeVao(T); if (T.worker) T.worker.postMessage({ op: 'close', key: T.id }); } S.tracks = []; S.selected = null; hideCard(); }
 function updateFileLabel() {
   const parts = [];
   if (S.fasta) parts.push(S.fasta.name);
