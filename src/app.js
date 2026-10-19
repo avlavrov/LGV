@@ -996,8 +996,13 @@ new ResizeObserver(resize).observe(stage);
 // Adds a sample as a new track. Its contigs are matched to the current coordinate system — the
 // reference, or the first sample's header when no reference is loaded (name variants, then unique
 // length); the very first sample without a reference gives the coordinates itself.
+// The same file (or link) opened again is not added twice: every track loads its window, so a
+// duplicate doubles the work for nothing.
+function sourceKey(src) { return src.blob ? `${src.name}|${src.blob.size}|${src.blob.lastModified || 0}` : src.url || src.name; }
 async function openBam(bamSrc, baiSrc, opts) {
   opts = opts || {};
+  const key = sourceKey(bamSrc);
+  if (S.tracks.some(x => x.key === key)) { toast(t('sample.already', { name: bamSrc.name })); return true; }
   S.loading = true; S.msg = null; draw();
   try {
     const bam = await new BamFile(bamSrc, baiSrc).open();
@@ -1024,7 +1029,7 @@ async function openBam(bamSrc, baiSrc, opts) {
     }
     const keepView = !own && S.viewSet && map[S.view.refId] >= 0;
     if (!opts.demo) for (const x of S.tracks.filter(x => x.demo)) closeTrack(x); // own data replaces the demo sample
-    const T = { id: ++S.trackSeq, bam, name: bamSrc.name, demo: !!opts.demo, map, back, data: null, shown: null, layout: null, scroll: 0, msg: null, vao: null, n: 0 };
+    const T = { id: ++S.trackSeq, key, bam, name: bamSrc.name, demo: !!opts.demo, map, back, data: null, shown: null, layout: null, scroll: 0, msg: null, vao: null, n: 0 };
     S.tracks.push(T);
     S.sortPos = S.tracks.length > 1 ? S.sortPos : null; S.selected = null; hideCard();
     updateFileLabel();

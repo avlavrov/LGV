@@ -99,12 +99,15 @@ function makeRead(al, rev, contig, extra) {
   return Object.assign({ contig, pos: al.pos, cigar: al.cigar, seq: s.join(''), qual: q, rev }, extra);
 }
 function inRepeat(p, e) { return (p < 30600 && e > 30000) || (p < 33600 && e > 33000); }
+// CGV_AMPLICON=<pos>: all pairs come from one amplicon starting there (amplicon panel test data)
+const AMP = +(process.env.CGV_AMPLICON || 0);
 const DEPTH = +(process.env.CGV_DEPTH || 30); // CGV_DEPTH=<x> for deep targeted-panel style data
 const nPairs = Math.round(DEPTH * L / (2 * RL));
 for (let n = 0; n < nPairs; n++) {
   const h = rnd() < 0.5 ? 0 : 1, hap = haps[h];
   let frag = Math.round(350 + 40 * gauss()); frag = Math.max(220, Math.min(600, frag));
-  const a = rint(0, hap.seq.length - frag - 1);
+  let a = rint(0, hap.seq.length - frag - 1);
+  if (AMP) { frag = 260; a = AMP + rint(0, 2); } // amplicon panel: every pair starts at the same place
   const r1 = alignSegment(hap, a, RL), r2 = alignSegment(hap, a + frag - RL, RL);
   const name = 'demo_' + (++pairId);
   const e1 = r1.pos + r1.cigar.reduce((s, o) => s + (o[0] === 'M' || o[0] === 'D' ? o[1] : 0), 0);

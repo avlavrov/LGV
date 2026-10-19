@@ -297,7 +297,7 @@ const STRINGS = {
     'files.noIndex': 'No index (.bai) chosen for {names}. A web page can read only the files you choose: select the .bam together with its .bai, or choose the whole folder.',
     'files.noIndexSome': 'Skipped, no index chosen: {names}.', 'files.needBam': 'Choose the .bam together with its .bai',
     'folder.found': 'Samples in this folder: {n}. Choose which to open.', 'folder.noIndex': 'no index next to it', 'folder.open': 'Open selected', 'folder.none': 'Nothing selected',
-    'tracks.n': '{n} samples', 'sample.failed': 'Could not open {name}: {msg}',
+    'tracks.n': '{n} samples', 'sample.already': '{name} is already open', 'sample.failed': 'Could not open {name}: {msg}',
     'open.urlAuth': 'Access token (optional)', 'open.urlBtn': 'Open link',
     'open.urlHint': 'The server must allow CORS and Range requests. The token is not saved. On claude.ai, loading by link is blocked by the platform security policy — open cgv.html locally to use links.',
     'open.demo': 'Demo', 'open.demoBtn': 'Synthetic demo data', 'open.demoHint': '40 kb of made-up sequence, 30×, five known variants.',
@@ -396,7 +396,7 @@ const STRINGS = {
     'files.noIndex': 'Для {names} не выбран индекс (.bai). Веб-страница может читать только выбранные вами файлы: выберите .bam вместе с .bai или выберите всю папку.',
     'files.noIndexSome': 'Пропущены, нет индекса: {names}.', 'files.needBam': 'Выберите .bam вместе с его .bai',
     'folder.found': 'Образцов в папке: {n}. Отметьте, какие открыть.', 'folder.noIndex': 'рядом нет индекса', 'folder.open': 'Открыть выбранные', 'folder.none': 'Ничего не выбрано',
-    'tracks.n': 'образцов: {n}', 'sample.failed': 'Не удалось открыть {name}: {msg}',
+    'tracks.n': 'образцов: {n}', 'sample.already': '{name} уже открыт', 'sample.failed': 'Не удалось открыть {name}: {msg}',
     'err.noIndex': 'Не найден индекс для {name} (проверены {tried})',
     'open.urlAuth': 'Токен доступа (необязательно)', 'open.urlBtn': 'Открыть по ссылке',
     'open.urlHint': 'Сервер должен разрешать CORS и Range-запросы. Токен не сохраняется. На claude.ai загрузка по ссылке заблокирована политикой безопасности платформы — для ссылок откройте cgv.html локально.',
@@ -2486,8 +2486,13 @@ new ResizeObserver(resize).observe(stage);
 // Adds a sample as a new track. Its contigs are matched to the current coordinate system — the
 // reference, or the first sample's header when no reference is loaded (name variants, then unique
 // length); the very first sample without a reference gives the coordinates itself.
+// The same file (or link) opened again is not added twice: every track loads its window, so a
+// duplicate doubles the work for nothing.
+function sourceKey(src) { return src.blob ? `${src.name}|${src.blob.size}|${src.blob.lastModified || 0}` : src.url || src.name; }
 async function openBam(bamSrc, baiSrc, opts) {
   opts = opts || {};
+  const key = sourceKey(bamSrc);
+  if (S.tracks.some(x => x.key === key)) { toast(t('sample.already', { name: bamSrc.name })); return true; }
   S.loading = true; S.msg = null; draw();
   try {
     const bam = await new BamFile(bamSrc, baiSrc).open();
@@ -2514,7 +2519,7 @@ async function openBam(bamSrc, baiSrc, opts) {
     }
     const keepView = !own && S.viewSet && map[S.view.refId] >= 0;
     if (!opts.demo) for (const x of S.tracks.filter(x => x.demo)) closeTrack(x); // own data replaces the demo sample
-    const T = { id: ++S.trackSeq, bam, name: bamSrc.name, demo: !!opts.demo, map, back, data: null, shown: null, layout: null, scroll: 0, msg: null, vao: null, n: 0 };
+    const T = { id: ++S.trackSeq, key, bam, name: bamSrc.name, demo: !!opts.demo, map, back, data: null, shown: null, layout: null, scroll: 0, msg: null, vao: null, n: 0 };
     S.tracks.push(T);
     S.sortPos = S.tracks.length > 1 ? S.sortPos : null; S.selected = null; hideCard();
     updateFileLabel();
