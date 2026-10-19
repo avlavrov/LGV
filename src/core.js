@@ -342,14 +342,18 @@ function contigKeys(name) {
 }
 // Matches BAM contigs to reference sequences: by name (case, chr prefix, version and NCBI header
 // fields ignored), then, for what is left, by a length that only one sequence on each side has.
+// A name match with a different length is not a match but a conflict: the same name in another
+// genome build (chr1 is 249,250,621 bp in GRCh37 and 248,956,422 bp in GRCh38). Coordinates would be
+// wrong, so such contigs are never paired, and the caller refuses the sample when a large one differs.
 function matchContigs(bamRefs, faRefs) {
   const byKey = new Map();
-  for (const f of faRefs) for (const k of contigKeys(f.name)) if (!byKey.has(k)) byKey.set(k, f.name);
-  const matched = [], used = new Set(), left = [];
+  for (const f of faRefs) for (const k of contigKeys(f.name)) if (!byKey.has(k)) byKey.set(k, f);
+  const matched = [], used = new Set(), left = [], conflicts = [];
   for (const b of bamRefs) {
     let hit = null;
     for (const k of contigKeys(b.name)) if (byKey.has(k)) { hit = byKey.get(k); break; }
-    if (hit) { matched.push([b.name, hit, 'name']); used.add(hit); } else left.push(b);
+    if (hit && b.len && hit.len && b.len !== hit.len) { conflicts.push([b.name, b.len, hit.name, hit.len]); used.add(hit.name); continue; }
+    if (hit) { matched.push([b.name, hit.name, 'name']); used.add(hit.name); } else left.push(b);
   }
   const count = (arr, len) => arr.filter(x => x.len === len).length;
   const faLeft = faRefs.filter(f => !used.has(f.name));
@@ -359,7 +363,7 @@ function matchContigs(bamRefs, faRefs) {
     if (cand.length === 1) { matched.push([b.name, cand[0].name, 'length']); used.add(cand[0].name); }
   }
   const m = new Set(matched.map(x => x[0]));
-  return { matched, unmatched: bamRefs.filter(b => !m.has(b.name)).map(b => b.name) };
+  return { matched, conflicts, unmatched: bamRefs.filter(b => !m.has(b.name)).map(b => b.name) };
 }
 
 function passFlags(flag, mapq, flt) {

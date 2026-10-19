@@ -970,7 +970,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === '-' || e.key === '_') zoomAt(W / 2, 2);
   else if (e.key === 's' || e.key === 'ы') sortHere(); // 'ы' / 'р': same keys on a Russian layout
   else if (e.key === 'h' || e.key === 'р') { P.hideToolbar = !P.hideToolbar; applyChrome(); saveProfile(); }
-  else if (e.key === 'Escape') { hideCard(); closePanels(); closeMenu(); S.selected = null; S.rubber = null; draw(); }
+  else if (e.key === 'Escape') { hideCard(); closePanels(); closeMenu(); $('toast').hidden = true; S.selected = null; S.rubber = null; draw(); }
   else return;
   e.preventDefault();
 });
@@ -1007,10 +1007,18 @@ async function openBam(bamSrc, baiSrc, opts) {
   try {
     const bam = await new BamFile(bamSrc, baiSrc).open();
     const back = new Int32Array(bam.refs.length).fill(-1);
-    let map, note = '';
+    let map, note = '', noteSticky = false;
     const own = !S.fasta && !S.tracks.length; // first sample with no reference: its header is the genome
     if (!own) {
       const link = matchContigs(bam.refs, S.contigs);
+      // a large contig with the same name but another length: the sample is from another genome build
+      const big = link.conflicts.filter(c => Math.max(c[1], c[3]) > 1e6);
+      if (big.length) {
+        S.loading = false; draw();
+        const eg = big.slice(0, 2).map(c => t('sample.lenPair', { bam: c[0], bl: fmtInt(c[1]), ref: c[2], rl: fmtInt(c[3]) })).join('; ');
+        toast(t('sample.build', { name: bamSrc.name, eg }), true);
+        return false;
+      }
       if (!link.matched.length) {
         S.loading = false; draw();
         const list = (arr, n) => arr.slice(0, n).map(x => `${x.name} (${fmtInt(x.len)} ${t('unit.bp')})`).join(', ') + (arr.length > n ? ` … +${fmtInt(arr.length - n)}` : '');
@@ -1022,6 +1030,8 @@ async function openBam(bamSrc, baiSrc, opts) {
       for (const [b, f] of link.matched) { map[viewIdx.get(f)] = bamIdx.get(b); back[bamIdx.get(b)] = viewIdx.get(f); }
       const byLen = link.matched.filter(m => m[2] === 'length');
       if (byLen.length) note += t('sample.byLength', { pairs: byLen.slice(0, 3).map(m => m[0] + ' = ' + m[1]).join(', ') + (byLen.length > 3 ? ' …' : '') }) + ' ';
+      if (link.conflicts.length) noteSticky = true;
+      if (link.conflicts.length) note += t('sample.lenDiff', { names: link.conflicts.slice(0, 3).map(c => t('sample.lenPair', { bam: c[0], bl: fmtInt(c[1]), ref: c[2], rl: fmtInt(c[3]) })).join('; ') }) + ' ';
       if (link.unmatched.length) note += t('sample.partial', { n: fmtInt(link.unmatched.length), names: link.unmatched.slice(0, 3).join(', ') + (link.unmatched.length > 3 ? ' …' : '') });
     } else {
       S.contigs = bam.refs.map(r => ({ name: r.name, len: r.len })); S._ck = null;
@@ -1035,7 +1045,7 @@ async function openBam(bamSrc, baiSrc, opts) {
     updateFileLabel();
     $('examples').hidden = !S.tracks.some(x => x.demo);
     S.loading = false;
-    if (note) toast(note.trim(), note.length > 90);
+    if (note) toast(note.trim(), noteSticky);
     const loc = opts.locus ? parseLocus(opts.locus) : null;
     S.loadToken++; S.data = null; // every track loads the same window: load it again with the new one
     if (loc && !loc.error) goto(loc.id, loc.s, loc.e);
@@ -1382,9 +1392,16 @@ $('resetProfile').onclick = () => { P = clone(DEFAULT_PROFILE); saveProfile(); a
 $('showToolbar').onclick = () => { P.hideToolbar = false; saveProfile(); applyChrome(); };
 function applyChrome() { document.body.classList.toggle('bare', P.hideToolbar); $('showToolbar').hidden = !P.hideToolbar; requestAnimationFrame(resize); }
 
+// Messages at the bottom: closed by a click (× or anywhere on it) or Escape. Short ones go by
+// themselves; important ones (sticky) stay until closed.
 let toastTimer = 0;
 $('toast').onclick = () => { $('toast').hidden = true; };
-function toast(msg, sticky) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastTimer); if (!sticky) toastTimer = setTimeout(() => el.hidden = true, msg.length > 90 ? 7000 : 3500); }
+function toast(msg, sticky) {
+  const el = $('toast');
+  el.innerHTML = `<span>${esc(msg)}</span><button class="toast-x" aria-label="${esc(t('btn.close'))}">×</button>`;
+  el.hidden = false; clearTimeout(toastTimer);
+  if (!sticky) toastTimer = setTimeout(() => el.hidden = true, msg.length > 90 ? 9000 : 3500);
+}
 
 // ======================= Theme =======================
 function onTheme() { readColors(); if (S.data) rebuild(); draw(); updateMqLegend(); }

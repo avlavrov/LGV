@@ -139,6 +139,8 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     ok(ncbi.matched.length === 1 && ncbi.matched[0][2] === 'name', 'NCBI-style FASTA headers match by accession');
     const amb = C.matchContigs([{ name: 'a', len: 5 }, { name: 'b', len: 5 }], [{ name: 'x', len: 5 }, { name: 'y', len: 5 }]);
     ok(amb.matched.length === 0, 'equal lengths on several contigs are not guessed');
+    const b38 = C.matchContigs([{ name: 'chr1', len: 248956422 }, { name: 'chrM', len: 16569 }], [{ name: 'chr1', len: 249250621 }, { name: 'chrM', len: 16571 }]);
+    ok(b38.matched.length === 0 && b38.conflicts.length === 2 && b38.conflicts[0][0] === 'chr1', 'same names with other lengths (another build) are conflicts, not matches');
   }
   // stable layout
   {

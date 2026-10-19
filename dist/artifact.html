@@ -124,6 +124,8 @@ textarea { width: 100%; min-height: 140px; border: 1px solid var(--line); border
 .keys dt { font-family: var(--mono); color: var(--muted); }
 .keys dd { margin: 0; }
 
+.toast-x { margin-left: 10px; border: 0; background: none; color: inherit; font-size: 15px; line-height: 1; cursor: pointer; opacity: .75; padding: 0 2px; }
+.toast-x:hover { opacity: 1; }
 .toast { position: fixed; z-index: 20; left: 50%; bottom: max(18px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 12.5px; max-width: min(720px, calc(100% - 32px)); cursor: pointer; overflow-wrap: anywhere; }
 #showToolbar { position: absolute; z-index: 6; top: max(6px, env(safe-area-inset-top, 0px)); right: max(6px, env(safe-area-inset-right, 0px)); opacity: .7; }
 #showToolbar:hover { opacity: 1; }
@@ -309,7 +311,9 @@ const STRINGS = {
     'ref.loaded': 'Reference loaded: {name}', 'ref.failed': 'Reference not loaded: {msg}', 'ref.needBam': 'Open a BAM first, then add the reference',
     'ref.mismatch': 'The reference has none of the contigs in this BAM — check the assembly',
     'ref.closedSamples': 'Samples opened against the previous reference were closed.',
-    'sample.mismatch': '{name} does not match the loaded reference: none of its contigs is in it. Sample: {bam}. Reference: {ref}. Load the reference the sample was aligned to. (Click to close.)',
+    'sample.mismatch': '{name} does not match the loaded reference: none of its contigs is in it. Sample: {bam}. Reference: {ref}. Load the reference the sample was aligned to.',
+    'sample.build': '{name} was aligned to another genome build than the loaded reference: contigs with the same name differ in length ({eg}). Load the reference the sample was aligned to.',
+    'sample.lenPair': '{bam} {bl} bp vs {ref} {rl} bp', 'sample.lenDiff': 'Same name, different length — not shown: {names}.',
     'sample.byLength': 'Contigs matched by length because the names differ: {pairs}.', 'sample.partial': '{n} sample contigs are not in the reference and will not be shown: {names}.',
     'sample.noContig': 'The sample has no reads on {name}.', 'sample.mateNoContig': 'The mate is on {name}, which is not in the loaded reference.',
     'ref.indexing': 'Indexing {name}: {done}', 'ref.indexed': 'Reference indexed in the browser: {name}, {n} sequences. To skip this step next time, add the .fai (samtools faidx).',
@@ -409,7 +413,9 @@ const STRINGS = {
     'ref.loaded': 'Референс загружен: {name}', 'ref.failed': 'Референс не загружен: {msg}', 'ref.needBam': 'Сначала откройте BAM, потом добавьте референс',
     'ref.mismatch': 'В референсе нет ни одного контига из этого BAM — проверьте сборку',
     'ref.closedSamples': 'Образцы, открытые с предыдущим референсом, закрыты.',
-    'sample.mismatch': '{name} не соответствует загруженному референсу: ни одного его контига в референсе нет. Образец: {bam}. Референс: {ref}. Загрузите референс, на который выравнивался образец. (Нажмите, чтобы закрыть.)',
+    'sample.mismatch': '{name} не соответствует загруженному референсу: ни одного его контига в референсе нет. Образец: {bam}. Референс: {ref}. Загрузите референс, на который выравнивался образец.',
+    'sample.build': '{name} выровнен на другую сборку генома, чем загруженный референс: контиги с одинаковыми именами разной длины ({eg}). Загрузите референс, на который выравнивался образец.',
+    'sample.lenPair': '{bam} {bl} п. н. против {ref} {rl} п. н.', 'sample.lenDiff': 'Одинаковое имя, разная длина — не показаны: {names}.',
     'sample.byLength': 'Контиги сопоставлены по длине, так как имена разные: {pairs}.', 'sample.partial': 'Контигов образца нет в референсе, они не будут показаны: {n} — {names}.',
     'sample.noContig': 'У образца нет ридов на {name}.', 'sample.mateNoContig': 'Мейт на {name}, которого нет в загруженном референсе.',
     'ref.indexing': 'Индексирую {name}: {done}', 'ref.indexed': 'Референс проиндексирован в браузере: {name}, последовательностей: {n}. Чтобы в следующий раз не ждать, добавьте .fai (samtools faidx).',
@@ -844,14 +850,18 @@ function contigKeys(name) {
 }
 // Matches BAM contigs to reference sequences: by name (case, chr prefix, version and NCBI header
 // fields ignored), then, for what is left, by a length that only one sequence on each side has.
+// A name match with a different length is not a match but a conflict: the same name in another
+// genome build (chr1 is 249,250,621 bp in GRCh37 and 248,956,422 bp in GRCh38). Coordinates would be
+// wrong, so such contigs are never paired, and the caller refuses the sample when a large one differs.
 function matchContigs(bamRefs, faRefs) {
   const byKey = new Map();
-  for (const f of faRefs) for (const k of contigKeys(f.name)) if (!byKey.has(k)) byKey.set(k, f.name);
-  const matched = [], used = new Set(), left = [];
+  for (const f of faRefs) for (const k of contigKeys(f.name)) if (!byKey.has(k)) byKey.set(k, f);
+  const matched = [], used = new Set(), left = [], conflicts = [];
   for (const b of bamRefs) {
     let hit = null;
     for (const k of contigKeys(b.name)) if (byKey.has(k)) { hit = byKey.get(k); break; }
-    if (hit) { matched.push([b.name, hit, 'name']); used.add(hit); } else left.push(b);
+    if (hit && b.len && hit.len && b.len !== hit.len) { conflicts.push([b.name, b.len, hit.name, hit.len]); used.add(hit.name); continue; }
+    if (hit) { matched.push([b.name, hit.name, 'name']); used.add(hit.name); } else left.push(b);
   }
   const count = (arr, len) => arr.filter(x => x.len === len).length;
   const faLeft = faRefs.filter(f => !used.has(f.name));
@@ -861,7 +871,7 @@ function matchContigs(bamRefs, faRefs) {
     if (cand.length === 1) { matched.push([b.name, cand[0].name, 'length']); used.add(cand[0].name); }
   }
   const m = new Set(matched.map(x => x[0]));
-  return { matched, unmatched: bamRefs.filter(b => !m.has(b.name)).map(b => b.name) };
+  return { matched, conflicts, unmatched: bamRefs.filter(b => !m.has(b.name)).map(b => b.name) };
 }
 
 function passFlags(flag, mapq, flt) {
@@ -2460,7 +2470,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === '-' || e.key === '_') zoomAt(W / 2, 2);
   else if (e.key === 's' || e.key === 'ы') sortHere(); // 'ы' / 'р': same keys on a Russian layout
   else if (e.key === 'h' || e.key === 'р') { P.hideToolbar = !P.hideToolbar; applyChrome(); saveProfile(); }
-  else if (e.key === 'Escape') { hideCard(); closePanels(); closeMenu(); S.selected = null; S.rubber = null; draw(); }
+  else if (e.key === 'Escape') { hideCard(); closePanels(); closeMenu(); $('toast').hidden = true; S.selected = null; S.rubber = null; draw(); }
   else return;
   e.preventDefault();
 });
@@ -2497,10 +2507,18 @@ async function openBam(bamSrc, baiSrc, opts) {
   try {
     const bam = await new BamFile(bamSrc, baiSrc).open();
     const back = new Int32Array(bam.refs.length).fill(-1);
-    let map, note = '';
+    let map, note = '', noteSticky = false;
     const own = !S.fasta && !S.tracks.length; // first sample with no reference: its header is the genome
     if (!own) {
       const link = matchContigs(bam.refs, S.contigs);
+      // a large contig with the same name but another length: the sample is from another genome build
+      const big = link.conflicts.filter(c => Math.max(c[1], c[3]) > 1e6);
+      if (big.length) {
+        S.loading = false; draw();
+        const eg = big.slice(0, 2).map(c => t('sample.lenPair', { bam: c[0], bl: fmtInt(c[1]), ref: c[2], rl: fmtInt(c[3]) })).join('; ');
+        toast(t('sample.build', { name: bamSrc.name, eg }), true);
+        return false;
+      }
       if (!link.matched.length) {
         S.loading = false; draw();
         const list = (arr, n) => arr.slice(0, n).map(x => `${x.name} (${fmtInt(x.len)} ${t('unit.bp')})`).join(', ') + (arr.length > n ? ` … +${fmtInt(arr.length - n)}` : '');
@@ -2512,6 +2530,8 @@ async function openBam(bamSrc, baiSrc, opts) {
       for (const [b, f] of link.matched) { map[viewIdx.get(f)] = bamIdx.get(b); back[bamIdx.get(b)] = viewIdx.get(f); }
       const byLen = link.matched.filter(m => m[2] === 'length');
       if (byLen.length) note += t('sample.byLength', { pairs: byLen.slice(0, 3).map(m => m[0] + ' = ' + m[1]).join(', ') + (byLen.length > 3 ? ' …' : '') }) + ' ';
+      if (link.conflicts.length) noteSticky = true;
+      if (link.conflicts.length) note += t('sample.lenDiff', { names: link.conflicts.slice(0, 3).map(c => t('sample.lenPair', { bam: c[0], bl: fmtInt(c[1]), ref: c[2], rl: fmtInt(c[3]) })).join('; ') }) + ' ';
       if (link.unmatched.length) note += t('sample.partial', { n: fmtInt(link.unmatched.length), names: link.unmatched.slice(0, 3).join(', ') + (link.unmatched.length > 3 ? ' …' : '') });
     } else {
       S.contigs = bam.refs.map(r => ({ name: r.name, len: r.len })); S._ck = null;
@@ -2525,7 +2545,7 @@ async function openBam(bamSrc, baiSrc, opts) {
     updateFileLabel();
     $('examples').hidden = !S.tracks.some(x => x.demo);
     S.loading = false;
-    if (note) toast(note.trim(), note.length > 90);
+    if (note) toast(note.trim(), noteSticky);
     const loc = opts.locus ? parseLocus(opts.locus) : null;
     S.loadToken++; S.data = null; // every track loads the same window: load it again with the new one
     if (loc && !loc.error) goto(loc.id, loc.s, loc.e);
@@ -2872,9 +2892,16 @@ $('resetProfile').onclick = () => { P = clone(DEFAULT_PROFILE); saveProfile(); a
 $('showToolbar').onclick = () => { P.hideToolbar = false; saveProfile(); applyChrome(); };
 function applyChrome() { document.body.classList.toggle('bare', P.hideToolbar); $('showToolbar').hidden = !P.hideToolbar; requestAnimationFrame(resize); }
 
+// Messages at the bottom: closed by a click (× or anywhere on it) or Escape. Short ones go by
+// themselves; important ones (sticky) stay until closed.
 let toastTimer = 0;
 $('toast').onclick = () => { $('toast').hidden = true; };
-function toast(msg, sticky) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastTimer); if (!sticky) toastTimer = setTimeout(() => el.hidden = true, msg.length > 90 ? 7000 : 3500); }
+function toast(msg, sticky) {
+  const el = $('toast');
+  el.innerHTML = `<span>${esc(msg)}</span><button class="toast-x" aria-label="${esc(t('btn.close'))}">×</button>`;
+  el.hidden = false; clearTimeout(toastTimer);
+  if (!sticky) toastTimer = setTimeout(() => el.hidden = true, msg.length > 90 ? 9000 : 3500);
+}
 
 // ======================= Theme =======================
 function onTheme() { readColors(); if (S.data) rebuild(); draw(); updateMqLegend(); }
