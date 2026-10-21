@@ -6,7 +6,7 @@ const b64 = f => fs.readFileSync(R('demo/' + f)).toString('base64');
 const demo = `const DEMO = ${JSON.stringify({ bam: b64('demo.bam'), bai: b64('demo.bam.bai'), fa: b64('demo.fa'), fai: b64('demo.fa.fai') })};`;
 const safe = s => s.replace(/<\/script/gi, '<\\/script');
 let html = fs.readFileSync(R('src/index.html'), 'utf8');
-html = html.replace('/*DEMO*/', () => demo).replace('/*I18N*/', () => safe(fs.readFileSync(R('src/i18n.js'), 'utf8'))).replace('/*CORE*/', () => safe(fs.readFileSync(R('src/core.js'), 'utf8') + '\n' + fs.readFileSync(R('src/cram.js'), 'utf8'))).replace('/*APP*/', () => safe(fs.readFileSync(R('src/app.js'), 'utf8')));
+html = html.replace('/*DEMO*/', () => demo).replace('/*I18N*/', () => safe(fs.readFileSync(R('src/i18n.js'), 'utf8'))).replace('/*CORE*/', () => safe(fs.readFileSync(R('src/core.js'), 'utf8') + '\n' + fs.readFileSync(R('src/htscodecs.js'), 'utf8') + '\n' + fs.readFileSync(R('src/cram.js'), 'utf8'))).replace('/*APP*/', () => safe(fs.readFileSync(R('src/app.js'), 'utf8')));
 fs.mkdirSync(R('dist'), { recursive: true });
 // for claude.ai: no <html>/<head> of its own — the platform adds them
 fs.writeFileSync(R('dist/artifact.html'), html);

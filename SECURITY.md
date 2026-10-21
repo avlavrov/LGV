@@ -37,11 +37,25 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
 
 | Code | From | Version | License | Status |
 | --- | --- | --- | --- | --- |
-| — | — | — | — | no code from others runs in CGV yet; htscodecs (CRAM codecs, Genome Research Ltd, BSD) is planned, copied at a fixed commit and reviewed |
+| rANS 4x8 decoder (`src/htscodecs.js`) | htscodecs `javascript/rans.js`, `iostream.js` (Genome Research Ltd, James Bonfield) | commit 0a487b5 | BSD 3-clause, notice kept in the file | decoding only; read line by line and changed as below |
 | Test data only: SAM test cases | htslib `test/` | commit 446b29a | MIT/Expat (test/cram/htslib/LICENSE-htslib) | used by tools/test-cram.js, not shipped |
+
+### Changes made to htscodecs code
+
+- The byte reader checks every read against the end of the data and throws a clear error. The
+  original returned `undefined` past the end; the frequency tables are read in loops that stop only
+  on a 0 byte, so a cut-off block made the original loop forever (checked: the original
+  `rans.js` still runs after 5 s on a 10-byte block; CGV stops at once with an error).
+- Frequencies are checked: each at most 4096, their sum at most 4096; codes above the sum and
+  contexts without frequencies are errors instead of writing symbol 256 or reading undefined tables.
+- A table running past symbol 255, an unknown rANS order and sizes in the block header that differ
+  from the CRAM block's are errors.
+- Node's `Buffer` replaced by `Uint8Array`; 32-bit values read unsigned.
+- Encoders, command-line tools and the `bzip2` package are not taken.
 
 ## Findings
 
 | Date | Finding | Fixed |
 | --- | --- | --- |
+| 2026-10-21 | htscodecs' JavaScript rANS decoder loops forever on a cut-off block (no bounds checks) | CGV's copy checks every read; reported here, upstream report to consider |
 | 2026-10-21 | A pasted display profile with a `__proto__` key could replace the profile object's prototype (no effect outside it, but not allowed) | only the profile's own keys are taken |

@@ -14,6 +14,7 @@
 //    (file or URL) chosen by the user.
 'use strict';
 if (typeof CgvError === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./core.js'));
+if (typeof ransDecode4x8 === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./htscodecs.js'));
 
 const CRAM_LIMITS = {
   block: 256 << 20,       // decoded size of one block
@@ -131,6 +132,7 @@ async function decodeBlock(b) {
   let out;
   if (b.method === 0) out = b.data;
   else if (b.method === 1) out = await inflateGzip(b.data);
+  else if (b.method === 4) out = ransDecode4x8(b.data, b.rawSize); // htscodecs, see src/htscodecs.js
   else throw new CgvError('cramCodec', { codec: CRAM_METHODS[b.method] || 'method ' + b.method });
   if (out.length !== b.rawSize) throw new CgvError('cramBad', { what: 'a block decodes to ' + out.length + ' bytes instead of ' + b.rawSize });
   return out;

@@ -54,7 +54,7 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
     const list = await cram.scan();
     const recs = list.reduce((a, c) => a + c.header.nRecords, 0);
     const methods = [...new Set(list.flatMap(c => c.methods))];
-    cram.decodable = methods.every(m => m === 'raw' || m === 'gzip');
+    cram.decodable = methods.every(m => ['raw', 'gzip', 'rANS 4x8'].includes(m));
     ok(list[list.length - 1].header.eof && recs === 8286, `${f}: ${list.length} containers to the end marker, all checksums correct, ${recs} records (BAM: 8286); block compression: ${methods.join(', ')}`);
     ok(cram.index.slices > 0 && cram.estimateBytes(0, 11000, 13000) > 0 && cram.estimateBytes(0, 0, 1) >= 0, `${f}: index has ${cram.index.slices} slices; size estimate for a window works`);
     // ---- records: every read equal to the BAM's (stage 2) ----
@@ -89,8 +89,9 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
     let pass = 0; const bad = [];
     for (const n of cases) {
       try {
-        const fa2 = await new C.IndexedFasta(src(H, n.split('_')[0] + '.fa'), src(H, n.split('_')[0] + '.fa.fai')).open();
-        const b = await new C.BamFile(src(H, n + '.bam'), src(H, n + '.bam.bai')).open();
+        const base = n.replace(/^r30_/, ''); // r30_*: the same case written with samtools' default codecs (rANS 4x8)
+        const fa2 = await new C.IndexedFasta(src(H, base.split('_')[0] + '.fa'), src(H, base.split('_')[0] + '.fa.fai')).open();
+        const b = await new C.BamFile(src(H, base + '.bam'), src(H, base + '.bam.bai')).open();
         const c = await new R.CramFile(src(H, n + '.cram'), src(H, n + '.cram.crai')).open();
         c.refProvider = async (id, a, e) => fa2.fetch(c.refs[id].name, a, e);
         const diffs = [];
@@ -102,7 +103,28 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
         if (diffs.length) bad.push(n + ': ' + diffs.slice(0, 2).join('; ')); else pass++;
       } catch (e) { bad.push(n + ': ' + (e.code ? e.message : e.stack.split('\n').slice(0, 2).join(' '))); }
     }
-    ok(!bad.length, `htslib test cases: ${pass} of ${cases.length} CRAM files read exactly like their BAM` + (bad.length ? '\n     ' + bad.join('\n     ') : ''));
+    ok(!bad.length, `htslib test cases: ${pass} of ${cases.length} CRAM files (gzip and rANS 4x8 versions) read exactly like their BAM` + (bad.length ? '\n     ' + bad.join('\n     ') : ''));
+  }
+
+  // ---- rANS 4x8 on its own: damaged and random blocks end in a CgvError, never a hang or a crash ----
+  {
+    const H = require('../src/htscodecs.js');
+    const v = await new R.CramFile(src(T, 'v30.cram'), src(T, 'v30.cram.crai')).open();
+    const blocks = [];
+    for (let off = v.firstContainer, k = 0; k < 2; k++) { const c = await v.readContainer(off); for (const b of v.blocksOf(c)) if (b.method === 4) blocks.push(b); off += c.header.headerSize + c.header.length; }
+    let orders = new Set(blocks.map(b => b.data[0])), good = 0;
+    for (const b of blocks) { const d = H.ransDecode4x8(b.data, b.rawSize); if (d.length === b.rawSize) good++; }
+    ok(good === blocks.length && orders.has(0) && orders.has(1), `rANS 4x8: ${good} blocks of order 0 and 1 decode to their stated size`);
+    let seed = 99, crashes = 0, errors = 0, n = 0; const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296;
+    const t0 = Date.now();
+    for (; n < 3000; n++) {
+      const b = blocks[n % blocks.length], m = Uint8Array.from(b.data);
+      if (n % 3 === 0) for (let i = 0; i < m.length; i++) m[i] = Math.floor(rnd() * 256);    // pure noise
+      else for (let k = 0; k < 1 + Math.floor(rnd() * 6); k++) m[Math.floor(rnd() * m.length)] = Math.floor(rnd() * 256);
+      const cut = n % 5 === 0 ? m.subarray(0, Math.floor(rnd() * m.length)) : m;
+      try { H.ransDecode4x8(cut, b.rawSize); } catch (e) { if (e.code) errors++; else { crashes++; if (crashes < 3) console.log('   crash:', e.message); } }
+    }
+    ok(crashes === 0, `rANS 4x8 fuzzing: ${n} damaged blocks, ${errors} clear errors, ${crashes} unexpected, ${Date.now() - t0} ms`);
   }
 
   // ---- damaged files: a CgvError with a clear message, never a crash or a hang ----
