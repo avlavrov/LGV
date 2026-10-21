@@ -155,7 +155,7 @@ body.bare .side { top: 0; }
   <button class="btn" id="viewBtn" aria-expanded="false" aria-controls="panel" data-i18n="btn.view">View</button>
 </header>
 
-<main id="stage" data-i18n-drop="drop" data-drop-text="Drop .bam and .bai files">
+<main id="stage" data-i18n-drop="drop" data-drop-text="Drop .bam / .cram files with their indexes">
   <canvas id="gl"></canvas>
   <canvas id="ov"></canvas>
   <div id="msg" class="msg" hidden></div>
@@ -168,7 +168,7 @@ body.bare .side { top: 0; }
     <section>
       <h2 data-i18n="open.disk">From disk</h2>
       <label class="drop-zone" for="pickFiles"><strong data-i18n="open.pick">Choose .bam and .bai</strong><span data-i18n="open.pickSub">you can add .fa and .fai</span><span data-i18n="open.pickDrop">or drop files onto the screen</span></label>
-      <input id="pickFiles" type="file" multiple accept=".bam,.bai,.fa,.fasta,.fna,.gz,.fai,.gzi" hidden>
+      <input id="pickFiles" type="file" multiple accept=".bam,.bai,.cram,.crai,.fa,.fasta,.fna,.gz,.fai,.gzi" hidden>
       <div class="row-actions"><label class="btn" for="pickFolder" data-i18n="open.folder">Choose a folder</label></div>
       <input id="pickFolder" type="file" webkitdirectory multiple hidden>
       <p class="hint" data-i18n="open.indexHint"></p>

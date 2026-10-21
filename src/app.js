@@ -29,7 +29,7 @@ function clone(o) { return JSON.parse(JSON.stringify(o)); }
 function mergeProfile(base, over) {
   const out = clone(base);
   for (const k of Object.keys(over || {})) {
-    if (!(k in base)) continue;
+    if (!Object.prototype.hasOwnProperty.call(base, k)) continue; // own keys only: "__proto__" or "constructor" from a pasted profile are ignored
     if (base[k] && typeof base[k] === 'object' && !Array.isArray(base[k])) out[k] = Object.assign({}, base[k], over[k] && typeof over[k] === 'object' ? over[k] : {});
     else if (typeof over[k] === typeof base[k]) out[k] = over[k];
   }
@@ -442,7 +442,7 @@ function callWorker(w, msg) {
 const srcDesc = s => s instanceof UrlSource ? { url: s.url, headers: s.headers } : { blob: s.blob, name: s.name };
 // Gives a track its worker; on any failure the track simply reads on the page.
 async function attachWorker(T) {
-  if (!workerPool()) return;
+  if (T.bam.isCram || !workerPool()) return; // CRAM moves to workers with record decoding
   const w = POOL.workers[POOL.next++ % POOL.workers.length];
   try { await callWorker(w, { op: 'open', key: T.id, bam: srcDesc(T.bam.src), bai: srcDesc(T.bam.baiSrc) }); T.worker = w; }
   catch (e) { T.worker = null; }
@@ -502,7 +502,7 @@ async function ensureData() {
       const br = T.map[refId];
       if (br < 0) return { T, res: null, msg: t('sample.noContig', { name: S.contigs[refId].name }) };
       try { return { T, res: await trackFetch(T, br, ls, le, opts), msg: null }; }
-      catch (e) { return { T, res: null, msg: errText(e), error: true }; }
+      catch (e) { return { T, res: null, msg: errText(e), error: e.code !== 'cramLater' }; }
     }));
     if (token !== S.loadToken) return;
     const all = results.flatMap(r => r.res ? r.res.reads : []);
@@ -1064,7 +1064,8 @@ async function openBam(bamSrc, baiSrc, opts) {
   if (S.tracks.some(x => x.key === key)) { toast(t('sample.already', { name: bamSrc.name })); return true; }
   S.loading = true; S.msg = null; draw();
   try {
-    const bam = await new BamFile(bamSrc, baiSrc).open();
+    const bam = /\.cram$/i.test(bamSrc instanceof UrlSource ? urlPath(bamSrc.url) : bamSrc.name)
+      ? await new CramFile(bamSrc, baiSrc).open() : await new BamFile(bamSrc, baiSrc).open();
     const back = new Int32Array(bam.refs.length).fill(-1);
     let map, note = '', noteSticky = false;
     const own = !S.fasta && !S.tracks.length; // first sample with no reference: its header is the genome
@@ -1146,18 +1147,25 @@ async function openDemo() {
   if (ok) openBam(new FileSource(b64ToBlob(DEMO.bam), 'demo.bam'), new FileSource(b64ToBlob(DEMO.bai), 'demo.bam.bai'), { demo: true, locus: 'demo:11,941-12,060' });
 }
 
-// Pairs each .bam with its index by name: sample.bam ↔ sample.bam.bai or sample.bai (case ignored).
-// A single .bam with a single index of any name is a pair too.
+// Pairs each alignment file with its index by name: sample.bam ↔ sample.bam.bai or sample.bai,
+// sample.cram ↔ sample.cram.crai or sample.crai (case ignored). A single file with a single index of
+// the right kind and any name is a pair too.
+const IDX_EXT = { '.bam': '.bai', '.cram': '.crai' };
+const alnExt = name => { const n = name.toLowerCase(); return n.endsWith('.bam') ? '.bam' : n.endsWith('.cram') ? '.cram' : null; };
 function pairBams(files) {
   const L = f => f.name.toLowerCase();
-  const bams = files.filter(f => L(f).endsWith('.bam'));
-  const idx = new Map(files.filter(f => L(f).endsWith('.bai')).map(f => [L(f), f]));
+  const bams = files.filter(f => alnExt(f.name));
+  const idx = new Map(files.filter(f => /\.(bai|crai)$/.test(L(f))).map(f => [L(f), f]));
   const pairs = [], missing = [];
   for (const bam of bams) {
-    const n = L(bam), bai = idx.get(n + '.bai') || idx.get(n.slice(0, -4) + '.bai');
+    const n = L(bam), ext = alnExt(n), ie = IDX_EXT[ext];
+    const bai = idx.get(n + ie) || idx.get(n.slice(0, -ext.length) + ie);
     if (bai) pairs.push([bam, bai]); else missing.push(bam);
   }
-  if (bams.length === 1 && missing.length === 1 && idx.size === 1) { pairs.push([bams[0], [...idx.values()][0]]); missing.length = 0; }
+  if (bams.length === 1 && missing.length === 1) {
+    const ie = IDX_EXT[alnExt(bams[0].name)], only = [...idx.values()].filter(f => L(f).endsWith(ie));
+    if (only.length === 1) { pairs.push([bams[0], only[0]]); missing.length = 0; }
+  }
   return { bams, pairs, missing };
 }
 // Files chosen or dropped: any number of samples (each with its index) and optionally a reference.
@@ -1166,10 +1174,9 @@ function openLocalFiles(fileList, fromFolder) {
   const files = [...fileList], L = f => f.name.toLowerCase();
   const { bams, pairs, missing } = pairBams(files);
   const ref = pickRefFiles(files);
-  const crams = files.filter(f => L(f).endsWith('.cram'));
   if (!bams.length) {
     if (ref) { openReference(ref); return; }
-    toast(t(crams.length ? 'files.cram' : files.some(f => L(f).endsWith('.bai')) ? 'files.needBam' : 'files.needPair'));
+    toast(t(files.some(f => /\.(bai|crai)$/.test(L(f))) ? 'files.needBam' : 'files.needPair'));
     return;
   }
   if (fromFolder && bams.length > 1) { showFolderList(files, pairs, missing); return; }
@@ -1181,7 +1188,6 @@ function openLocalFiles(fileList, fromFolder) {
   closePanels();
   const notes = [];
   if (missing.length) notes.push(t('files.noIndexSome', { names: missing.map(f => f.name).join(', ') }));
-  if (crams.length) notes.push(t('files.cram'));
   // a reference chosen together with the samples is loaded first; the samples are then matched to it
   (ref ? openReference(ref, { noGoto: true }) : Promise.resolve(true)).then(async ok => {
     if (!ok) return;
@@ -1229,18 +1235,18 @@ function openUrls() {
   if (!links.length) { toast(t('url.need')); return; }
   const auth = $('urlAuth').value.trim();
   const headers = auth ? { Authorization: /^bearer\s/i.test(auth) ? auth : 'Bearer ' + auth } : {};
-  const bams = links.filter(u => !/\.cram(\?|#|$)/i.test(u));
-  if (!bams.length) { toast(t('files.cram')); return; }
-  if (bams.length < links.length) toast(t('files.cram'));
+  const bams = links;
   const given = bams.length === 1 ? $('urlBai').value.trim() : '';
   closePanels();
   (async () => {
     for (const u of bams) {
-      const cands = given ? [given] : [addSuffix(u, '.bai'), swapExt(u, '.bam', '.bai')].filter((x, i, a) => x && a.indexOf(x) === i);
+      const cram = /\.cram$/i.test(urlPath(u)), ext = cram ? '.cram' : '.bam', ie = IDX_EXT[ext];
+      const cands = given ? [given] : [addSuffix(u, ie), swapExt(u, ext, ie)].filter((x, i, a) => x && a.indexOf(x) === i);
       await openBam(new UrlSource(u, headers), cands.map(x => new UrlSource(x, headers)));
     }
   })();
 }
+function urlPath(u) { try { return new URL(u).pathname; } catch (e) { return u.split(/[?#]/)[0]; } }
 function swapExt(url, from, to) {
   try { const x = new URL(url); if (!x.pathname.toLowerCase().endsWith(from)) return null; x.pathname = x.pathname.slice(0, -from.length) + to; return x.toString(); }
   catch (e) { return url.toLowerCase().endsWith(from) ? url.slice(0, -from.length) + to : null; }
