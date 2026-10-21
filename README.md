@@ -40,7 +40,7 @@ More languages are one dictionary in `src/i18n.js`.
 
 | Requirement | State |
 | --- | --- |
-| F1 BAM by HTTPS link (Range) | done; CRAM in progress: header, containers and .crai are read (CRAM 3.0 and 3.1), records next |
+| F1 BAM by HTTPS link (Range) | done; CRAM in progress: CRAM 3.0 / 3.1 records are read and match BAM read for read; block codecs: raw and gzip so far (rANS and the CRAM 3.1 codecs next) |
 | F2 Local BAM + BAI | done: several samples at once as tracks, index paired by name, folder or drag and drop |
 | F3 Reference (GRCh38, GRCh37, T2T-CHM13) | done: files or link, plain or bgzip, public presets |
 | F4 Access token / presigned URL | done |
@@ -60,7 +60,8 @@ More languages are one dictionary in `src/i18n.js`.
 
 ```
 src/core.js    data sources (file, URL), BGZF, BAI, BAM, FASTA (+ .gzi), coverage, layout
-src/cram.js    CRAM 3.0 / 3.1: containers, blocks, SAM header, .crai
+src/cram.js    CRAM 3.0 / 3.1: containers, blocks, SAM header, .crai, records
+test/cram/     CRAM test files made with samtools (tools/make-cram-tests.sh); htslib/ holds htslib's own test cases
 src/app.js     WebGL2 read rendering, Canvas2D ruler and coverage, UI, display profile
 src/i18n.js    interface strings: English base, Russian overlay
 src/index.html markup and styles

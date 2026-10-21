@@ -27,13 +27,18 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
   passed through `esc()`), checks that the build carries the Content Security Policy, and lists every
   place where HTML is built so a reviewer sees each one.
 - `node tools/test-cram.js` includes fuzzing: hundreds of randomly damaged CRAM files must each end
-  in a clear error, never an unexpected exception or a hang.
+  in a clear error, never an unexpected exception or a hang; with checksums switched off the damage
+  reaches the record decoder itself.
+- Sizes are capped before anything is allocated (`CRAM_LIMITS`): blocks, containers, read length and
+  bases per slice, so values that cost no input (a one-symbol Huffman code) cannot inflate memory.
+- The audit also checks that the page's scripts declare no top-level name twice.
 
 ## Code from others
 
 | Code | From | Version | License | Status |
 | --- | --- | --- | --- | --- |
-| — | — | — | — | none yet; htscodecs (CRAM codecs, Genome Research Ltd, BSD) is planned, copied at a fixed commit and reviewed |
+| — | — | — | — | no code from others runs in CGV yet; htscodecs (CRAM codecs, Genome Research Ltd, BSD) is planned, copied at a fixed commit and reviewed |
+| Test data only: SAM test cases | htslib `test/` | commit 446b29a | MIT/Expat (test/cram/htslib/LICENSE-htslib) | used by tools/test-cram.js, not shipped |
 
 ## Findings
 

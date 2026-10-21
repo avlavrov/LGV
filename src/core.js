@@ -446,6 +446,15 @@ class DepthDiff {
       else if (op === 2 || op === 3) r += n;
     }
   }
+  // the same from a parsed record (CRAM records arrive parsed)
+  addRec(rec) {
+    let r = rec.pos;
+    for (const c of rec.cigar) {
+      const op = c & 15, n = c >>> 4;
+      if (op === 0 || op === 7 || op === 8) { if (r + n > this.start && r < this.end) { this._mark(r, 1); this._mark(r + n, -1); } r += n; }
+      else if (op === 2 || op === 3) r += n;
+    }
+  }
   finish(cov) {
     let run = 0, prev = null;
     for (const b of [...this.blocks.keys()].sort((x, y) => x - y)) {
@@ -1041,4 +1050,4 @@ if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && s
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { CGV_ERR_EN, inflateRaw, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { CGV_ERR_EN, inflateRaw, COV_BLOCK, NIB_IDX, DepthDiff, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

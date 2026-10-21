@@ -49,6 +49,14 @@ for (const f of files) {
     }
   });
 }
+// top-level names must not repeat across the scripts that share one page (core + cram + app + i18n)
+{
+  const seen = new Map();
+  for (const f of ['src/i18n.js', 'src/core.js', 'src/cram.js', 'src/app.js']) for (const m of fs.readFileSync(R(f), 'utf8').matchAll(/^(?:const|let|var|class|function|async function) ([A-Za-z_$][\w$]*)/gm)) {
+    if (seen.has(m[1])) { fails++; console.log(`FAIL ${f}: top-level name ${m[1]} is also declared in ${seen.get(m[1])}`); } else seen.set(m[1], f);
+  }
+  console.log('OK   top-level names checked across the page\'s scripts: ' + seen.size);
+}
 // the local build must carry the strict Content Security Policy
 const dist = R('dist/cgv.html');
 if (fs.existsSync(dist)) {

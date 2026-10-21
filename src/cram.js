@@ -1,8 +1,9 @@
 // CGV: CRAM reading (CRAM 3.0 and 3.1). Written from the CRAM specification (samtools/hts-specs,
 // CRAMv3.tex); no third-party code in this file.
 //
-// Stage 1 of CRAM support: file definition, containers, blocks (raw and gzip), the SAM header and
-// the .crai index. Records are decoded in the next stage.
+// File definition, containers, blocks, the SAM header, the .crai index and records (CRAM 3.0 data
+// series and encodings; record decoding follows the specification and is checked against htslib's
+// output on the same data). Block codecs: raw and gzip so far.
 //
 // Safety rules for this file (see SECURITY.md):
 //  - every read is bounds-checked through CramReader; a short or damaged file gives a CgvError,
@@ -20,7 +21,11 @@ const CRAM_LIMITS = {
   blocks: 100000,         // blocks in one container
   header: 64 << 20,       // SAM header text
   index: 512 << 20,       // decoded .crai
+  readLength: 1 << 23,    // bases in one read (ultra-long nanopore reads stay below)
+  sliceBases: 256 << 20,  // bases in one slice: values that cost no input bits cannot inflate memory
 };
+// Checksums are verified always; the tests switch them off to send damaged data deeper into the decoder.
+const CRAM_CHECK = { crc: true };
 const CRAM_METHODS = ['raw', 'gzip', 'bzip2', 'lzma', 'rANS 4x8', 'rANS 4x16', 'arithmetic', 'fqzcomp', 'name tokenizer'];
 const CRAM_CT = { FILE_HEADER: 0, COMPRESSION_HEADER: 1, SLICE_HEADER: 2, EXTERNAL: 4, CORE: 5 };
 
@@ -32,7 +37,8 @@ Object.assign(CGV_ERR_EN, {
   cramCodec: 'A CRAM block is compressed with {codec}, which CGV does not read yet',
   cramLimit: 'A CRAM {what} is larger than CGV allows ({size})',
   notCrai: 'This is not a CRAM index (.crai)',
-  cramLater: 'CRAM {v}: header and index read ({slices} slices). Showing reads from CRAM comes in the next step.',
+  cramNeedRef: 'This CRAM stores reads as differences from its reference: load the reference it was made with (contig {name})',
+  cramEncoding: 'CRAM data series {ds} uses encoding {enc}, which CGV does not read',
 });
 
 // ---------- CRC32 (IEEE, as in zlib) ----------
@@ -91,7 +97,7 @@ function parseContainerHeader(u8, off, major) {
     h.bases = r.ltf8();
     h.nBlocks = r.itf8();
     h.landmarks = r.itf8Array(CRAM_LIMITS.blocks);
-    if (major >= 3) { const end = r.pos; const crc = r.u32(); if (crc32(u8, off, end) !== crc) throw new CgvError('cramCrc', { what: 'a container header' }); }
+    if (major >= 3) { const end = r.pos; const crc = r.u32(); if (CRAM_CHECK.crc && crc32(u8, off, end) !== crc) throw new CgvError('cramCrc', { what: 'a container header' }); }
     h.headerSize = r.pos - off;
     if (h.length < 0 || h.length > CRAM_LIMITS.container) throw new CgvError('cramLimit', { what: 'container', size: fmtSize(h.length) });
     if (h.nBlocks < 0 || h.nBlocks > CRAM_LIMITS.blocks) throw new CgvError('cramBad', { what: 'a container has an impossible number of blocks' });
@@ -109,7 +115,7 @@ function parseBlock(u8, off, major, end) {
   if (b.size < 0 || b.rawSize < 0) throw new CgvError('cramBad', { what: 'a block has a negative size' });
   if (b.rawSize > CRAM_LIMITS.block) throw new CgvError('cramLimit', { what: 'block', size: fmtSize(b.rawSize) });
   b.data = r.bytes(b.size);
-  if (major >= 3) { const e = r.pos; const crc = r.u32(); if (crc32(u8, off, e) !== crc) throw new CgvError('cramCrc', { what: 'a block' }); }
+  if (major >= 3) { const e = r.pos; const crc = r.u32(); if (CRAM_CHECK.crc && crc32(u8, off, e) !== crc) throw new CgvError('cramCrc', { what: 'a block' }); }
   b.next = r.pos;
   return b;
 }
@@ -257,7 +263,394 @@ class CramFile {
     }
     return out;
   }
-  async fetch() { throw new CgvError('cramLater', { v: this.version, slices: this.index.slices }); }
+  // Reference bases come from the page: refProvider(refId, start0, end0) → uppercase bases or null.
+  // Decoded slices are kept for a while, so panning around reuses them.
+  _cacheGet(k) { const c = this._cache || (this._cache = new Map()); const v = c.get(k); if (v) { c.delete(k); c.set(k, v); } return v; }
+  _cachePut(k, v) { const c = this._cache || (this._cache = new Map()); c.set(k, v); while (c.size > 12) c.delete(c.keys().next().value); }
+  async _container(off) {
+    let e = this._cacheGet('c' + off);
+    if (!e) {
+      const c = await this.readContainer(off);
+      const blocks = this.blocksOf(c, 0, c.header.landmarks.length ? c.header.landmarks[0] : c.data.length);
+      const chb = blocks.find(b => b.contentType === CRAM_CT.COMPRESSION_HEADER);
+      if (!chb) throw new CgvError('cramBad', { what: 'a container has no compression header' });
+      e = { c, ch: parseCompressionHeader(await decodeBlock(chb)) };
+      this._cachePut('c' + off, e);
+    }
+    return e;
+  }
+  // All records of slice `si` of the container at `off`.
+  async slice(off, si) {
+    const key = 's' + off + ':' + si;
+    let recs = this._cacheGet(key);
+    if (recs) return recs;
+    const { c, ch } = await this._container(off);
+    const lm = c.header.landmarks;
+    if (si < 0 || si >= lm.length) throw new CgvError('cramBad', { what: 'the index points to a slice the container does not have' });
+    const end = si + 1 < lm.length ? lm[si + 1] : c.data.length;
+    recs = await decodeSlice(this, c, ch, lm[si], end, off);
+    this._cachePut(key, recs);
+    return recs;
+  }
+  // Same contract as BamFile.fetch: reads overlapping [beg, end) on refId, sorted by position, with
+  // load-time filters and downsampling decided the same way, and coverage counted from every read.
+  async fetch(refId, beg, end, opts) {
+    opts = opts || {};
+    const flt = opts.filters || null;
+    const ds = opts.downsample && opts.downsample.max > 0 && opts.downsample.window > 0 ? opts.downsample : null;
+    const cov = new SparseCoverage(beg, end);
+    const depth = opts.depthOnly ? new DepthDiff(beg, end) : null;
+    const out = { reads: [], cov, total: 0, sampled: [] };
+    let win = -1, n = 0, kept = [], rng = 1;
+    const flush = () => {
+      if (kept.length) { kept.sort((a, b) => a.pos - b.pos); for (const r of kept) out.reads.push(r); }
+      if (ds && n > ds.max) out.sampled.push([win * ds.window, (win + 1) * ds.window]);
+      kept = []; n = 0;
+    };
+    // the slices the index lists for this window, in file order, each once
+    const seen = new Set(), list = [];
+    for (const e of this.slices(refId, beg, end)) { const k = e.container + ':' + e.slice; if (!seen.has(k)) { seen.add(k); list.push(e); } }
+    list.sort((a, b) => a.container - b.container || a.slice - b.slice);
+    for (const e of list) {
+      const { c } = await this._container(e.container);
+      const si = c.header.landmarks.indexOf(e.slice);
+      for (const rec of await this.slice(e.container, si)) {
+        if (rec.refID !== refId || rec.flag & 4 && rec.pos < 0) continue;
+        if (rec.end - rec.pos > this.maxSpan) this.maxSpan = rec.end - rec.pos;
+        if (rec.end <= beg || rec.pos >= end) continue;
+        if (rec.flag & 4) continue; // unmapped reads placed next to their mate are not drawn
+        if (flt && !passFlags(rec.flag, rec.mapq, flt)) continue;
+        if (depth) depth.addRec(rec); else addCoverageRec(rec, cov);
+        if (!ds || rec.pos >= beg) out.total++;
+        if (!ds) { out.reads.push(rec); continue; }
+        if (rec.pos < beg) continue; // as in BamFile.fetch: the left edge belongs to a wider query
+        const w = Math.floor(rec.pos / ds.window);
+        if (w !== win) { flush(); win = w; rng = (Math.imul(w + 1, 2654435761) >>> 0) || 1; }
+        n++;
+        if (kept.length < ds.max) kept.push(rec);
+        else { rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0; const j = rng % n; if (j < ds.max) kept[j] = rec; }
+      }
+    }
+    flush();
+    if (depth) depth.finish(cov);
+    if (!ds) out.reads.sort((a, b) => a.pos - b.pos);
+    return out;
+  }
 }
 
-if (typeof module !== 'undefined') module.exports = { CramFile, CramReader, parseContainerHeader, parseBlock, decodeBlock, parseCrai, parseSamHeaderText, crc32, CRAM_LIMITS };
+// ---------- Encodings (how each data series is stored) ----------
+// Core data is a bit stream, read most significant bit first.
+class BitReader {
+  constructor(u8) { this.u8 = u8; this.byte = 0; this.bit = 7; }
+  one() {
+    if (this.byte >= this.u8.length) throw new CgvError('cramBad', { what: 'core data is cut short' });
+    const v = (this.u8[this.byte] >> this.bit) & 1;
+    if (--this.bit < 0) { this.bit = 7; this.byte++; }
+    return v;
+  }
+  bits(n) { let v = 0; for (let i = 0; i < n; i++) v = v * 2 + this.one(); return v; }
+}
+const DS_INT = new Set(['BF', 'CF', 'RI', 'RL', 'AP', 'RG', 'MF', 'NS', 'NP', 'TS', 'NF', 'TL', 'FN', 'FP', 'DL', 'RS', 'PD', 'HC', 'MQ']);
+const DS_BYTE = new Set(['FC', 'BA', 'QS', 'BS']);
+const DS_ARRAY = new Set(['RN', 'IN', 'SC', 'BB', 'QQ']);
+const ENC_NAMES = ['NULL', 'EXTERNAL', 'GOLOMB', 'HUFFMAN', 'BYTE_ARRAY_LEN', 'BYTE_ARRAY_STOP', 'BETA', 'SUBEXP', 'GOLOMB_RICE', 'GAMMA'];
+
+// A decoder for one data series. Each has int(s), byte(s) and bytes(s, n) where s is the slice state
+// { core: BitReader, ext: Map(content id → CramReader) }; n is the count for fixed-length arrays and
+// is omitted for arrays that carry their own length.
+function readEncoding(r, ds) {
+  const id = r.itf8(), len = r.itf8();
+  if (len < 0 || len > 1 << 20) throw new CgvError('cramBad', { what: 'an encoding has an impossible size' });
+  const p = new CramReader(r.bytes(len), 0, len, 'encoding parameters');
+  const ext = (s, cid) => { const b = s.ext.get(cid); if (!b) throw new CgvError('cramBad', { what: 'data series ' + ds + ' points to a missing block ' + cid }); return b; };
+  const many = f => (s, n) => { if (!(n >= 0) || n > CRAM_LIMITS.block) throw new CgvError('cramBad', { what: 'an impossible array length in ' + ds }); const o = new Uint8Array(n); for (let i = 0; i < n; i++) o[i] = f(s); return o; };
+  switch (id) {
+    case 0: return { int: () => 0, byte: () => 0, bytes: (s, n) => new Uint8Array(n || 0) };
+    case 1: { // EXTERNAL: integers as ITF8, bytes as bytes, in a block of its own
+      const cid = p.itf8();
+      return { int: s => ext(s, cid).itf8(), byte: s => ext(s, cid).byte(), bytes: (s, n) => { if (n === undefined) throw new CgvError('cramBad', { what: ds + ' has no length' }); return n === 0 ? new Uint8Array(0) : ext(s, cid).bytes(n); } };
+    }
+    case 3: { // HUFFMAN, canonical codes
+      const syms = p.itf8Array(1 << 16), lens = p.itf8Array(1 << 16);
+      if (syms.length !== lens.length || !syms.length) throw new CgvError('cramBad', { what: 'a Huffman table of ' + ds + ' is inconsistent' });
+      if (syms.length === 1 && lens[0] === 0) { const v = syms[0]; return { int: () => v, byte: () => v, bytes: (s, n) => new Uint8Array(n).fill(v) }; }
+      const codes = syms.map((sym, i) => ({ sym, len: lens[i] })).sort((a, b) => a.len - b.len || a.sym - b.sym);
+      if (codes.some(c => c.len < 1 || c.len > 31)) throw new CgvError('cramBad', { what: 'a Huffman code of ' + ds + ' has an impossible length' });
+      // per length: first code, its index in `codes`, count
+      const first = new Map(); let code = 0, prevLen = codes[0].len;
+      codes.forEach((c, i) => { if (i) { code++; if (c.len > prevLen) { code *= 2 ** (c.len - prevLen); prevLen = c.len; } } if (!first.has(c.len)) first.set(c.len, { code, index: i, count: 0 }); first.get(c.len).count++; });
+      const maxLen = codes[codes.length - 1].len;
+      const dec = s => {
+        let v = 0;
+        for (let len = 1; len <= maxLen; len++) {
+          v = v * 2 + s.core.one();
+          const f = first.get(len);
+          if (f && v >= f.code && v < f.code + f.count) return codes[f.index + v - f.code].sym;
+        }
+        throw new CgvError('cramBad', { what: 'a Huffman code of ' + ds + ' is not in its table' });
+      };
+      return { int: dec, byte: dec, bytes: many(dec) };
+    }
+    case 4: { // BYTE_ARRAY_LEN: a length, then that many bytes
+      const lenEnc = readEncoding(p, ds), valEnc = readEncoding(p, ds);
+      return { bytes: s => { const n = lenEnc.int(s); if (n < 0 || n > CRAM_LIMITS.block) throw new CgvError('cramBad', { what: 'an impossible length in ' + ds }); return valEnc.bytes(s, n); } };
+    }
+    case 5: { // BYTE_ARRAY_STOP: bytes up to a stop byte
+      const stop = p.byte(), cid = p.itf8();
+      return { bytes: s => { const b = ext(s, cid), st = b.pos; let e = st; while (e < b.end && b.u8[e] !== stop) e++; if (e >= b.end) throw new CgvError('cramBad', { what: ds + ' has no stop byte' }); b.pos = e + 1; return b.u8.subarray(st, e); } };
+    }
+    case 6: { // BETA: fixed number of bits
+      const off = p.itf8(), nb = p.itf8();
+      if (nb < 0 || nb > 32) throw new CgvError('cramBad', { what: 'BETA width of ' + ds });
+      const dec = s => s.core.bits(nb) - off;
+      return { int: dec, byte: dec, bytes: many(dec) };
+    }
+    case 7: { // SUBEXP
+      const off = p.itf8(), k = p.itf8();
+      if (k < 0 || k > 31) throw new CgvError('cramBad', { what: 'SUBEXP of ' + ds });
+      const dec = s => { let u = 0; while (s.core.one()) { if (++u > 31 - k) throw new CgvError('cramBad', { what: 'SUBEXP value of ' + ds }); } return (u ? 2 ** (u + k - 1) + s.core.bits(u + k - 1) : s.core.bits(k)) - off; };
+      return { int: dec, byte: dec, bytes: many(dec) };
+    }
+    case 9: { // GAMMA
+      const off = p.itf8();
+      const dec = s => { let nz = 0; while (!s.core.one()) { if (++nz > 31) throw new CgvError('cramBad', { what: 'GAMMA value of ' + ds }); } return 2 ** nz + s.core.bits(nz) - off; };
+      return { int: dec, byte: dec, bytes: many(dec) };
+    }
+    default: throw new CgvError('cramEncoding', { ds, enc: ENC_NAMES[id] || String(id) });
+  }
+}
+
+// ---------- Compression header ----------
+const SUBST_BASES = [65, 67, 71, 84, 78]; // A C G T N
+const CRAM_BASE_IDX = new Uint8Array(256).fill(4); CRAM_BASE_IDX[65] = 0; CRAM_BASE_IDX[67] = 1; CRAM_BASE_IDX[71] = 2; CRAM_BASE_IDX[84] = 3; CRAM_BASE_IDX[97] = 0; CRAM_BASE_IDX[99] = 1; CRAM_BASE_IDX[103] = 2; CRAM_BASE_IDX[116] = 3;
+function parseCompressionHeader(d) {
+  const r = new CramReader(d, 0, d.length, 'the compression header');
+  const h = { RN: true, AP: true, RR: true, QO: true, subst: null, TD: [], ds: {}, tags: new Map() };
+  r.itf8(); // size of the preservation map
+  let n = r.itf8();
+  if (n < 0 || n > 64) throw new CgvError('cramBad', { what: 'the preservation map' });
+  for (let i = 0; i < n; i++) {
+    const key = String.fromCharCode(r.byte(), r.byte());
+    if (key === 'RN' || key === 'AP' || key === 'RR' || key === 'QO') h[key] = !!r.byte();
+    else if (key === 'SM') {
+      const sm = r.bytes(5);
+      // for each reference base, the 2-bit code of every other base in A C G T N order
+      h.subst = SUBST_BASES.map((rb, ri) => { const t = new Uint8Array(4), others = SUBST_BASES.filter((_, j) => j !== ri); others.forEach((b, j) => { t[(sm[ri] >> (6 - 2 * j)) & 3] = b; }); return t; });
+    } else if (key === 'TD') {
+      const len = r.itf8(); if (len < 0 || len > CRAM_LIMITS.block) throw new CgvError('cramBad', { what: 'the tag dictionary' });
+      const td = r.bytes(len); let line = [], st = 0;
+      for (let j = 0; j < td.length; j++) if (td[j] === 0) { for (let k = st; k + 3 <= j; k += 3) line.push([td[k], td[k + 1], td[k + 2]]); h.TD.push(line); line = []; st = j + 1; }
+    } else throw new CgvError('cramBad', { what: 'an unknown preservation key ' + key });
+  }
+  r.itf8(); n = r.itf8();
+  if (n < 0 || n > 64) throw new CgvError('cramBad', { what: 'the data series map' });
+  for (let i = 0; i < n; i++) { const key = String.fromCharCode(r.byte(), r.byte()); h.ds[key] = readEncoding(r, key); }
+  r.itf8(); n = r.itf8();
+  if (n < 0 || n > 1 << 16) throw new CgvError('cramBad', { what: 'the tag encoding map' });
+  for (let i = 0; i < n; i++) { const key = r.itf8(); h.tags.set(key, readEncoding(r, 'tag ' + String.fromCharCode((key >> 16) & 255, (key >> 8) & 255))); }
+  if (!h.subst) h.subst = SUBST_BASES.map(() => new Uint8Array([78, 78, 78, 78]));
+  return h;
+}
+
+// ---------- Slices and records ----------
+const NT16 = new Uint8Array(256).fill(15);
+'=ACMGRSVTWYHKDBN'.split('').forEach((c, i) => { NT16[c.charCodeAt(0)] = i; NT16[c.toLowerCase().charCodeAt(0)] = i; });
+const TAG_SIZE = { 65: 1, 99: 1, 67: 1, 115: 2, 83: 2, 105: 4, 73: 4, 102: 4 }; // A c C s S i I f
+
+// Reads one slice into records shaped like parseBamRecord's.
+async function decodeSlice(file, c, ch, from, to, containerOffset) {
+  const major = file.major;
+  const blocks = file.blocksOf(c, from, to);
+  if (!blocks.length || blocks[0].contentType !== CRAM_CT.SLICE_HEADER) throw new CgvError('cramBad', { what: 'a slice does not start with its header' });
+  const r = new CramReader(await decodeBlock(blocks[0]), 0, undefined, 'a slice header');
+  const sh = { refId: r.itf8(), start: r.itf8(), span: r.itf8(), nRecords: r.itf8(), counter: r.ltf8(), nBlocks: r.itf8() };
+  sh.ids = r.itf8Array(CRAM_LIMITS.blocks); sh.embedded = r.itf8(); sh.md5 = r.bytes(16);
+  if (sh.nRecords < 0 || sh.nRecords > 10000000) throw new CgvError('cramBad', { what: 'a slice has an impossible number of records' });
+  const s = { core: new BitReader(new Uint8Array(0)), ext: new Map() };
+  for (const b of blocks.slice(1, 1 + sh.nBlocks)) {
+    const d = await decodeBlock(b);
+    if (b.contentType === CRAM_CT.CORE) s.core = new BitReader(d);
+    else if (b.contentType === CRAM_CT.EXTERNAL) s.ext.set(b.contentId, new CramReader(d, 0, d.length, 'block ' + b.contentId));
+  }
+  // reference: embedded in the slice, or from the page for each reference the slice covers
+  const refs = new Map(); // refId → { start0, bases }
+  const needRef = ch.RR;
+  if (sh.embedded >= 0) {
+    const b = s.ext.get(sh.embedded); if (!b) throw new CgvError('cramBad', { what: 'the embedded reference block is missing' });
+    refs.set(sh.refId, { start0: sh.start - 1, bases: b.u8.slice(0, b.end).map(x => x & ~32) });
+  } else if (needRef) {
+    const spans = sh.refId >= 0 ? [[sh.refId, sh.start - 1, sh.start - 1 + sh.span]]
+      : sh.refId === -2 ? (file.index.byRef ? [...file.index.byRef.entries()].flatMap(([id, list]) => list.filter(e => e.container === containerOffset && e.slice === from).map(e => [id, e.start, e.start + e.span])).filter(x => x[0] >= 0) : []) : [];
+    for (const [id, a, b] of spans) {
+      const bases = file.refProvider ? await file.refProvider(id, a, b) : null;
+      if (!bases) throw new CgvError('cramNeedRef', { name: (file.refs[id] || {}).name || id });
+      refs.set(id, { start0: a, bases });
+    }
+  }
+  const refAt = (id, p0) => { const R = refs.get(id); if (!R) return 78; const i = p0 - R.start0; return i >= 0 && i < R.bases.length ? R.bases[i] : 78; };
+  const D = ch.ds, get = k => { const e = D[k]; if (!e) throw new CgvError('cramBad', { what: 'data series ' + k + ' has no encoding' }); return e; };
+  const rgIds = [...file.headerText.matchAll(/^@RG\t(?:.*\t)?ID:([^\t\r\n]+)/gm)].map(m => m[1]);
+  const bad = what => new CgvError('cramBad', { what });
+  const recs = new Array(sh.nRecords);
+  let lastPos = sh.start, bases = 0;
+  for (let i = 0; i < sh.nRecords; i++) {
+    const rec = { refID: sh.refId, pos: -1, end: 0, name: '', mapq: 0, flag: 0, lseq: 0, mateRef: -1, matePos: -1, tlen: 0, cigar: null, seq: null, qual: null, tagBytes: null, _tags: null, feats: null };
+    const flag = get('BF').int(s), cf = get('CF').int(s);
+    rec.flag = flag & 0xFFFF;
+    if (sh.refId === -2) rec.refID = get('RI').int(s);
+    const rl = get('RL').int(s);
+    if (rl < 0 || rl > CRAM_LIMITS.readLength) throw bad('a record has an impossible read length');
+    if ((bases += rl) > CRAM_LIMITS.sliceBases) throw new CgvError('cramLimit', { what: 'slice', size: fmtSize(bases) + ' of bases' });
+    let apos = get('AP').int(s);
+    if (ch.AP) { apos += lastPos; lastPos = apos; }
+    rec.pos = apos - 1;
+    const rg = get('RG').int(s);
+    if (ch.RN) rec.name = latin1Str(get('RN').bytes(s));
+    rec._mateLine = -1; rec._tlen = null; rec._explicitTlen = null;
+    if (cf & 2) { // mate kept separately (other slice, other reference, or not reproducible)
+      const mf = get('MF').int(s);
+      if (!ch.RN) rec.name = latin1Str(get('RN').bytes(s));
+      rec.mateRef = get('NS').int(s); rec.matePos = get('NP').int(s) - 1; rec._tlen = get('TS').int(s);
+      if (mf & 1) rec.flag |= 0x1 | 0x20;
+      if (mf & 2) rec.flag |= 0x8;
+      if (!(rec.flag & 1)) rec.mateRef = -1;
+    } else if (cf & 4) { // mate further down in this slice
+      rec._mateLine = i + 1 + get('NF').int(s);
+      if (cf & 16) rec._explicitTlen = get('TS').int(s);
+    } else if (cf & 16) rec._explicitTlen = get('TS').int(s);
+    // tags, in the order of the tag line
+    const tl = get('TL').int(s);
+    if (tl < 0 || tl >= ch.TD.length) throw bad('a record points to a missing tag line');
+    const tagParts = [];
+    for (const [a, b, t] of ch.TD[tl]) {
+      const key = (a << 16) | (b << 8) | t, enc = ch.tags.get(key);
+      if (!enc) throw bad('tag ' + String.fromCharCode(a, b) + ' has no encoding');
+      let v;
+      if (enc.bytes && !enc.int) v = enc.bytes(s);
+      else if (TAG_SIZE[t]) v = enc.bytes(s, TAG_SIZE[t]);
+      else v = enc.bytes(s); // Z, H, B through a self-delimiting encoding
+      if (a === 99 && b === 70 && t === 67) continue; // cF: CRAM's own flags, not a read tag
+      if (t === 42) continue;                         // MD* / NM*: generated by htslib on request; not stored
+      tagParts.push(Uint8Array.of(a, b, t), v);
+    }
+    if (rg >= 0 && rg < rgIds.length) tagParts.push(Uint8Array.of(82, 71, 90), new TextEncoder().encode(rgIds[rg]), Uint8Array.of(0));
+    let tn = 0; for (const x of tagParts) tn += x.length;
+    rec.tagBytes = new Uint8Array(tn); { let o = 0; for (const x of tagParts) { rec.tagBytes.set(x, o); o += x.length; } }
+    // sequence, qualities and CIGAR
+    const seq = new Uint8Array(rl), qual = new Uint8Array(rl).fill(255);
+    const cig = []; const op = (o, n) => { if (n <= 0) return; const L = cig.length; if (L && (cig[L - 1] & 15) === o) cig[L - 1] += n * 16; else cig.push(n * 16 + o); };
+    if (!(rec.flag & 4)) {
+      const fn = get('FN').int(s);
+      if (fn < 0 || fn > rl + 1000) throw bad('a record has an impossible number of features');
+      let seqPos = 1, refPos = apos - 1, prev = 0;
+      const put = (at, bytes) => { if (at < 0 || at + bytes.length > rl) throw bad('a feature runs past the end of its read'); seq.set(bytes, at); };
+      const qFill = () => { if (!(cf & 1) && rl && qual[0] === 255) qual.fill(30); };
+      for (let f = 0; f < fn; f++) {
+        const fc = get('FC').byte(s), fp = get('FP').int(s) + prev; prev = fp;
+        if (fp <= 0 || fp > rl + 1) throw bad('a feature lies outside its read');
+        if (fp > seqPos) { for (let k = seqPos; k < fp; k++) seq[k - 1] = refAt(rec.refID, refPos + k - seqPos); op(0, fp - seqPos); refPos += fp - seqPos; seqPos = fp; }
+        switch (fc) {
+          case 83: { const b = get('SC').bytes(s); put(fp - 1, b); op(4, b.length); seqPos += b.length; break; }            // S soft clip
+          case 88: { const code = get('BS').byte(s) & 3; seq[fp - 1] = ch.subst[CRAM_BASE_IDX[refAt(rec.refID, refPos)]][code]; op(0, 1); seqPos++; refPos++; break; } // X substitution
+          case 68: { const n = get('DL').int(s); if (n < 0) throw bad('a negative deletion'); op(2, n); refPos += n; break; } // D
+          case 73: { const b = get('IN').bytes(s); put(fp - 1, b); op(1, b.length); seqPos += b.length; break; }            // I insertion
+          case 105: { put(fp - 1, [get('BA').byte(s)]); op(1, 1); seqPos++; break; }                                         // i one inserted base
+          case 66: { put(fp - 1, [get('BA').byte(s)]); qFill(); qual[fp - 1] = get('QS').byte(s); op(0, 1); seqPos++; refPos++; break; } // B base + quality
+          case 81: { qFill(); if (fp - 1 < rl) qual[fp - 1] = get('QS').byte(s); else get('QS').byte(s); break; }          // Q quality
+          case 72: { const n = get('HC').int(s); if (n < 0) throw bad('a negative hard clip'); op(5, n); break; }           // H
+          case 80: { const n = get('PD').int(s); if (n < 0) throw bad('a negative padding'); op(6, n); break; }             // P
+          case 78: { const n = get('RS').int(s); if (n < 0) throw bad('a negative skip'); op(3, n); refPos += n; break; }   // N
+          case 98: { const b = get('BB').bytes(s); put(fp - 1, b); op(0, b.length); seqPos += b.length; refPos += b.length; break; } // b bases
+          case 113: { const b = get('QQ').bytes(s); qFill(); if (fp - 1 + b.length > rl) throw bad('qualities run past the read'); qual.set(b, fp - 1); break; } // q qualities
+          default: throw bad('an unknown read feature ' + String.fromCharCode(fc));
+        }
+      }
+      if (rl >= seqPos) { for (let k = seqPos; k <= rl; k++) seq[k - 1] = refAt(rec.refID, refPos + k - seqPos); op(0, rl - seqPos + 1); refPos += rl - seqPos + 1; }
+      rec.end = Math.max(refPos, rec.pos + 1);
+      rec.mapq = get('MQ').int(s);
+      if (cf & 1) qual.set(get('QS').bytes(s, rl));
+    } else {
+      if (rl) seq.set(get('BA').bytes(s, rl));
+      if (cf & 1) qual.set(get('QS').bytes(s, rl));
+      rec.end = rec.pos + 1;
+    }
+    if (!ch.QO && (rec.flag & 16)) qual.reverse(); // qualities stored in sequencing order
+    rec.cigar = Uint32Array.from(cig);
+    const noSeq = !!(cf & 8);
+    rec.lseq = noSeq ? 0 : rl;
+    rec.seq = new Uint8Array((rec.lseq + 1) >> 1);
+    for (let k = 0; k < rec.lseq; k++) rec.seq[k >> 1] |= NT16[seq[k]] << (k & 1 ? 0 : 4);
+    rec.qual = noSeq ? new Uint8Array(0) : qual;
+    if (!ch.RN && !rec.name) rec.name = file.src.name + ':' + (sh.counter + i);
+    recs[i] = rec;
+  }
+  resolveMates(recs);
+  for (const rec of recs) { delete rec._mateLine; delete rec._tlen; delete rec._explicitTlen; }
+  return recs;
+}
+function latin1Str(u8) { let s = ''; for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return s; }
+
+// Mates inside a slice: positions, flags and template length, as htslib computes them
+// (cram_decode_slice_xref), so the result matches what samtools writes back to BAM.
+function resolveMates(recs) {
+  const N = recs.length;
+  recs.forEach((r, i) => { if (r._mateLine >= 0 && (r._mateLine <= i || r._mateLine >= N)) throw new CgvError('cramBad', { what: 'a record points to a mate outside its slice' }); });
+  const ap = r => r.pos + 1, ae = r => (r.flag & 4) ? r.pos + 1 : r.end; // 1-based start, inclusive end
+  for (let i = 0; i < N; i++) {
+    const cr = recs[i];
+    if (cr._mateLine >= 0) {
+      if (cr._tlen === null) {
+        let id2 = i, aleft = ap(cr), aright = ae(cr), leftCnt = 0, rightCnt = 0, ref = cr.refID, guard = 0;
+        do {
+          const x = recs[id2];
+          if (aleft > ap(x)) { aleft = ap(x); leftCnt = 1; } else if (aleft === ap(x)) leftCnt++;
+          if (aright < ae(x)) { aright = ae(x); rightCnt = 1; } else if (aright === ae(x)) rightCnt++;
+          if (x._mateLine === -1) { x._mateLine = i; break; }
+          id2 = x._mateLine;
+          if (recs[id2].refID !== ref) ref = -1;
+          if (++guard > N) throw new CgvError('cramBad', { what: 'a loop in mate links' });
+        } while (id2 !== i);
+        if (ref !== -1) {
+          let tlen = aright - aleft + 1;
+          const x = recs[i];
+          if (ap(x) === aleft && (ae(x) < aright || leftCnt <= 1)) { x._tlen = tlen; tlen = -tlen; }
+          else if (ap(x) === aleft && ae(x) === aright && leftCnt > 1 && rightCnt > 1) { if (x.flag & 64) { x._tlen = tlen; tlen = -tlen; } else x._tlen = -tlen; }
+          else x._tlen = -tlen;
+          for (let j = x._mateLine, g = 0; j !== i; j = recs[j]._mateLine) { recs[j]._tlen = tlen; if (++g > N) break; }
+        } else {
+          recs[i]._tlen = 0;
+          for (let j = recs[i]._mateLine, g = 0; j !== i; j = recs[j]._mateLine) { recs[j]._tlen = 0; if (++g > N) break; }
+        }
+      }
+      const m = recs[cr._mateLine];
+      cr.matePos = m.pos; cr.mateRef = m.refID;
+      cr.flag |= 1;
+      if (m.flag & 4) { cr.flag |= 8; cr._tlen = 0; }
+      if (cr.flag & 4) cr._tlen = 0;
+      if (m.flag & 16) cr.flag |= 32;
+    }
+    if (cr._tlen === null) cr._tlen = 0;
+  }
+  for (const r of recs) { r.tlen = r._explicitTlen !== null ? r._explicitTlen : r._tlen; }
+}
+
+// Coverage counts from a parsed record (BamFile does the same from raw bytes in addCoverage).
+function addCoverageRec(rec, cov) {
+  const lo = cov.start, hi = cov.end;
+  let r = rec.pos, q = 0, bi = -1, blk = null;
+  const slot = pos => { const b = Math.floor(pos / COV_BLOCK); if (b !== bi) { bi = b; blk = cov.block(b, true); } return (pos - b * COV_BLOCK) * 6; };
+  for (const c of rec.cigar) {
+    const op = c & 15, n = c >>> 4;
+    if (op === 0 || op === 7 || op === 8) {
+      for (let k = 0; k < n; k++) {
+        const pos = r + k;
+        if (pos >= lo && pos < hi) { const qi = q + k; const code = rec.lseq ? (qi & 1 ? rec.seq[qi >> 1] & 15 : rec.seq[qi >> 1] >> 4) : 15; const o = slot(pos); blk[o + NIB_IDX[code]]++; }
+      }
+      r += n; q += n;
+    } else if (op === 2) { for (let k = 0; k < n; k++) { const pos = r + k; if (pos >= lo && pos < hi) { const o = slot(pos); blk[o + 5]++; } } r += n; }
+    else if (op === 3) r += n;
+    else if (op === 1 || op === 4) q += n;
+  }
+}
+
+if (typeof module !== 'undefined') module.exports = { CRAM_CHECK, decodeSlice, parseCompressionHeader, readEncoding, BitReader, CramFile, CramReader, parseContainerHeader, parseBlock, decodeBlock, parseCrai, parseSamHeaderText, crc32, CRAM_LIMITS };

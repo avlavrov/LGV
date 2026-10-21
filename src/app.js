@@ -502,7 +502,7 @@ async function ensureData() {
       const br = T.map[refId];
       if (br < 0) return { T, res: null, msg: t('sample.noContig', { name: S.contigs[refId].name }) };
       try { return { T, res: await trackFetch(T, br, ls, le, opts), msg: null }; }
-      catch (e) { return { T, res: null, msg: errText(e), error: e.code !== 'cramLater' }; }
+      catch (e) { return { T, res: null, msg: errText(e), error: true }; }
     }));
     if (token !== S.loadToken) return;
     const all = results.flatMap(r => r.res ? r.res.reads : []);
@@ -1100,6 +1100,8 @@ async function openBam(bamSrc, baiSrc, opts) {
     const keepView = !own && S.viewSet && map[S.view.refId] >= 0;
     if (!opts.demo) for (const x of S.tracks.filter(x => x.demo)) closeTrack(x); // own data replaces the demo sample
     const T = { id: ++S.trackSeq, key, bam, name: bamSrc.name, demo: !!opts.demo, map, back, data: null, shown: null, layout: null, scroll: 0, msg: null, vao: null, n: 0 };
+    // CRAM keeps reads as differences from the reference: its bases come from the loaded reference
+    if (bam.isCram) bam.refProvider = async (id, a, b) => { const v = T.back[id]; return v >= 0 && S.fasta ? S.fasta.fetch(S.contigs[v].name, a, b) : null; };
     await attachWorker(T);
     S.tracks.push(T);
     S.sortPos = S.tracks.length > 1 ? S.sortPos : null; S.selected = null; hideCard();
