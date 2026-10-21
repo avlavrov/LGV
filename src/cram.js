@@ -133,6 +133,10 @@ async function decodeBlock(b) {
   if (b.method === 0) out = b.data;
   else if (b.method === 1) out = await inflateGzip(b.data);
   else if (b.method === 4) out = ransDecode4x8(b.data, b.rawSize); // htscodecs, see src/htscodecs.js
+  else if (b.method === 5) out = ransDecode4x16(b.data, b.rawSize);   // CRAM 3.1 codecs, also from htscodecs
+  else if (b.method === 6) out = arithDecode(b.data, b.rawSize);
+  else if (b.method === 7) out = fqzDecode(b.data, b.rawSize);
+  else if (b.method === 8) out = tok3Decode(b.data, b.rawSize);
   else throw new CgvError('cramCodec', { codec: CRAM_METHODS[b.method] || 'method ' + b.method });
   if (out.length !== b.rawSize) throw new CgvError('cramBad', { what: 'a block decodes to ' + out.length + ' bytes instead of ' + b.rawSize });
   return out;

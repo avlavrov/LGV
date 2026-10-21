@@ -37,7 +37,7 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
 
 | Code | From | Version | License | Status |
 | --- | --- | --- | --- | --- |
-| rANS 4x8 decoder (`src/htscodecs.js`) | htscodecs `javascript/rans.js`, `iostream.js` (Genome Research Ltd, James Bonfield) | commit 0a487b5 | BSD 3-clause, notice kept in the file | decoding only; read line by line and changed as below |
+| CRAM block decoders (`src/htscodecs.js`): rANS 4x8, rANS 4x16, arithmetic, FQZcomp, name tokeniser | htscodecs `javascript/` rans.js, rans4x16.js, arith_gen.js, arith_sh.js, byte_model.js, fqzcomp.js, tok3.js, iostream.js (Genome Research Ltd, James Bonfield) | commit 0a487b5 | BSD 3-clause, notice kept in the file | decoding only; read line by line and changed as below |
 | Test data only: SAM test cases | htslib `test/` | commit 446b29a | MIT/Expat (test/cram/htslib/LICENSE-htslib) | used by tools/test-cram.js, not shipped |
 
 ### Changes made to htscodecs code
@@ -50,6 +50,15 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
   contexts without frequencies are errors instead of writing symbol 256 or reading undefined tables.
 - A table running past symbol 255, an unknown rANS order and sizes in the block header that differ
   from the CRAM block's are errors.
+- rANS 4x16 and arithmetic: run lengths, packed data, nested stripes and output sizes are checked;
+  a packed block with more than 16 symbols is an error (the original returned uninitialised memory);
+  a range that reaches zero is an error (the renormalising loop would never end); arithmetic models
+  of order 1 and FQZcomp's 65,536 quality models are made on first use instead of all up front.
+- FQZcomp: the parameter selector count read `gflags.nparam` (always undefined) and a duplicated
+  record decoded its flag twice and copied with an undefined length; both now follow htscodecs' C
+  decoder. Tables that never end, record lengths outside the block and missing selectors are errors.
+- Name tokeniser: references to missing token streams or to names that are not there are errors
+  (the original crashed with a TypeError); the name count is checked against the block size.
 - Node's `Buffer` replaced by `Uint8Array`; 32-bit values read unsigned.
 - Encoders, command-line tools and the `bzip2` package are not taken.
 
@@ -58,4 +67,5 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
 | Date | Finding | Fixed |
 | --- | --- | --- |
 | 2026-10-21 | htscodecs' JavaScript rANS decoder loops forever on a cut-off block (no bounds checks) | CGV's copy checks every read; reported here, upstream report to consider |
+| 2026-10-21 | htscodecs' JavaScript decoders on cut-off blocks: rANS 4x16 and arithmetic return a full-size block of wrong data without an error, FQZcomp loops forever, the name tokeniser crashes | CGV's copies stop with a clear error; tested on blocks cut to 12, 40 and 100 bytes |
 | 2026-10-21 | A pasted display profile with a `__proto__` key could replace the profile object's prototype (no effect outside it, but not allowed) | only the profile's own keys are taken |

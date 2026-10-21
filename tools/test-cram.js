@@ -54,7 +54,7 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
     const list = await cram.scan();
     const recs = list.reduce((a, c) => a + c.header.nRecords, 0);
     const methods = [...new Set(list.flatMap(c => c.methods))];
-    cram.decodable = methods.every(m => ['raw', 'gzip', 'rANS 4x8'].includes(m));
+    cram.decodable = methods.every(m => ['raw', 'gzip', 'rANS 4x8', 'rANS 4x16', 'arithmetic', 'fqzcomp', 'name tokenizer'].includes(m));
     ok(list[list.length - 1].header.eof && recs === 8286, `${f}: ${list.length} containers to the end marker, all checksums correct, ${recs} records (BAM: 8286); block compression: ${methods.join(', ')}`);
     ok(cram.index.slices > 0 && cram.estimateBytes(0, 11000, 13000) > 0 && cram.estimateBytes(0, 0, 1) >= 0, `${f}: index has ${cram.index.slices} slices; size estimate for a window works`);
     // ---- records: every read equal to the BAM's (stage 2) ----
@@ -89,7 +89,7 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
     let pass = 0; const bad = [];
     for (const n of cases) {
       try {
-        const base = n.replace(/^r30_/, ''); // r30_*: the same case written with samtools' default codecs (rANS 4x8)
+        const base = n.replace(/^(r30|s31|a31)_/, ''); // the same case as CRAM 3.0 with rANS (r30_), CRAM 3.1 (s31_) and CRAM 3.1 archive (a31_)
         const fa2 = await new C.IndexedFasta(src(H, base.split('_')[0] + '.fa'), src(H, base.split('_')[0] + '.fa.fai')).open();
         const b = await new C.BamFile(src(H, base + '.bam'), src(H, base + '.bam.bai')).open();
         const c = await new R.CramFile(src(H, n + '.cram'), src(H, n + '.cram.crai')).open();
@@ -103,7 +103,7 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
         if (diffs.length) bad.push(n + ': ' + diffs.slice(0, 2).join('; ')); else pass++;
       } catch (e) { bad.push(n + ': ' + (e.code ? e.message : e.stack.split('\n').slice(0, 2).join(' '))); }
     }
-    ok(!bad.length, `htslib test cases: ${pass} of ${cases.length} CRAM files (gzip and rANS 4x8 versions) read exactly like their BAM` + (bad.length ? '\n     ' + bad.join('\n     ') : ''));
+    ok(!bad.length, `htslib test cases: ${pass} of ${cases.length} CRAM files (CRAM 3.0 gzip and rANS, CRAM 3.1 normal and archive) read exactly like their BAM` + (bad.length ? '\n     ' + bad.join('\n     ') : ''));
   }
 
   // ---- rANS 4x8 on its own: damaged and random blocks end in a CgvError, never a hang or a crash ----
@@ -125,6 +125,30 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
       try { H.ransDecode4x8(cut, b.rawSize); } catch (e) { if (e.code) errors++; else { crashes++; if (crashes < 3) console.log('   crash:', e.message); } }
     }
     ok(crashes === 0, `rANS 4x8 fuzzing: ${n} damaged blocks, ${errors} clear errors, ${crashes} unexpected, ${Date.now() - t0} ms`);
+  }
+
+  // ---- CRAM 3.1 codecs on their own: damaged blocks end in a CgvError, never a hang or a crash ----
+  {
+    const H = require('../src/htscodecs.js');
+    const dec = { 5: H.ransDecode4x16, 6: H.arithDecode, 7: H.fqzDecode, 8: H.tok3Decode };
+    const names = { 5: 'rANS 4x16', 6: 'arithmetic', 7: 'FQZcomp', 8: 'name tokeniser' };
+    const v = await new R.CramFile(src(T, 'v31_arch_nobz.cram'), src(T, 'v31_arch_nobz.cram.crai')).open();
+    const v2 = await new R.CramFile(src(T, 'v31.cram'), src(T, 'v31.cram.crai')).open();
+    const blocks = [];
+    for (const f of [v, v2]) for (let off = f.firstContainer, k = 0; k < 2; k++) { const c = await f.readContainer(off); for (const b of f.blocksOf(c)) if (dec[b.method]) blocks.push(b); off += c.header.headerSize + c.header.length; }
+    let seed = 7; const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296;
+    for (const m of [5, 6, 7, 8]) {
+      const mine = blocks.filter(b => b.method === m);
+      let crashes = 0, errors = 0, n = 0; const t0 = Date.now();
+      for (; n < 600; n++) {
+        const b = mine[n % mine.length], d = Uint8Array.from(b.data);
+        if (n % 4 === 0) for (let i = 0; i < d.length; i++) d[i] = Math.floor(rnd() * 256);
+        else for (let k = 0; k < 1 + Math.floor(rnd() * 6); k++) d[Math.floor(rnd() * Math.min(d.length, n % 3 ? 64 : d.length))] = Math.floor(rnd() * 256);
+        const cut = n % 5 === 0 ? d.subarray(0, Math.floor(rnd() * d.length)) : d;
+        try { dec[m](cut, b.rawSize); } catch (e) { if (e.code) errors++; else { crashes++; if (crashes < 3) console.log('   crash:', names[m], e.stack.split('\n').slice(0, 2).join(' | ')); } }
+      }
+      ok(crashes === 0 && mine.length > 0, `${names[m]} fuzzing: ${n} damaged blocks (from ${mine.length} real ones), ${errors} clear errors, ${crashes} unexpected, ${Date.now() - t0} ms`);
+    }
   }
 
   // ---- damaged files: a CgvError with a clear message, never a crash or a hang ----
