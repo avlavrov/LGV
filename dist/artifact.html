@@ -3001,6 +3001,7 @@ function pairBams(files) {
 // A folder with several samples first lists them, so a whole run directory is not opened at once.
 function openLocalFiles(fileList, fromFolder) {
   const files = [...fileList], L = f => f.name.toLowerCase();
+  $('toast').hidden = true; // a message about an earlier choice no longer applies
   const { bams, pairs, missing } = pairBams(files);
   const ref = pickRefFiles(files);
   if (!bams.length) {
@@ -3061,6 +3062,7 @@ async function droppedFiles(dt) {
 // sample.bam.bai, then sample.bai. The index field applies when there is one link.
 function openUrls() {
   const links = $('urlBam').value.split(/\s+/).map(x => x.trim()).filter(Boolean);
+  $('toast').hidden = true;
   if (!links.length) { toast(t('url.need')); return; }
   const auth = $('urlAuth').value.trim();
   const headers = auth ? { Authorization: /^bearer\s/i.test(auth) ? auth : 'Bearer ' + auth } : {};
