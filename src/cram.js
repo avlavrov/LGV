@@ -26,7 +26,7 @@ const CRAM_LIMITS = {
   sliceBases: 256 << 20,  // bases in one slice: values that cost no input bits cannot inflate memory
 };
 // Checksums are verified always; the tests switch them off to send damaged data deeper into the decoder.
-const CRAM_CHECK = { crc: true };
+const CRAM_CHECK = { crc: true, md5: true };
 const CRAM_METHODS = ['raw', 'gzip', 'bzip2', 'lzma', 'rANS 4x8', 'rANS 4x16', 'arithmetic', 'fqzcomp', 'name tokenizer'];
 const CRAM_CT = { FILE_HEADER: 0, COMPRESSION_HEADER: 1, SLICE_HEADER: 2, EXTERNAL: 4, CORE: 5 };
 
@@ -38,6 +38,7 @@ Object.assign(CGV_ERR_EN, {
   cramCodec: 'A CRAM block is compressed with {codec}, which CGV does not read yet',
   cramLimit: 'A CRAM {what} is larger than CGV allows ({size})',
   notCrai: 'This is not a CRAM index (.crai)',
+  cramRefMd5: 'The loaded reference is not the one this CRAM was made with: the MD5 of contig {name} differs. Load the reference the file was made with',
   cramNeedRef: 'This CRAM stores reads as differences from its reference: load the reference it was made with (contig {name})',
   cramEncoding: 'CRAM data series {ds} uses encoding {enc}, which CGV does not read',
 });
@@ -48,6 +49,35 @@ function crc32(u8, start, end) {
   let c = 0xFFFFFFFF;
   for (let i = start; i < end; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
   return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+// ---------- MD5 (RFC 1321), for the reference check of each slice ----------
+const MD5_K = new Uint32Array(64).map((_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296));
+const MD5_S = [7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21];
+function md5(data) {
+  const n = data.length, total = ((n + 8) >> 6) + 1 << 6, m = new Uint8Array(total);
+  m.set(data); m[n] = 0x80;
+  const bits = n * 8; for (let i = 0; i < 8; i++) m[total - 8 + i] = Math.floor(bits / 2 ** (8 * i)) & 255;
+  const w = new Uint32Array(16);
+  let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+  for (let off = 0; off < total; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = m[off + 4 * i] | (m[off + 4 * i + 1] << 8) | (m[off + 4 * i + 2] << 16) | (m[off + 4 * i + 3] << 24);
+    let A = a0, B = b0, C = c0, D = d0;
+    for (let i = 0; i < 64; i++) {
+      let F, g;
+      if (i < 16) { F = (B & C) | (~B & D); g = i; }
+      else if (i < 32) { F = (D & B) | (~D & C); g = (5 * i + 1) & 15; }
+      else if (i < 48) { F = B ^ C ^ D; g = (3 * i + 5) & 15; }
+      else { F = C ^ (B | ~D); g = (7 * i) & 15; }
+      F = (F + A + MD5_K[i] + w[g]) | 0;
+      A = D; D = C; C = B;
+      B = (B + ((F << MD5_S[i]) | (F >>> (32 - MD5_S[i])))) | 0;
+    }
+    a0 = (a0 + A) | 0; b0 = (b0 + B) | 0; c0 = (c0 + C) | 0; d0 = (d0 + D) | 0;
+  }
+  const out = new Uint8Array(16);
+  [a0, b0, c0, d0].forEach((v, i) => { for (let k = 0; k < 4; k++) out[4 * i + k] = (v >>> (8 * k)) & 255; });
+  return out;
 }
 
 // ---------- Bounds-checked reader ----------
@@ -128,7 +158,16 @@ async function inflateGzip(u8) {
   catch (e) { throw new CgvError('cramBad', { what: 'a gzip block does not inflate' }); }
 }
 // Decoded contents of a block. Codecs other than raw and gzip come in later stages.
+// Where decoding time goes (milliseconds by codec, records, reference); shown in tests and diagnostics.
+const CRAM_STATS = { codec: {}, records: 0, ref: 0, read: 0 };
+const cramNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 async function decodeBlock(b) {
+  const t0 = cramNow();
+  const out = await decodeBlockRaw(b);
+  const k = CRAM_METHODS[b.method] || b.method; CRAM_STATS.codec[k] = (CRAM_STATS.codec[k] || 0) + cramNow() - t0;
+  return out;
+}
+async function decodeBlockRaw(b) {
   let out;
   if (b.method === 0) out = b.data;
   else if (b.method === 1) out = await inflateGzip(b.data);
@@ -218,7 +257,7 @@ class CramFile {
     }
     const dataOffset = off + h.headerSize;
     let data = raw.subarray(h.headerSize, h.headerSize + h.length);
-    if (data.length < h.length) data = await this.src.read(dataOffset, h.length);
+    if (data.length < h.length) { const t = cramNow(); data = await this.src.read(dataOffset, h.length); CRAM_STATS.read += cramNow() - t; }
     if (data.length < h.length) throw new CgvError('cramBad', { what: 'the file ends inside a container' });
     h.offset = off;
     return { header: h, data, dataOffset };
@@ -488,156 +527,186 @@ async function decodeSlice(file, c, ch, from, to, containerOffset) {
     const spans = sh.refId >= 0 ? [[sh.refId, sh.start - 1, sh.start - 1 + sh.span]]
       : sh.refId === -2 ? (file.index.byRef ? [...file.index.byRef.entries()].flatMap(([id, list]) => list.filter(e => e.container === containerOffset && e.slice === from).map(e => [id, e.start, e.start + e.span])).filter(x => x[0] >= 0) : []) : [];
     for (const [id, a, b] of spans) {
-      const bases = file.refProvider ? await file.refProvider(id, a, b) : null;
+      const tr = cramNow(); const bases = file.refProvider ? await file.refProvider(id, a, b) : null; CRAM_STATS.ref += cramNow() - tr;
       if (!bases) throw new CgvError('cramNeedRef', { name: (file.refs[id] || {}).name || id });
+      // the slice records the MD5 of the reference stretch it was written against: a different
+      // reference (another build, another patch release) would silently give wrong bases
+      if (sh.refId >= 0 && CRAM_CHECK.md5 && sh.md5.some(x => x) && bases.length === b - a) {
+        const got = md5(bases); CRAM_STATS.md5 = (CRAM_STATS.md5 || 0) + 1;
+        if (!got.every((x, k) => x === sh.md5[k])) throw new CgvError('cramRefMd5', { name: (file.refs[id] || {}).name || id });
+      }
       refs.set(id, { start0: a, bases });
     }
   }
-  const refAt = (id, p0) => { const R = refs.get(id); if (!R) return 78; const i = p0 - R.start0; return i >= 0 && i < R.bases.length ? R.bases[i] : 78; };
-  const D = ch.ds, get = k => { const e = D[k]; if (!e) throw new CgvError('cramBad', { what: 'data series ' + k + ' has no encoding' }); return e; };
-  const rgIds = [...file.headerText.matchAll(/^@RG\t(?:.*\t)?ID:([^\t\r\n]+)/gm)].map(m => m[1]);
+  // one reference in the slice (the usual case) is read without a lookup per base
+  const only = refs.size === 1 ? [...refs.values()][0] : null, onlyId = only ? [...refs.keys()][0] : -9;
+  const refAt = (id, p0) => {
+    const R = id === onlyId ? only : refs.get(id); if (!R) return 78;
+    const i = p0 - R.start0; return i >= 0 && i < R.bases.length ? R.bases[i] : 78;
+  };
+  // decoders of the data series, looked up once; a missing one fails only when a record needs it
+  const E = {};
+  for (const k of ['BF', 'CF', 'RI', 'RL', 'AP', 'RG', 'RN', 'MF', 'NS', 'NP', 'TS', 'NF', 'TL', 'FN', 'FC', 'FP', 'SC', 'BS', 'DL', 'IN', 'BA', 'QS', 'HC', 'PD', 'RS', 'BB', 'QQ', 'MQ']) {
+    E[k] = ch.ds[k] || { int: () => { throw new CgvError('cramBad', { what: 'data series ' + k + ' has no encoding' }); } };
+    if (!E[k].byte) E[k].byte = E[k].int; if (!E[k].bytes) E[k].bytes = E[k].int;
+  }
+  const rgBytes = file._rgBytes || (file._rgBytes = [...file.headerText.matchAll(/^@RG\t(?:.*\t)?ID:([^\t\r\n]+)/gm)].map(m => { const id = new TextEncoder().encode(m[1]); const b = new Uint8Array(id.length + 4); b.set([82, 71, 90]); b.set(id, 3); return b; }));
+  // tag lines resolved to their encodings once per slice
+  const tagLines = ch.TD.map(line => line.map(([a, b, t]) => {
+    const enc = ch.tags.get((a << 16) | (b << 8) | t);
+    return { a, b, t, enc, size: TAG_SIZE[t] || 0, self: !!enc && !!enc.bytes && !enc.int, keep: !(a === 99 && b === 70 && t === 67) && t !== 42 };
+  }));
   const bad = what => new CgvError('cramBad', { what });
-  const recs = new Array(sh.nRecords);
-  let lastPos = sh.start, bases = 0;
-  for (let i = 0; i < sh.nRecords; i++) {
+  const N = sh.nRecords, recs = new Array(N);
+  const mateLine = new Int32Array(N).fill(-1), tlenOf = new Float64Array(N).fill(NaN), explicitTlen = new Float64Array(N).fill(NaN);
+  let seq = new Uint8Array(512); // scratch for bases as letters, reused by every record
+  let lastPos = sh.start, bases = 0; const tRec = cramNow();
+  for (let i = 0; i < N; i++) {
     const rec = { refID: sh.refId, pos: -1, end: 0, name: '', mapq: 0, flag: 0, lseq: 0, mateRef: -1, matePos: -1, tlen: 0, cigar: null, seq: null, qual: null, tagBytes: null, _tags: null, feats: null };
-    const flag = get('BF').int(s), cf = get('CF').int(s);
+    const flag = E.BF.int(s), cf = E.CF.int(s);
     rec.flag = flag & 0xFFFF;
-    if (sh.refId === -2) rec.refID = get('RI').int(s);
-    const rl = get('RL').int(s);
+    if (sh.refId === -2) rec.refID = E.RI.int(s);
+    const rl = E.RL.int(s);
     if (rl < 0 || rl > CRAM_LIMITS.readLength) throw bad('a record has an impossible read length');
     if ((bases += rl) > CRAM_LIMITS.sliceBases) throw new CgvError('cramLimit', { what: 'slice', size: fmtSize(bases) + ' of bases' });
-    let apos = get('AP').int(s);
+    let apos = E.AP.int(s);
     if (ch.AP) { apos += lastPos; lastPos = apos; }
     rec.pos = apos - 1;
-    const rg = get('RG').int(s);
-    if (ch.RN) rec.name = latin1Str(get('RN').bytes(s));
-    rec._mateLine = -1; rec._tlen = null; rec._explicitTlen = null;
+    const rg = E.RG.int(s);
+    if (ch.RN) rec.name = latin1Str(E.RN.bytes(s));
     if (cf & 2) { // mate kept separately (other slice, other reference, or not reproducible)
-      const mf = get('MF').int(s);
-      if (!ch.RN) rec.name = latin1Str(get('RN').bytes(s));
-      rec.mateRef = get('NS').int(s); rec.matePos = get('NP').int(s) - 1; rec._tlen = get('TS').int(s);
+      const mf = E.MF.int(s);
+      if (!ch.RN) rec.name = latin1Str(E.RN.bytes(s));
+      rec.mateRef = E.NS.int(s); rec.matePos = E.NP.int(s) - 1; tlenOf[i] = E.TS.int(s);
       if (mf & 1) rec.flag |= 0x1 | 0x20;
       if (mf & 2) rec.flag |= 0x8;
       if (!(rec.flag & 1)) rec.mateRef = -1;
     } else if (cf & 4) { // mate further down in this slice
-      rec._mateLine = i + 1 + get('NF').int(s);
-      if (cf & 16) rec._explicitTlen = get('TS').int(s);
-    } else if (cf & 16) rec._explicitTlen = get('TS').int(s);
-    // tags, in the order of the tag line
-    const tl = get('TL').int(s);
-    if (tl < 0 || tl >= ch.TD.length) throw bad('a record points to a missing tag line');
-    const tagParts = [];
-    for (const [a, b, t] of ch.TD[tl]) {
-      const key = (a << 16) | (b << 8) | t, enc = ch.tags.get(key);
-      if (!enc) throw bad('tag ' + String.fromCharCode(a, b) + ' has no encoding');
-      let v;
-      if (enc.bytes && !enc.int) v = enc.bytes(s);
-      else if (TAG_SIZE[t]) v = enc.bytes(s, TAG_SIZE[t]);
-      else v = enc.bytes(s); // Z, H, B through a self-delimiting encoding
-      if (a === 99 && b === 70 && t === 67) continue; // cF: CRAM's own flags, not a read tag
-      if (t === 42) continue;                         // MD* / NM*: generated by htslib on request; not stored
-      tagParts.push(Uint8Array.of(a, b, t), v);
+      mateLine[i] = i + 1 + E.NF.int(s);
+      if (cf & 16) explicitTlen[i] = E.TS.int(s);
+    } else if (cf & 16) explicitTlen[i] = E.TS.int(s);
+    // tags, in the order of the tag line, as BAM writes them
+    const tl = E.TL.int(s);
+    if (tl < 0 || tl >= tagLines.length) throw bad('a record points to a missing tag line');
+    const line = tagLines[tl], vals = new Array(line.length);
+    let tn = 0;
+    for (let k = 0; k < line.length; k++) {
+      const T = line[k];
+      if (!T.enc) throw bad('tag ' + String.fromCharCode(T.a, T.b) + ' has no encoding');
+      const v = T.self ? T.enc.bytes(s) : T.size ? T.enc.bytes(s, T.size) : T.enc.bytes(s); // Z, H, B: self-delimiting
+      if (!T.keep) continue; // cF (CRAM's own flags) and MD* / NM* (regenerated by htslib on request)
+      vals[k] = v; tn += 3 + v.length;
     }
-    if (rg >= 0 && rg < rgIds.length) tagParts.push(Uint8Array.of(82, 71, 90), new TextEncoder().encode(rgIds[rg]), Uint8Array.of(0));
-    let tn = 0; for (const x of tagParts) tn += x.length;
-    rec.tagBytes = new Uint8Array(tn); { let o = 0; for (const x of tagParts) { rec.tagBytes.set(x, o); o += x.length; } }
+    const rgb = rg >= 0 && rg < rgBytes.length ? rgBytes[rg] : null;
+    if (rgb) tn += rgb.length;
+    const tagBytes = new Uint8Array(tn); let to = 0;
+    for (let k = 0; k < line.length; k++) { const v = vals[k]; if (!v) continue; const T = line[k]; tagBytes[to] = T.a; tagBytes[to + 1] = T.b; tagBytes[to + 2] = T.t; tagBytes.set(v, to + 3); to += 3 + v.length; }
+    if (rgb) tagBytes.set(rgb, to);
+    rec.tagBytes = tagBytes;
     // sequence, qualities and CIGAR
-    const seq = new Uint8Array(rl), qual = new Uint8Array(rl).fill(255);
+    if (seq.length < rl) seq = new Uint8Array(rl * 2);
+    const qual = new Uint8Array(rl).fill(255);
     const cig = []; const op = (o, n) => { if (n <= 0) return; const L = cig.length; if (L && (cig[L - 1] & 15) === o) cig[L - 1] += n * 16; else cig.push(n * 16 + o); };
+    const put = (at, b) => { if (at < 0 || at + b.length > rl) throw bad('a feature runs past the end of its read'); seq.set(b, at); };
     if (!(rec.flag & 4)) {
-      const fn = get('FN').int(s);
+      const fn = E.FN.int(s);
       if (fn < 0 || fn > rl + 1000) throw bad('a record has an impossible number of features');
       let seqPos = 1, refPos = apos - 1, prev = 0;
-      const put = (at, bytes) => { if (at < 0 || at + bytes.length > rl) throw bad('a feature runs past the end of its read'); seq.set(bytes, at); };
+      const id = rec.refID;
       const qFill = () => { if (!(cf & 1) && rl && qual[0] === 255) qual.fill(30); };
       for (let f = 0; f < fn; f++) {
-        const fc = get('FC').byte(s), fp = get('FP').int(s) + prev; prev = fp;
+        const fc = E.FC.byte(s), fp = E.FP.int(s) + prev; prev = fp;
         if (fp <= 0 || fp > rl + 1) throw bad('a feature lies outside its read');
-        if (fp > seqPos) { for (let k = seqPos; k < fp; k++) seq[k - 1] = refAt(rec.refID, refPos + k - seqPos); op(0, fp - seqPos); refPos += fp - seqPos; seqPos = fp; }
+        if (fp > seqPos) { for (let k = seqPos; k < fp; k++) seq[k - 1] = refAt(id, refPos + k - seqPos); op(0, fp - seqPos); refPos += fp - seqPos; seqPos = fp; }
         switch (fc) {
-          case 83: { const b = get('SC').bytes(s); put(fp - 1, b); op(4, b.length); seqPos += b.length; break; }            // S soft clip
-          case 88: { const code = get('BS').byte(s) & 3; seq[fp - 1] = ch.subst[CRAM_BASE_IDX[refAt(rec.refID, refPos)]][code]; op(0, 1); seqPos++; refPos++; break; } // X substitution
-          case 68: { const n = get('DL').int(s); if (n < 0) throw bad('a negative deletion'); op(2, n); refPos += n; break; } // D
-          case 73: { const b = get('IN').bytes(s); put(fp - 1, b); op(1, b.length); seqPos += b.length; break; }            // I insertion
-          case 105: { put(fp - 1, [get('BA').byte(s)]); op(1, 1); seqPos++; break; }                                         // i one inserted base
-          case 66: { put(fp - 1, [get('BA').byte(s)]); qFill(); qual[fp - 1] = get('QS').byte(s); op(0, 1); seqPos++; refPos++; break; } // B base + quality
-          case 81: { qFill(); if (fp - 1 < rl) qual[fp - 1] = get('QS').byte(s); else get('QS').byte(s); break; }          // Q quality
-          case 72: { const n = get('HC').int(s); if (n < 0) throw bad('a negative hard clip'); op(5, n); break; }           // H
-          case 80: { const n = get('PD').int(s); if (n < 0) throw bad('a negative padding'); op(6, n); break; }             // P
-          case 78: { const n = get('RS').int(s); if (n < 0) throw bad('a negative skip'); op(3, n); refPos += n; break; }   // N
-          case 98: { const b = get('BB').bytes(s); put(fp - 1, b); op(0, b.length); seqPos += b.length; refPos += b.length; break; } // b bases
-          case 113: { const b = get('QQ').bytes(s); qFill(); if (fp - 1 + b.length > rl) throw bad('qualities run past the read'); qual.set(b, fp - 1); break; } // q qualities
+          case 83: { const b = E.SC.bytes(s); put(fp - 1, b); op(4, b.length); seqPos += b.length; break; }            // S soft clip
+          case 88: { const code = E.BS.byte(s) & 3; seq[fp - 1] = ch.subst[CRAM_BASE_IDX[refAt(id, refPos)]][code]; op(0, 1); seqPos++; refPos++; break; } // X substitution
+          case 68: { const n = E.DL.int(s); if (n < 0) throw bad('a negative deletion'); op(2, n); refPos += n; break; } // D
+          case 73: { const b = E.IN.bytes(s); put(fp - 1, b); op(1, b.length); seqPos += b.length; break; }            // I insertion
+          case 105: { if (fp > rl) throw bad('a feature runs past the end of its read'); seq[fp - 1] = E.BA.byte(s); op(1, 1); seqPos++; break; } // i one inserted base
+          case 66: { if (fp > rl) throw bad('a feature runs past the end of its read'); seq[fp - 1] = E.BA.byte(s); qFill(); qual[fp - 1] = E.QS.byte(s); op(0, 1); seqPos++; refPos++; break; } // B base + quality
+          case 81: { qFill(); if (fp - 1 < rl) qual[fp - 1] = E.QS.byte(s); else E.QS.byte(s); break; }          // Q quality
+          case 72: { const n = E.HC.int(s); if (n < 0) throw bad('a negative hard clip'); op(5, n); break; }           // H
+          case 80: { const n = E.PD.int(s); if (n < 0) throw bad('a negative padding'); op(6, n); break; }             // P
+          case 78: { const n = E.RS.int(s); if (n < 0) throw bad('a negative skip'); op(3, n); refPos += n; break; }   // N
+          case 98: { const b = E.BB.bytes(s); put(fp - 1, b); op(0, b.length); seqPos += b.length; refPos += b.length; break; } // b bases
+          case 113: { const b = E.QQ.bytes(s); qFill(); if (fp - 1 + b.length > rl) throw bad('qualities run past the read'); qual.set(b, fp - 1); break; } // q qualities
           default: throw bad('an unknown read feature ' + String.fromCharCode(fc));
         }
       }
-      if (rl >= seqPos) { for (let k = seqPos; k <= rl; k++) seq[k - 1] = refAt(rec.refID, refPos + k - seqPos); op(0, rl - seqPos + 1); refPos += rl - seqPos + 1; }
+      if (rl >= seqPos) {
+        const R = id === onlyId ? only : null;
+        if (R) { // the common tail: bases straight from the reference
+          for (let k = seqPos, j = refPos - R.start0; k <= rl; k++, j++) seq[k - 1] = j >= 0 && j < R.bases.length ? R.bases[j] : 78;
+        } else for (let k = seqPos; k <= rl; k++) seq[k - 1] = refAt(id, refPos + k - seqPos);
+        op(0, rl - seqPos + 1); refPos += rl - seqPos + 1;
+      }
       rec.end = Math.max(refPos, rec.pos + 1);
-      rec.mapq = get('MQ').int(s);
-      if (cf & 1) qual.set(get('QS').bytes(s, rl));
+      rec.mapq = E.MQ.int(s);
+      if (cf & 1) qual.set(E.QS.bytes(s, rl));
     } else {
-      if (rl) seq.set(get('BA').bytes(s, rl));
-      if (cf & 1) qual.set(get('QS').bytes(s, rl));
+      if (rl) seq.set(E.BA.bytes(s, rl));
+      if (cf & 1) qual.set(E.QS.bytes(s, rl));
       rec.end = rec.pos + 1;
     }
     if (!ch.QO && (rec.flag & 16)) qual.reverse(); // qualities stored in sequencing order
     rec.cigar = Uint32Array.from(cig);
     const noSeq = !!(cf & 8);
-    rec.lseq = noSeq ? 0 : rl;
-    rec.seq = new Uint8Array((rec.lseq + 1) >> 1);
-    for (let k = 0; k < rec.lseq; k++) rec.seq[k >> 1] |= NT16[seq[k]] << (k & 1 ? 0 : 4);
+    const ls = rec.lseq = noSeq ? 0 : rl;
+    const packed = rec.seq = new Uint8Array((ls + 1) >> 1);
+    for (let k = 0; k + 1 < ls; k += 2) packed[k >> 1] = (NT16[seq[k]] << 4) | NT16[seq[k + 1]];
+    if (ls & 1) packed[ls >> 1] = NT16[seq[ls - 1]] << 4;
     rec.qual = noSeq ? new Uint8Array(0) : qual;
     if (!ch.RN && !rec.name) rec.name = file.src.name + ':' + (sh.counter + i);
     recs[i] = rec;
   }
-  resolveMates(recs);
-  for (const rec of recs) { delete rec._mateLine; delete rec._tlen; delete rec._explicitTlen; }
+  resolveMates(recs, mateLine, tlenOf, explicitTlen); CRAM_STATS.records += cramNow() - tRec;
   return recs;
 }
 function latin1Str(u8) { let s = ''; for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return s; }
 
 // Mates inside a slice: positions, flags and template length, as htslib computes them
 // (cram_decode_slice_xref), so the result matches what samtools writes back to BAM.
-function resolveMates(recs) {
+function resolveMates(recs, mateLine, tlenOf, explicitTlen) {
   const N = recs.length;
-  recs.forEach((r, i) => { if (r._mateLine >= 0 && (r._mateLine <= i || r._mateLine >= N)) throw new CgvError('cramBad', { what: 'a record points to a mate outside its slice' }); });
+  for (let i = 0; i < N; i++) if (mateLine[i] >= 0 && (mateLine[i] <= i || mateLine[i] >= N)) throw new CgvError('cramBad', { what: 'a record points to a mate outside its slice' });
   const ap = r => r.pos + 1, ae = r => (r.flag & 4) ? r.pos + 1 : r.end; // 1-based start, inclusive end
   for (let i = 0; i < N; i++) {
     const cr = recs[i];
-    if (cr._mateLine >= 0) {
-      if (cr._tlen === null) {
+    if (mateLine[i] >= 0) {
+      if (Number.isNaN(tlenOf[i])) {
         let id2 = i, aleft = ap(cr), aright = ae(cr), leftCnt = 0, rightCnt = 0, ref = cr.refID, guard = 0;
         do {
           const x = recs[id2];
           if (aleft > ap(x)) { aleft = ap(x); leftCnt = 1; } else if (aleft === ap(x)) leftCnt++;
           if (aright < ae(x)) { aright = ae(x); rightCnt = 1; } else if (aright === ae(x)) rightCnt++;
-          if (x._mateLine === -1) { x._mateLine = i; break; }
-          id2 = x._mateLine;
+          if (mateLine[id2] === -1) { mateLine[id2] = i; break; }
+          id2 = mateLine[id2];
           if (recs[id2].refID !== ref) ref = -1;
           if (++guard > N) throw new CgvError('cramBad', { what: 'a loop in mate links' });
         } while (id2 !== i);
         if (ref !== -1) {
           let tlen = aright - aleft + 1;
           const x = recs[i];
-          if (ap(x) === aleft && (ae(x) < aright || leftCnt <= 1)) { x._tlen = tlen; tlen = -tlen; }
-          else if (ap(x) === aleft && ae(x) === aright && leftCnt > 1 && rightCnt > 1) { if (x.flag & 64) { x._tlen = tlen; tlen = -tlen; } else x._tlen = -tlen; }
-          else x._tlen = -tlen;
-          for (let j = x._mateLine, g = 0; j !== i; j = recs[j]._mateLine) { recs[j]._tlen = tlen; if (++g > N) break; }
+          if (ap(x) === aleft && (ae(x) < aright || leftCnt <= 1)) { tlenOf[i] = tlen; tlen = -tlen; }
+          else if (ap(x) === aleft && ae(x) === aright && leftCnt > 1 && rightCnt > 1) { if (x.flag & 64) { tlenOf[i] = tlen; tlen = -tlen; } else tlenOf[i] = -tlen; }
+          else tlenOf[i] = -tlen;
+          for (let j = mateLine[i], g = 0; j !== i; j = mateLine[j]) { tlenOf[j] = tlen; if (++g > N) break; }
         } else {
-          recs[i]._tlen = 0;
-          for (let j = recs[i]._mateLine, g = 0; j !== i; j = recs[j]._mateLine) { recs[j]._tlen = 0; if (++g > N) break; }
+          tlenOf[i] = 0;
+          for (let j = mateLine[i], g = 0; j !== i; j = mateLine[j]) { tlenOf[j] = 0; if (++g > N) break; }
         }
       }
-      const m = recs[cr._mateLine];
+      const m = recs[mateLine[i]];
       cr.matePos = m.pos; cr.mateRef = m.refID;
       cr.flag |= 1;
-      if (m.flag & 4) { cr.flag |= 8; cr._tlen = 0; }
-      if (cr.flag & 4) cr._tlen = 0;
+      if (m.flag & 4) { cr.flag |= 8; tlenOf[i] = 0; }
+      if (cr.flag & 4) tlenOf[i] = 0;
       if (m.flag & 16) cr.flag |= 32;
     }
-    if (cr._tlen === null) cr._tlen = 0;
+    if (Number.isNaN(tlenOf[i])) tlenOf[i] = 0;
   }
-  for (const r of recs) { r.tlen = r._explicitTlen !== null ? r._explicitTlen : r._tlen; }
+  for (let i = 0; i < N; i++) recs[i].tlen = Number.isNaN(explicitTlen[i]) ? tlenOf[i] : explicitTlen[i];
 }
 
 // Coverage counts from a parsed record (BamFile does the same from raw bytes in addCoverage).
@@ -659,4 +728,4 @@ function addCoverageRec(rec, cov) {
   }
 }
 
-if (typeof module !== 'undefined') module.exports = { CRAM_CHECK, decodeSlice, parseCompressionHeader, readEncoding, BitReader, CramFile, CramReader, parseContainerHeader, parseBlock, decodeBlock, parseCrai, parseSamHeaderText, crc32, CRAM_LIMITS };
+if (typeof module !== 'undefined') module.exports = { md5, CRAM_STATS, CRAM_CHECK, decodeSlice, parseCompressionHeader, readEncoding, BitReader, CramFile, CramReader, parseContainerHeader, parseBlock, decodeBlock, parseCrai, parseSamHeaderText, crc32, CRAM_LIMITS };

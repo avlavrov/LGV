@@ -40,7 +40,7 @@ More languages are one dictionary in `src/i18n.js`.
 
 | Requirement | State |
 | --- | --- |
-| F1 BAM by HTTPS link (Range) | done; CRAM in progress: CRAM 3.0 / 3.1 records are read and match BAM read for read; CRAM 3.0 and 3.1 open, including 3.1 archive mode; bzip2 and lzma blocks next |
+| F1 BAM by HTTPS link (Range) | done; CRAM in progress: CRAM 3.0 / 3.1 records are read and match BAM read for read; CRAM 3.0 and 3.1 open, including 3.1 archive mode, decoded in Web Workers; each slice's reference MD5 is checked against the loaded reference; bzip2 and lzma blocks next |
 | F2 Local BAM + BAI | done: several samples at once as tracks, index paired by name, folder or drag and drop |
 | F3 Reference (GRCh38, GRCh37, T2T-CHM13) | done: files or link, plain or bgzip, public presets |
 | F4 Access token / presigned URL | done |

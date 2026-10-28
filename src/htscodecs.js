@@ -333,16 +333,22 @@ function ransDecode4x16(src, expectSize) {
 class RangeCoder {
   constructor() { this.low = 0; this.range = 0xffffffff; this.code = 0; }
   RangeStartDecode(src) { for (let i = 0; i < 5; i++) this.code = (this.code * 256 + src.ReadByte()) % 4294967296; }
+  // CGV: >>> 0 in place of Math.floor; both values stay below 2^32 in a valid stream
   RangeGetFrequency(tot_freq) {
-    this.range = Math.floor(this.range / tot_freq);
+    this.range = (this.range / tot_freq) >>> 0;
     if (this.range === 0) throw HtsError('arithmetic coder range ran out'); // CGV: else the renorm loop below never ends
-    return Math.floor(this.code / this.range);
+    return (this.code / this.range) >>> 0;
   }
   RangeDecode(src, sym_low, sym_freq) {
     this.code -= sym_low * this.range;
     this.range *= sym_freq;
     if (!(this.range > 0)) throw HtsError('arithmetic coder range ran out'); // CGV
-    while (this.range < (1 << 24)) { this.range *= 256; this.code = this.code * 256 + src.ReadByte(); }
+    if (this.range < (1 << 24)) {
+      // CGV: the byte reads of HtsStream.ReadByte, inlined; still bounds-checked
+      const buf = src.buf; let pos = src.pos, range = this.range, code = this.code;
+      while (range < (1 << 24)) { if (pos >= src.length) throw HtsError('a compressed block is cut short'); range *= 256; code = code * 256 + buf[pos++]; }
+      src.pos = pos; this.range = range; this.code = code;
+    }
   }
 }
 const BM_MAX_FREQ = (1 << 16) - 17, BM_STEP = 16;
@@ -353,17 +359,17 @@ class ByteModel {
     for (let i = 0; i <= this.max_sym; i++) { this.S[i] = i; this.F[i] = 1; }
   }
   ModelDecode(src, rc) {
-    const freq = rc.RangeGetFrequency(this.total_freq);
+    const freq = rc.RangeGetFrequency(this.total_freq), F = this.F, S = this.S, max = this.max_sym;
     let acc = 0, x = 0;
-    while (x <= this.max_sym && acc + this.F[x] <= freq) acc += this.F[x++];
-    if (x > this.max_sym) throw HtsError('an arithmetic code outside its model'); // CGV
-    rc.RangeDecode(src, acc, this.F[x]);
-    this.F[x] += BM_STEP; this.total_freq += BM_STEP;
+    while (x <= max && acc + F[x] <= freq) acc += F[x++];
+    if (x > max) throw HtsError('an arithmetic code outside its model'); // CGV
+    rc.RangeDecode(src, acc, F[x]);
+    F[x] += BM_STEP; this.total_freq += BM_STEP;
     if (this.total_freq > BM_MAX_FREQ) this.ModelRenormalise();
-    const sym = this.S[x];
-    if (x > 0 && this.F[x] > this.F[x - 1]) {
-      let t = this.F[x]; this.F[x] = this.F[x - 1]; this.F[x - 1] = t;
-      t = this.S[x]; this.S[x] = this.S[x - 1]; this.S[x - 1] = t;
+    const sym = S[x];
+    if (x > 0 && F[x] > F[x - 1]) {
+      let t = F[x]; F[x] = F[x - 1]; F[x - 1] = t;
+      t = S[x]; S[x] = S[x - 1]; S[x - 1] = t;
     }
     return sym;
   }
@@ -516,7 +522,7 @@ function fqzDecode(src, expectSize) {
   const g = fqzParams(stream);
   const rev = [], q_lens = [];
   // CGV: the 65,536 quality models are made on first use, not all up front
-  const qual = new Array(1 << 16), qm = k => qual[k] || (qual[k] = new ByteModel(g.max_sym + 1));
+  const qual = new Array(1 << 16).fill(null), qsyms = g.max_sym + 1;
   const mlen = [0, 1, 2, 3].map(() => new ByteModel(256)), mrev = new ByteModel(2), mdup = new ByteModel(2);
   const msel = g.max_sel > 0 ? new ByteModel(g.max_sel + 1) : null;
   const rc = new RangeCoder(); rc.RangeStartDecode(stream);
@@ -550,7 +556,8 @@ function fqzDecode(src, expectSize) {
       st.p = len; st.delta = 0; st.qctx = 0; st.prevq = 0;
       last = params.context;
     }
-    const Q = qm(last).ModelDecode(stream, rc);
+    let qmod = qual[last]; if (qmod === null) qmod = qual[last] = new ByteModel(qsyms);
+    const Q = qmod.ModelDecode(stream, rc);
     output[i++] = params.qmap[Q];
     last = fqzUpdateCtx(params, st, Q);
   }

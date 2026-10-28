@@ -32,6 +32,11 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
 - Sizes are capped before anything is allocated (`CRAM_LIMITS`): blocks, containers, read length and
   bases per slice, so values that cost no input (a one-symbol Huffman code) cannot inflate memory.
 - The audit also checks that the page's scripts declare no top-level name twice.
+- CRAM: the CRC32 of every block and container header is always verified (there is no switch to
+  turn it off in the page), and each slice's MD5 of its reference stretch is compared with the loaded
+  reference, so a different reference cannot silently change the bases shown.
+- CRAM and BAM are decoded in Web Workers; the page owns the reference and answers the workers'
+  requests for bases, so the workers see only the sample files and the bases they ask for.
 
 ## Code from others
 

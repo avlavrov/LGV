@@ -424,7 +424,10 @@ function workerPool() {
     const n = Math.max(1, Math.min(6, navigator.hardwareConcurrency || 4));
     for (let i = 0; i < n; i++) {
       const w = new Worker(url);
-      w.onmessage = e => { const cb = POOL.wait.get(e.data.id); if (cb) { POOL.wait.delete(e.data.id); cb(e.data); } };
+      w.onmessage = e => {
+        if (e.data.op === 'ref') { answerRef(w, e.data); return; } // a CRAM in the worker needs reference bases
+        const cb = POOL.wait.get(e.data.id); if (cb) { POOL.wait.delete(e.data.id); cb(e.data); }
+      };
       w.onerror = () => { for (const [id, cb] of POOL.wait) { POOL.wait.delete(id); cb({ ok: false, err: { code: 'worker', message: 'worker failed' } }); } };
       POOL.workers.push(w);
     }
@@ -439,12 +442,19 @@ function callWorker(w, msg) {
     w.postMessage(Object.assign({ id }, msg));
   });
 }
+// Reference bases for a CRAM decoded in a worker, from the page's reference and contig matching.
+async function answerRef(w, m) {
+  const T = S.tracks.find(x => x.id === m.key);
+  let bases = null;
+  try { bases = T && T.bam.refProvider ? await T.bam.refProvider(m.refId, m.a, m.b) : null; } catch (e) { bases = null; }
+  w.postMessage({ op: 'refResult', rid: m.rid, bases }, bases && bases.buffer && bases.byteOffset === 0 && bases.byteLength === bases.buffer.byteLength ? [bases.buffer] : []);
+}
 const srcDesc = s => s instanceof UrlSource ? { url: s.url, headers: s.headers } : { blob: s.blob, name: s.name };
 // Gives a track its worker; on any failure the track simply reads on the page.
 async function attachWorker(T) {
-  if (T.bam.isCram || !workerPool()) return; // CRAM moves to workers with record decoding
+  if (!workerPool()) return;
   const w = POOL.workers[POOL.next++ % POOL.workers.length];
-  try { await callWorker(w, { op: 'open', key: T.id, bam: srcDesc(T.bam.src), bai: srcDesc(T.bam.baiSrc) }); T.worker = w; }
+  try { await callWorker(w, { op: 'open', key: T.id, cram: !!T.bam.isCram, bam: srcDesc(T.bam.src), bai: srcDesc(T.bam.baiSrc) }); T.worker = w; }
   catch (e) { T.worker = null; }
 }
 async function trackFetch(T, br, ls, le, opts) {

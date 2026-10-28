@@ -1032,14 +1032,25 @@ function packRows(reads, padBp) { const g = new ReadLayout(null, padBp).update(r
 // ======================= Worker =======================
 // The same file runs in a Web Worker (started from this script's own text): samples are read and
 // inflated there, in parallel and off the page's thread, so the view stays responsive while loading.
-// Messages: { id, op: 'open', key, bam, bai } and { id, op: 'fetch', key, args } → { id, ok, res | err }.
+// Messages: { id, op: 'open', key, bam, bai, cram } and { id, op: 'fetch', key, args } → { id, ok, res | err }.
+// A CRAM in a worker asks the page for reference bases: { op: 'ref', key, rid, refId, a, b }, answered
+// by { op: 'refResult', rid, bases } — the page owns the reference and the contig matching.
 if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && self instanceof WorkerGlobalScope) {
-  const files = new Map();
+  const files = new Map(), refWait = new Map();
+  let refSeq = 0;
   const src = d => d.url ? new UrlSource(d.url, d.headers) : new FileSource(d.blob, d.name);
   self.onmessage = async e => {
     const { id, op, key } = e.data;
+    if (op === 'refResult') { const cb = refWait.get(e.data.rid); if (cb) { refWait.delete(e.data.rid); cb(e.data.bases); } return; }
     try {
-      if (op === 'open') { files.set(key, await new BamFile(src(e.data.bam), src(e.data.bai)).open()); self.postMessage({ id, ok: true }); }
+      if (op === 'open') {
+        let f;
+        if (e.data.cram) {
+          f = await new CramFile(src(e.data.bam), src(e.data.bai)).open(); // CramFile: defined in cram.js, part of the same script
+          f.refProvider = (refId, a, b) => new Promise(res => { const rid = ++refSeq; refWait.set(rid, res); self.postMessage({ op: 'ref', key, rid, refId, a, b }); });
+        } else f = await new BamFile(src(e.data.bam), src(e.data.bai)).open();
+        files.set(key, f); self.postMessage({ id, ok: true });
+      }
       else if (op === 'close') files.delete(key);
       else if (op === 'fetch') {
         const bam = files.get(key), r = await bam.fetch(...e.data.args);

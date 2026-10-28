@@ -127,6 +127,19 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
     ok(crashes === 0, `rANS 4x8 fuzzing: ${n} damaged blocks, ${errors} clear errors, ${crashes} unexpected, ${Date.now() - t0} ms`);
   }
 
+  // ---- the reference check: each slice's MD5 against the loaded reference ----
+  {
+    const c = await new R.CramFile(src(T, 'v30.cram'), src(T, 'v30.cram.crai')).open();
+    const before = R.CRAM_STATS.md5 || 0;
+    c.refProvider = async (id, a, b) => fa.fetch(c.refs[id].name, a, b);
+    await c.fetch(0, 0, 40000);
+    const checked = (R.CRAM_STATS.md5 || 0) - before;
+    const w = await new R.CramFile(src(T, 'v30.cram'), src(T, 'v30.cram.crai')).open();
+    w.refProvider = async (id, a, b) => { const x = Uint8Array.from(await fa.fetch(w.refs[id].name, a, b)); x[5] = x[5] === 65 ? 67 : 65; return x; }; // one base changed
+    const wrong = await throwsCode(() => w.fetch(0, 0, 40000), 'cramRefMd5');
+    ok(checked > 0 && wrong === true, `reference check: ${checked} slice MD5s match the right reference; one changed base in the reference is caught (${wrong})`);
+  }
+
   // ---- CRAM 3.1 codecs on their own: damaged blocks end in a CgvError, never a hang or a crash ----
   {
     const H = require('../src/htscodecs.js');
