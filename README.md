@@ -51,7 +51,7 @@ More languages are one dictionary in `src/i18n.js`.
 | F10 Coloring + MAPQ as a transparency gradient | right click on reads: strand, pair (orientation and insert size), tag; MAPQ works on top of any of them |
 | F11 Group and sort | groups (View): strand, first/second, pair orientation, tag; sort by (right click, at the clicked position): base, MAPQ, strand, insert size |
 | F12 Filters | MAPQ, duplicates, secondary, supplementary, QC fail; downsampling |
-| F13 Mate | view as pairs (right click), read details + go to mate; several regions on screen is the next step |
+| F13 Mate | view as pairs (right click), read details + go to mate; **split screen** as in IGV: right click on a read → "View mate region in split screen" (or the button in the read details) opens a panel centered on the mate, the read and its mate outlined in every panel; several loci typed in the locus field separated by spaces open one panel each; each panel has its own ruler, scroll and zoom, × in its header closes it; at least 6 panels, more as the width allows (60 px each) |
 | F14 Read details | IGV-style popup: read, mapping, clipping, mate and tags, then Location and `Base = A @ QV 14` for the clicked base; one read or read + mate side by side; copy |
 | F18 Display profile as JSON | kept in the browser, copied and applied as JSON |
 | F23 Screen space for data | one bar of controls, hidden with H |

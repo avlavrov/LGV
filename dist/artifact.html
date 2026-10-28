@@ -73,6 +73,7 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .card dt { color: var(--muted); }
 .card dd { margin: 0; font-family: var(--mono); font-size: 11px; word-break: break-all; min-width: 0; }
 .ctx { position: absolute; z-index: 8; min-width: 230px; max-height: calc(100% - 16px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px rgb(0 0 0 / .16); padding: 4px; display: flex; flex-direction: column; cursor: auto; }
+.ctx .msep { border-top: 1px solid var(--line); margin: 3px 2px; }
 .mi { display: flex; align-items: center; gap: 6px; text-align: left; border: 0; background: none; padding: 4px 10px 4px 6px; border-radius: 5px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
 .mi:hover, .mi:focus-visible { background: color-mix(in srgb, var(--accent) 14%, transparent); outline: none; }
 .mk { width: 14px; flex: none; text-align: center; color: var(--accent); font-size: 11px; }
@@ -370,7 +371,7 @@ const STRINGS = {
     'copied': 'Copied', 'copyFail': 'Could not copy — select the text manually',
     'profile.copied': 'Profile copied', 'profile.applied': 'Profile applied', 'profile.reset': 'Profile reset', 'profile.bad': 'The profile has a JSON error: {msg}',
     'card.name': 'Name', 'card.pos': 'Position', 'card.flag': 'Flag', 'card.len': 'Length', 'card.mate': 'Mate', 'card.mateUnmapped': 'unmapped', 'card.tlen': 'Insert (TLEN)',
-    'card.toMate': 'Go to mate', 'card.copy': 'Copy',
+    'card.toMate': 'Go to mate', 'card.mateSplit': 'Mate in split screen', 'menu.mateSplit': 'View mate region in split screen', 'split.full': 'No room for more panels ({n}). Close one with × in its header', 'card.copy': 'Copy',
     'card.clicked': 'Base', 'card.bq': 'Base quality', 'card.ref': 'ref', 'card.del': 'deletion',
     'flag.1': 'paired', 'flag.2': 'proper pair', 'flag.4': 'unmapped', 'flag.8': 'mate unmapped', 'flag.16': 'reverse strand', 'flag.32': 'mate reverse',
     'flag.64': 'first in pair', 'flag.128': 'second in pair', 'flag.256': 'secondary', 'flag.512': 'QC fail', 'flag.1024': 'duplicate', 'flag.2048': 'supplementary',
@@ -481,7 +482,7 @@ const STRINGS = {
     'copied': 'Скопировано', 'copyFail': 'Не удалось скопировать — выделите текст вручную',
     'profile.copied': 'Профиль скопирован', 'profile.applied': 'Профиль применён', 'profile.reset': 'Профиль сброшен', 'profile.bad': 'В профиле ошибка JSON: {msg}',
     'card.name': 'Имя', 'card.pos': 'Позиция', 'card.flag': 'Флаг', 'card.len': 'Длина', 'card.mate': 'Мейт', 'card.mateUnmapped': 'не выровнен', 'card.tlen': 'Вставка (TLEN)',
-    'card.toMate': 'К мейту', 'card.copy': 'Копировать',
+    'card.toMate': 'К мейту', 'card.mateSplit': 'Мейт в соседнем окне', 'menu.mateSplit': 'Показать регион мейта в соседнем окне', 'split.full': 'Больше окон не помещается ({n}). Закройте одно крестиком в его заголовке', 'card.copy': 'Копировать',
     'card.clicked': 'Основание', 'card.bq': 'Качество основания', 'card.ref': 'реф.', 'card.del': 'делеция',
     'flag.1': 'парный', 'flag.2': 'правильная пара', 'flag.4': 'не выровнен', 'flag.8': 'мейт не выровнен', 'flag.16': 'обратная цепь', 'flag.32': 'мейт на обратной',
     'flag.64': 'первый в паре', 'flag.128': 'второй в паре', 'flag.256': 'вторичное', 'flag.512': 'не прошёл QC', 'flag.1024': 'дубликат', 'flag.2048': 'дополнительное',
@@ -3562,22 +3563,121 @@ function saveProfile() { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(
 //          data { reads, cov, insert, total, sampled }, shown, layout, scroll, msg, vao, fbuf, cbuf, n }
 const S = {
   tracks: [], trackSeq: 0, fasta: null,
-  view: { refId: 0, start: 0, bpPerPx: 1 },
-  data: null,          // the loaded window, shared by all tracks: { refId, start, end, ref (SparseRef) }
-  sortPos: null, selected: null, // selected: { T, rec, row, gi }
-  loading: false, loadToken: 0, forceLoad: false,
+  selected: null,      // selected: { T, rec, row, gi, pn }
+  hl: null,            // { name, id }: the highlighted read of track id, outlined with its mate in every panel
   stats: { reads: 0, loadMs: 0, buildMs: 0, drawMs: 0, bytes: 0 },
-  msg: null,
 };
+
+// ======================= Panels (split screen) =======================
+// The view can be split into panels side by side, as in IGV: each panel shows its own region of the
+// genome, with every track, its own ruler, loaded window, layout and scrolling. The code below the
+// panel machinery works on "the current panel": S.view, S.data, S.msg ... and a track's data,
+// layout, scroll and GPU buffers (T.data, T.shown, T.layout, T.scroll, T.vao ...) are the current
+// panel's. usePanel(pn) makes a panel current; every entry point (an event, a frame, a load that
+// resumes after an await) chooses its panel first.
+const PANEL_KEYS = ['view', 'data', 'msg', 'loading', 'loadToken', 'forceLoad', 'sortPos', 'rubber'];
+const TRACK_PANEL_KEYS = ['data', 'shown', 'layout', 'scroll', 'vao', 'fbuf', 'cbuf', 'n', 'msg'];
+const PANEL_GAP = 6, PANEL_HDR = 20, PANEL_MIN_W = 60;
+let panelSeq = 0;
+function newPanel(view) {
+  return { id: ++panelSeq, view: view || { refId: 0, start: 0, bpPerPx: 1 }, data: null, msg: null, loading: false, loadToken: 0, forceLoad: false,
+    sortPos: null, rubber: null, x0: 0, w: 0, ts: new Map(), focusName: null };
+}
+let CUR = newPanel();
+S.panels = [CUR]; S.active = CUR;
+for (const k of PANEL_KEYS) Object.defineProperty(S, k, { get: () => CUR[k], set: v => { CUR[k] = v; }, enumerable: true });
+function usePanel(pn) { CUR = pn; W = pn.w || W; }
+// Runs f(pn) with each panel current in turn, then returns to the panel that was current.
+function forEachPanel(f) {
+  const prev = CUR;
+  for (const pn of S.panels.slice()) { usePanel(pn); f(pn); }
+  usePanel(S.panels.includes(prev) ? prev : S.active);
+}
+// A track's state in the current panel.
+function trackState(T) {
+  let x = CUR.ts.get(T.id);
+  if (!x) CUR.ts.set(T.id, x = { data: null, shown: null, layout: null, scroll: 0, vao: null, fbuf: null, cbuf: null, n: 0, msg: null });
+  return x;
+}
+function makeTrack(o) {
+  for (const k of TRACK_PANEL_KEYS) { delete o[k]; Object.defineProperty(o, k, { get() { return trackState(o)[k]; }, set(v) { trackState(o)[k] = v; } }); }
+  return o;
+}
+// As many panels as fit at a useful width, and never fewer than 6.
+function maxPanels() { return Math.max(6, Math.floor((FULL_W + PANEL_GAP) / (PANEL_MIN_W + PANEL_GAP))); }
+function panelHdr() { return S.panels.length > 1 ? PANEL_HDR : 0; }
+// Places the panels side by side over the full width. keepSpan: each panel keeps the stretch of
+// genome it shows (panels added or closed); otherwise it keeps its scale (the window was resized).
+function layoutPanels(keepSpan) {
+  const n = S.panels.length, step = (FULL_W + PANEL_GAP) / n;
+  const prev = CUR;
+  S.panels.forEach((pn, i) => {
+    const oldW = pn.w, x0 = Math.round(i * step), x1 = Math.round((i + 1) * step - PANEL_GAP * (n > 1 ? 1 : 0));
+    pn.x0 = x0; pn.w = Math.max(1, (i === n - 1 ? FULL_W : x1) - x0);
+    if (oldW && S.contigs && oldW !== pn.w) {
+      usePanel(pn);
+      const v = pn.view, c = v.start + oldW * v.bpPerPx / 2;
+      if (keepSpan) v.bpPerPx = oldW * v.bpPerPx / pn.w;
+      v.start = c - pn.w * v.bpPerPx / 2; clampView();
+    }
+  });
+  usePanel(S.panels.includes(prev) ? prev : S.active);
+}
+function panelAtX(x) { for (const pn of S.panels) if (x < pn.x0 + pn.w + PANEL_GAP / 2) return pn; return S.panels[S.panels.length - 1]; }
+// The panel under a pointer event, made current, and the event's position inside it.
+function local(e) { const pn = panelAtX(e.offsetX); usePanel(pn); return { pn, x: e.offsetX - pn.x0, y: e.offsetY }; }
+function freePanel(pn) { const prev = CUR; usePanel(pn); for (const T of S.tracks) freeVao(T); usePanel(S.panels.includes(prev) && prev !== pn ? prev : S.active); }
+// Back to one panel (a new genome, a sample opened at its own place).
+function resetPanels() {
+  for (const pn of S.panels) if (pn !== S.panels[0]) freePanel(pn);
+  const keep = S.panels[0];
+  S.panels = [keep]; S.active = keep; usePanel(keep); layoutPanels(false);
+}
+function closePanel(pn) {
+  if (S.panels.length < 2) return;
+  const i = S.panels.indexOf(pn); if (i < 0) return;
+  freePanel(pn); S.panels.splice(i, 1);
+  if (S.active === pn) S.active = S.panels[Math.min(i, S.panels.length - 1)];
+  if (S.selected && S.selected.pn === pn) S.selected = null;
+  if (cardState && cardState.pn === pn) hideCard();
+  usePanel(S.active); layoutPanels(true); requestLoad(); draw(); syncLocus();
+}
+// Panels for a list of loci ({ id, s, e }): one locus keeps the active panel, several replace them.
+function setPanels(list) {
+  list = list.slice(0, maxPanels());
+  const keep = S.active;
+  for (const pn of S.panels) if (pn !== keep) freePanel(pn);
+  S.panels = [keep];
+  for (let i = 1; i < list.length; i++) S.panels.push(newPanel({ refId: list[i].id, start: 0, bpPerPx: 1 }));
+  S.active = keep; layoutPanels(false);
+  S.panels.forEach((pn, i) => { usePanel(pn); goto(list[i].id, list[i].s, list[i].e); });
+  usePanel(keep); syncLocus();
+}
+// IGV's "View mate region in split screen": a new panel next to this one, centered on the mate, at
+// the same scale; the read and its mate are outlined in every panel.
+function openMatePanel(rec, T) {
+  const src = CUR, v = T.back[rec.mateRef];
+  if (!(rec.flag & 1) || rec.flag & 8 || rec.mateRef < 0) return;
+  if (v < 0) { toast(t('sample.mateNoContig', { name: T.bam.refs[rec.mateRef].name })); return; }
+  if (S.panels.length >= maxPanels()) { toast(t('split.full', { n: S.panels.length })); return; }
+  const span = W * S.view.bpPerPx, mc = recTags(rec).MC, mlen = typeof mc === 'string' ? cigarStrRefLen(mc) : rec.end - rec.pos;
+  const center = rec.matePos + Math.max(1, mlen) / 2;
+  const pn = newPanel({ refId: v, start: 0, bpPerPx: S.view.bpPerPx });
+  S.panels.splice(S.panels.indexOf(src) + 1, 0, pn);
+  layoutPanels(true);
+  usePanel(pn); S.hl = pn.focusName = { name: rec.name, id: T.id };
+  goto(v, center - span / 2, center + span / 2);
+  S.active = pn; syncLocus();
+}
 
 // ======================= DOM =======================
 const $ = id => document.getElementById(id);
 const stage = $('stage'), glCanvas = $('gl'), ov = $('ov'), ctx = ov.getContext('2d');
-let W = 0, H = 0, DPR = 1;
+let W = 0, H = 0, DPR = 1, FULL_W = 0; // W: width of the current panel; FULL_W: of the whole view
 
 // track geometry (CSS px)
 const RULER_H = 26, REF_H = 14, TRACK_HDR = 18;
-function covTop() { return RULER_H + REF_H + 4; } // where the tracks begin
+function covTop() { return panelHdr() + RULER_H + REF_H + 4; } // where the tracks begin
 function groupGap() { return P.groupBy === 'none' ? 0 : 20; }
 // Vertical place of track i: the space under the ruler is shared equally. With one track there is
 // no header and the layout is the same as before tracks existed.
@@ -3755,12 +3855,13 @@ function clipMismatches(rec) {
 }
 function feats(rec) { if (!rec.feats) rec.feats = computeFeatures(rec, refAtFactory()); return rec.feats; }
 
-function rebuild() {
+// Rebuilds every panel (a setting changed); rebuildPanel only the current one (its data arrived).
+function rebuild() { const t0 = performance.now(); forEachPanel(rebuildPanel); S.stats.buildMs = performance.now() - t0; }
+function rebuildPanel() {
   const t0 = performance.now();
   for (const T of S.tracks) rebuildTrack(T);
   S.stats.buildMs = performance.now() - t0;
-  S.stats.reads = S.tracks.reduce((a, T) => a + (T.data ? T.data.total : 0), 0);
-  clampScroll();
+  S.tracks.forEach(clampTrackScroll);
 }
 // Rebuild of one track: layout → sort → instances. Filters and downsampling acted while loading.
 function rebuildTrack(T) {
@@ -3908,7 +4009,7 @@ function contentHeight(T) {
   return sh.totalRows * P.readHeight + sh.groups.length * groupGap();
 }
 function clampTrackScroll(T, i) { const g = trackGeom(i), maxS = Math.max(0, contentHeight(T) - (g.bottom - g.readsTop) + 24); T.scroll = Math.min(maxS, Math.max(0, T.scroll || 0)); }
-function clampScroll() { S.tracks.forEach(clampTrackScroll); }
+function clampScroll() { forEachPanel(() => S.tracks.forEach(clampTrackScroll)); }
 function goto(refId, start, end) {
   S.view.refId = refId;
   const span = Math.max(20, end - start);
@@ -4003,9 +4104,12 @@ async function trackFetch(T, br, ls, le, opts) {
 
 // ======================= Loading =======================
 let loadTimer = 0;
-function requestLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(ensureData, 120); }
+function requestLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(loadAll, 120); }
+// Every panel checks its window; panels whose data still covers their view return at once.
+function loadAll() { forEachPanel(() => { ensureData(); }); }
 async function ensureData() {
   if (!S.contigs || !W) return;
+  const pn = CUR, back = () => { if (!S.panels.includes(pn)) return false; usePanel(pn); return true; }; // after each await
   const vs = Math.max(0, Math.floor(S.view.start)), ve = Math.min(refLen(), Math.ceil(viewEnd()));
   const d = S.data;
   const span0 = ve - vs;
@@ -4044,7 +4148,7 @@ async function ensureData() {
       try { return { T, res: await trackFetch(T, br, ls, le, opts), msg: null }; }
       catch (e) { return { T, res: null, msg: errText(e), error: true }; }
     }));
-    if (token !== S.loadToken) return;
+    if (!back() || token !== S.loadToken) return;
     const all = results.flatMap(r => r.res ? r.res.reads : []);
     // Reference bases only where they are used: under reads (mismatches, allele highlight) and the
     // view itself when it is narrow enough to show bases. A 46 Mb window with a few reads reads a few kb.
@@ -4054,7 +4158,7 @@ async function ensureData() {
     let fromMD = false, ri = 0, sorted = null;
     for (const [a, b] of parts) {
       let seq = null;
-      if (S.fasta) { try { seq = await S.fasta.fetch(name, a, b); } catch (e) { seq = null; } }
+      if (S.fasta) { try { seq = await S.fasta.fetch(name, a, b); } catch (e) { seq = null; } if (!back()) return; }
       if (!seq || seq.length !== b - a) { // no reference: rebuild bases from the reads' MD tags
         seq = new Uint8Array(b - a); fromMD = true;
         if (!sorted) sorted = results.length > 1 ? all.slice().sort((x, y) => x.pos - y.pos) : all;
@@ -4072,10 +4176,14 @@ async function ensureData() {
       T.msg = msg ? { text: msg, error: !!error } : null;
     }
     S.stats.loadMs = performance.now() - t0;
-    S.loading = false; S.selected = null; hideCard();
-    rebuild(); draw();
+    S.loading = false;
+    // the records were replaced: a selection in this panel no longer points at them
+    if (S.selected && S.selected.pn === pn) { S.selected = null; if (cardState && cardState.pn === pn) hideCard(); }
+    rebuildPanel();
+    if (pn.focusName) { focusRead(pn.focusName); pn.focusName = null; }
+    draw();
   } catch (e) {
-    if (token !== S.loadToken) return;
+    if (!back() || token !== S.loadToken) return;
     S.loading = false; S.msg = { text: errText(e), error: true }; draw();
   }
 }
@@ -4083,7 +4191,23 @@ async function ensureData() {
 // Filters and downsampling act while reading, so changing them re-reads the window.
 const REF_VIEW_BP = 200000; // windows up to this size also load the reference between reads
 const COV_DETAIL_BP = 1000000; // wider views count coverage depth only (no allele colors), which loads several times faster
-function reloadData() { if (!S.contigs) return; S.data = null; for (const T of S.tracks) { T.data = null; T.shown = null; T.n = 0; } S.selected = null; hideCard(); ensureData(); }
+function reloadData() { if (!S.contigs) return; forEachPanel(() => { S.data = null; for (const T of S.tracks) { T.data = null; T.shown = null; T.n = 0; } }); S.selected = null; hideCard(); loadAll(); }
+// Scrolls each track of the current panel so that a read with this name is in sight (a mate just
+// opened in its own panel).
+function focusRead(f) {
+  const name = f.name;
+  S.tracks.forEach((T, i) => {
+    const sh = T.shown; if (!sh || T.id !== f.id) return;
+    const rh = P.readHeight, gg = groupGap(), g = trackGeom(i);
+    for (let gi = 0; gi < sh.groups.length; gi++) {
+      const G = sh.groups[gi], ri = G.rows.findIndex(row => row.some(it => readsOf(it).some(r => r.name === name)));
+      if (ri < 0) continue;
+      const y = (G.start + ri) * rh + gi * gg + gg;
+      T.scroll = Math.max(0, y - (g.bottom - g.readsTop) / 3); clampTrackScroll(T, i);
+      return;
+    }
+  });
+}
 
 // ======================= Rendering =======================
 let raf = 0;
@@ -4100,46 +4224,79 @@ function fmtInt(n) { return Math.round(n).toLocaleString(NUM_LOCALE[LANG]); }
 const frameTimes = [];
 function render() {
   const t0 = performance.now(), tp = {};
-  if (!drag) clampScroll();
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  ctx.clearRect(0, 0, W, H);
-  // ---- reads (WebGL), each track inside its own band ----
-  if (GL_OK) {
-    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
-    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-    if (S.data && S.tracks.some(T => T.shown && T.n)) {
-      gl.useProgram(GL.prog);
-      const vrel = S.view.start - S.data.start, vint = Math.floor(vrel);
-      gl.uniform1f(GL.u.u_viewInt, vint); gl.uniform1f(GL.u.u_viewFrac, vrel - vint);
-      gl.uniform1f(GL.u.u_bpPerPx, S.view.bpPerPx);
-      gl.uniform1f(GL.u.u_rowH, P.readHeight);
-      gl.uniform1f(GL.u.u_gap, P.readHeight >= 5 ? 1 : 0);
-      gl.uniform1f(GL.u.u_grpGap, groupGap());
-      gl.uniform2f(GL.u.u_size, W, H);
-      gl.uniform1f(GL.u.u_mmFade, 1.5);
-      gl.enable(gl.SCISSOR_TEST);
-      S.tracks.forEach((T, i) => {
-        if (!T.shown || !T.n) return;
-        const g = trackGeom(i);
-        gl.scissor(0, Math.max(0, Math.floor((H - g.bottom) * DPR)), glCanvas.width, Math.max(0, Math.floor((g.bottom - g.readsTop) * DPR)));
-        gl.bindVertexArray(T.vao);
-        gl.uniform1f(GL.u.u_scroll, T.scroll);
-        gl.uniform1f(GL.u.u_top, g.readsTop + groupGap());
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, T.n);
-      });
-      gl.disable(gl.SCISSOR_TEST);
-    }
-  }
-  let tl = performance.now(); tp.reads = tl - t0;
-  const part = (k, f) => { f(); const n = performance.now(); tp[k] = n - tl; tl = n; };
-  part('ruler', () => { drawRuler(); drawRefTrack(); });
-  drawRubber();
-  part('coverage', () => S.tracks.forEach((T, i) => drawCoverage(T, trackGeom(i))));
-  part('labels', () => { S.tracks.forEach((T, i) => { const g = trackGeom(i); drawTrackHeader(T, i, g); drawReadsOverlay(T, g); }); drawMessage(); });
+  ctx.clearRect(0, 0, FULL_W, H);
+  if (GL_OK) { gl.viewport(0, 0, glCanvas.width, glCanvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
+  const prev = CUR;
+  for (const pn of S.panels) { usePanel(pn); renderPanel(pn, tp); }
+  usePanel(S.panels.includes(prev) ? prev : S.active);
+  drawPanelFrames();
+  drawMessage();
   S.stats.drawMs = performance.now() - t0;
   S.stats.parts = tp;
   frameTimes.push(S.stats.drawMs); if (frameTimes.length > 15) frameTimes.shift();
   updateStatus();
+}
+// One panel: WebGL reads inside the panel's columns, then Canvas2D shifted to the panel and clipped.
+function renderPanel(pn, tp) {
+  let tl = performance.now();
+  const add = (k, v) => { tp[k] = (tp[k] || 0) + v; };
+  if (!drag) S.tracks.forEach(clampTrackScroll);
+  if (GL_OK && S.data && S.tracks.some(T => T.shown && T.n)) {
+    const vx = Math.round(pn.x0 * DPR), vw = Math.max(1, Math.round((pn.x0 + pn.w) * DPR) - vx);
+    gl.viewport(vx, 0, vw, glCanvas.height);
+    gl.useProgram(GL.prog);
+    const vrel = S.view.start - S.data.start, vint = Math.floor(vrel);
+    gl.uniform1f(GL.u.u_viewInt, vint); gl.uniform1f(GL.u.u_viewFrac, vrel - vint);
+    gl.uniform1f(GL.u.u_bpPerPx, S.view.bpPerPx);
+    gl.uniform1f(GL.u.u_rowH, P.readHeight);
+    gl.uniform1f(GL.u.u_gap, P.readHeight >= 5 ? 1 : 0);
+    gl.uniform1f(GL.u.u_grpGap, groupGap());
+    gl.uniform2f(GL.u.u_size, vw / DPR, H);
+    gl.uniform1f(GL.u.u_mmFade, 1.5);
+    gl.enable(gl.SCISSOR_TEST);
+    S.tracks.forEach((T, i) => {
+      if (!T.shown || !T.n) return;
+      const g = trackGeom(i);
+      gl.scissor(vx, Math.max(0, Math.floor((H - g.bottom) * DPR)), vw, Math.max(0, Math.floor((g.bottom - g.readsTop) * DPR)));
+      gl.bindVertexArray(T.vao);
+      gl.uniform1f(GL.u.u_scroll, T.scroll);
+      gl.uniform1f(GL.u.u_top, g.readsTop + groupGap());
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, T.n);
+    });
+    gl.disable(gl.SCISSOR_TEST);
+  }
+  let n = performance.now(); add('reads', n - tl); tl = n;
+  ctx.save(); ctx.translate(pn.x0, 0); ctx.beginPath(); ctx.rect(0, 0, pn.w, H); ctx.clip();
+  const part = (k, f) => { f(); const m = performance.now(); add(k, m - tl); tl = m; };
+  part('ruler', () => { ctx.save(); ctx.translate(0, panelHdr()); drawRuler(); drawRefTrack(); ctx.restore(); });
+  drawRubber();
+  part('coverage', () => S.tracks.forEach((T, i) => drawCoverage(T, trackGeom(i))));
+  part('labels', () => S.tracks.forEach((T, i) => { const g = trackGeom(i); drawTrackHeader(T, i, g); drawReadsOverlay(T, g); }));
+  ctx.restore();
+}
+// With several panels: a header over each (its locus and ×, the active one underlined) and a
+// line between panels.
+function drawPanelFrames() {
+  if (S.panels.length < 2 || !S.contigs) return;
+  ctx.save();
+  const prev = CUR;
+  for (const pn of S.panels) {
+    usePanel(pn);
+    const x = pn.x0, w = pn.w, act = pn === S.active;
+    ctx.fillStyle = COL.css.panel; ctx.fillRect(x, 0, w, PANEL_HDR - 1);
+    if (act) { ctx.fillStyle = COL.css.accent; ctx.fillRect(x, PANEL_HDR - 3, w, 2); }
+    ctx.font = (act ? '600 ' : '') + '11px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = act ? COL.css.fg : COL.css.muted;
+    let label = locusText(); const maxW = w - 30;
+    if (ctx.measureText(label).width > maxW) label = S.contigs[S.view.refId].name + ':' + fmtInt(Math.round(viewCenter()) + 1);
+    while (label.length > 2 && ctx.measureText(label).width > maxW) label = label.slice(0, -2);
+    ctx.fillText(label, x + w / 2 - 6, PANEL_HDR / 2);
+    ctx.font = '13px ' + SANS; ctx.fillStyle = COL.css.muted; ctx.fillText('×', x + w - 10, PANEL_HDR / 2);
+    if (pn !== S.panels[0]) { ctx.fillStyle = COL.css.fg; ctx.globalAlpha = 0.3; ctx.fillRect(x - PANEL_GAP / 2 - 0.5, 0, 1, H); ctx.globalAlpha = 1; }
+  }
+  usePanel(S.panels.includes(prev) ? prev : S.active);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
 }
 
 function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw))); for (const m of [1, 2, 5, 10]) if (m * p >= raw) return m * p; return 10 * p; }
@@ -4244,7 +4401,7 @@ function drawTrackHeader(T, i, g) {
   const maxW = W - 48;
   while (label.length > 4 && ctx.measureText(label).width > maxW) label = label.slice(0, -2);
   ctx.fillText(label, 8, y);
-  ctx.fillStyle = COL.css.muted; ctx.font = '13px ' + SANS; ctx.textAlign = 'center'; ctx.fillText('×', W - 14, y);
+  if (CUR === S.panels[S.panels.length - 1]) { ctx.fillStyle = COL.css.muted; ctx.font = '13px ' + SANS; ctx.textAlign = 'center'; ctx.fillText('×', W - 14, y); }
   ctx.restore();
 }
 function drawReadsOverlay(T, g) {
@@ -4292,32 +4449,49 @@ function drawReadsOverlay(T, g) {
     }
     ctx.globalAlpha = 1;
   }
-  // selected read
-  if (S.selected && S.selected.T === T) {
-    const L = S.selected;
-    const y = rt + gg + L.row * rh + L.gi * gg - scroll;
-    const [e0, e1] = readExtent(L.rec, P.showSoftClips), x0 = (e0 - S.view.start) * ppb, x1 = (e1 - S.view.start) * ppb;
-    ctx.strokeStyle = COL.css.accent; ctx.lineWidth = 2; ctx.strokeRect(x0 - 1, y - 1, x1 - x0 + 2, Math.max(2, rh - (rh >= 5 ? 1 : 0)) + 2); ctx.lineWidth = 1;
+  // the selected read and its mate (and other alignments of the same read), in every panel
+  if (S.hl && S.hl.id === T.id) {
+    const vs = S.view.start, ve = viewEnd();
+    ctx.strokeStyle = COL.css.accent; ctx.lineWidth = 2;
+    sh.groups.forEach((g, gi) => {
+      const firstRow = Math.max(0, Math.floor((scroll - gi * gg) / rh) - g.start - 1);
+      const lastRow = Math.min(g.rows.length - 1, Math.ceil((scroll + Hh - rt - gi * gg) / rh) - g.start + 1);
+      for (let ri = firstRow; ri <= lastRow; ri++) {
+        const y = rt + gg + (g.start + ri) * rh + gi * gg - scroll;
+        for (const rec of g.rows[ri].flatMap(readsOf)) {
+          if (rec.name !== S.hl.name || rec.end < vs || rec.pos > ve) continue;
+          const [e0, e1] = readExtent(rec, P.showSoftClips), x0 = (e0 - vs) * ppb, x1 = (e1 - vs) * ppb;
+          ctx.strokeRect(x0 - 1, y - 1, x1 - x0 + 2, Math.max(2, rh - (rh >= 5 ? 1 : 0)) + 2);
+        }
+      }
+    });
+    ctx.lineWidth = 1;
   }
   ctx.restore();
 }
 
 function drawMessage() {
   const el = $('msg');
-  if (S.loading) { el.hidden = false; el.className = 'msg'; el.innerHTML = '<span class="spin"></span>' + esc(t('loading')); return; }
+  // the active panel's message first, then any other panel's (with its locus when there are several)
+  const pn = [S.active, ...S.panels].find(p => p.msg) || null;
+  if (S.panels.some(p => p.loading)) { el.hidden = false; el.className = 'msg'; el.innerHTML = '<span class="spin"></span>' + esc(t('loading')); return; }
   if (!S.contigs) { el.hidden = true; return; }
-  if (S.msg) {
-    el.hidden = false; el.className = 'msg' + (S.msg.error ? ' err' : '');
-    el.textContent = S.msg.text;
-    if (S.msg.action) { const b = document.createElement('button'); b.className = 'btn'; b.textContent = S.msg.action; b.onclick = () => { S.forceLoad = true; S.msg = null; ensureData(); }; el.append(' ', b); }
+  if (pn) {
+    el.hidden = false; el.className = 'msg' + (pn.msg.error ? ' err' : '');
+    el.textContent = (S.panels.length > 1 ? panelLocus(pn) + ': ' : '') + pn.msg.text;
+    if (pn.msg.action) { const b = document.createElement('button'); b.className = 'btn'; b.textContent = pn.msg.action; b.onclick = () => { if (!S.panels.includes(pn)) return; usePanel(pn); S.forceLoad = true; S.msg = null; ensureData(); }; el.append(' ', b); }
     return;
   }
   el.hidden = true;
 }
 
 function updateStatus() {
-  const st = S.stats, shown = S.tracks.filter(T => T.shown);
-  const sh = shown.length ? { sampled: shown.some(T => T.shown.sampled), n: shown.reduce((a, T) => a + T.shown.reads.length, 0) } : null;
+  const st = S.stats;
+  let sh = null; st.reads = 0;
+  forEachPanel(() => S.tracks.forEach(T => {
+    if (T.data) st.reads += T.data.total;
+    if (T.shown) { sh = sh || { sampled: false, n: 0 }; sh.sampled = sh.sampled || T.shown.sampled; sh.n += T.shown.reads.length; }
+  }));
   let s = '';
   // median of recent frames: one slow frame (first draw, a busy moment) does not stick in the status
   const med = frameTimes.length ? [...frameTimes].sort((a, b) => a - b)[frameTimes.length >> 1] : 0;
@@ -4329,11 +4503,19 @@ function updateStatus() {
 }
 
 // ======================= Locus =======================
+// Locus of the current panel, as typed in the field.
+function locusText() {
+  const s = Math.max(0, Math.round(S.view.start)), e = Math.min(refLen(), Math.round(viewEnd()));
+  return `${S.contigs[S.view.refId].name}:${fmtInt(s + 1)}-${fmtInt(e)}`;
+}
+function panelLocus(pn) { const prev = CUR; usePanel(pn); const s = locusText(); usePanel(prev); return s; }
+// The field lists every panel's locus, as IGV does; typing several loci opens one panel for each.
 function syncLocus() {
   if (!S.contigs || document.activeElement === $('locus')) return;
-  const s = Math.max(0, Math.round(S.view.start)), e = Math.min(refLen(), Math.round(viewEnd()));
-  $('locus').value = `${S.contigs[S.view.refId].name}:${fmtInt(s + 1)}-${fmtInt(e)}`;
-  $('span').textContent = fmtBp(e - s);
+  $('locus').value = S.panels.map(panelLocus).join('  ');
+  const prev = CUR; usePanel(S.active);
+  $('span').textContent = fmtBp(Math.min(refLen(), viewEnd()) - Math.max(0, S.view.start));
+  usePanel(prev);
 }
 function parseLocus(str) {
   if (typeof str !== 'string' || str.length > 300) return null;
@@ -4356,6 +4538,17 @@ function parseLocus(str) {
   return { id, s, e: Math.max(e, s + 1) };
 }
 
+// One locus, or several separated by spaces (one panel each). Returns a list, { error } or null.
+function parseLoci(str) {
+  const one = parseLocus(str);
+  if (one && !one.error) return [one];
+  const toks = String(str).trim().split(/[\s;]+/).filter(Boolean);
+  if (toks.length < 2) return one;
+  const list = [];
+  for (const x of toks) { const l = parseLocus(x); if (!l || l.error) return l; list.push(l); }
+  return list;
+}
+
 // ======================= Input =======================
 let drag = null;
 // Genome gestures only start on the canvas itself: panels, cards and messages on top of
@@ -4363,22 +4556,30 @@ let drag = null;
 const onCanvas = e => e.target === ov;
 // The ruler band (coordinates + reference bases): drag selects a region to zoom into, as in IGV;
 // a plain click centers the view there.
-const inRuler = y => y < covTop();
+const inRuler = y => y >= panelHdr() && y < covTop();
 const clampX = x => Math.max(0, Math.min(W, x));
+function setActive(pn) { if (S.active !== pn) { S.active = pn; syncLocus(); draw(); } }
 stage.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !S.contigs || !onCanvas(e)) return;
+  const L = local(e), pn = L.pn;
+  setActive(pn);
+  if (L.y < panelHdr()) { if (L.x > W - 22) closePanel(pn); return; } // a panel's header: × closes it
   stage.setPointerCapture(e.pointerId);
-  if (inRuler(e.offsetY)) { S.rubber = { x0: clampX(e.offsetX), x1: clampX(e.offsetX), moved: false }; draw(); return; }
-  const ti = trackAtY(e.offsetY), T = S.tracks[ti];
-  drag = { x: e.clientX, y: e.clientY, sx: S.view.start, T, ti, sc: T ? T.scroll : 0, moved: false, inReads: !!T && e.offsetY > trackGeom(ti).readsTop };
+  if (inRuler(L.y)) { S.rubber = { x0: clampX(L.x), x1: clampX(L.x), moved: false }; draw(); return; }
+  const ti = trackAtY(L.y), T = S.tracks[ti];
+  drag = { pn, x: e.clientX, y: e.clientY, sx: S.view.start, T, ti, sc: T ? T.scroll : 0, moved: false, inReads: !!T && L.y > trackGeom(ti).readsTop };
 });
 stage.addEventListener('pointermove', e => {
-  if (S.rubber) {
-    S.rubber.x1 = clampX(e.offsetX);
+  const rp = S.panels.find(p => p.rubber);
+  if (rp) {
+    usePanel(rp);
+    S.rubber.x1 = clampX(e.offsetX - rp.x0);
     if (Math.abs(S.rubber.x1 - S.rubber.x0) > 3) S.rubber.moved = true;
     draw(); return;
   }
-  if (!drag) { stage.style.cursor = S.contigs && onCanvas(e) && inRuler(e.offsetY) ? 'crosshair' : ''; return; }
+  if (!drag) { if (!S.contigs || !onCanvas(e)) { stage.style.cursor = ''; return; } const L = local(e); stage.style.cursor = inRuler(L.y) ? 'crosshair' : L.y < panelHdr() && L.x > W - 22 ? 'pointer' : ''; return; }
+  if (!S.panels.includes(drag.pn)) { drag = null; return; }
+  usePanel(drag.pn);
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if (Math.abs(dx) + Math.abs(dy) > 3) { if (!drag.moved) stage.style.cursor = 'grabbing'; drag.moved = true; }
   if (!drag.moved) return;
@@ -4386,9 +4587,11 @@ stage.addEventListener('pointermove', e => {
   if (drag.inReads && S.tracks[drag.ti] === drag.T) { drag.T.scroll = drag.sc - dy; clampTrackScroll(drag.T, drag.ti); }
   requestLoad(); draw(); syncLocus();
 });
-stage.addEventListener('pointercancel', () => { if (S.rubber) { S.rubber = null; draw(); } drag = null; stage.style.cursor = ''; });
+stage.addEventListener('pointercancel', () => { for (const p of S.panels) p.rubber = null; drag = null; stage.style.cursor = ''; draw(); });
 stage.addEventListener('pointerup', e => {
-  if (S.rubber) {
+  const rp = S.panels.find(p => p.rubber);
+  if (rp) {
+    usePanel(rp);
     const r = S.rubber; S.rubber = null;
     const a = S.view.start + Math.min(r.x0, r.x1) * S.view.bpPerPx, b = S.view.start + Math.max(r.x0, r.x1) * S.view.bpPerPx;
     if (r.moved) goto(S.view.refId, Math.floor(a), Math.ceil(b));
@@ -4397,17 +4600,20 @@ stage.addEventListener('pointerup', e => {
   }
   if (!drag) return;
   const d = drag; drag = null; stage.style.cursor = '';
-  if (!d.moved) onClick(e.offsetX, e.offsetY);
+  if (!S.panels.includes(d.pn)) return;
+  usePanel(d.pn);
+  if (!d.moved) onClick(e.offsetX - d.pn.x0, e.offsetY, e.offsetX);
 });
-stage.addEventListener('dblclick', e => { if (S.contigs && onCanvas(e)) zoomAt(e.offsetX, 0.5); });
+stage.addEventListener('dblclick', e => { if (!S.contigs || !onCanvas(e)) return; const L = local(e); if (L.y >= panelHdr()) zoomAt(L.x, 0.5); });
 stage.addEventListener('wheel', e => {
   if (!S.contigs || !onCanvas(e)) return;
   closeMenu();
   e.preventDefault();
+  const L = local(e);
   const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY, dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
-  if (e.ctrlKey || e.metaKey) { zoomAt(e.offsetX, Math.exp(dy * 0.01)); return; }
+  if (e.ctrlKey || e.metaKey) { zoomAt(L.x, Math.exp(dy * 0.01)); return; }
   if (e.shiftKey || Math.abs(dx) > Math.abs(dy)) { pan(e.shiftKey ? dy : dx); return; }
-  const ti = trackAtY(e.offsetY); if (ti < 0) return;
+  const ti = trackAtY(L.y); if (ti < 0) return;
   S.tracks[ti].scroll += dy; clampTrackScroll(S.tracks[ti], ti); draw();
 }, { passive: false });
 
@@ -4437,12 +4643,13 @@ function hitTest(x, y) {
   return null;
 }
 
-function onClick(x, y) {
+// x: inside the current panel; gx: on the whole view (where the card goes).
+function onClick(x, y, gx) {
   const ti = trackAtY(y);
-  if (ti >= 0) { const g = trackGeom(ti); if (g.hdr && y < g.y0 + g.hdr && x > W - 28) { closeTrack(S.tracks[ti]); return; } }
+  if (ti >= 0) { const g = trackGeom(ti); if (g.hdr && y < g.y0 + g.hdr && x > W - 28 && CUR === S.panels[S.panels.length - 1]) { closeTrack(S.tracks[ti]); return; } }
   const h = hitTest(x, y);
-  if (!h) { S.selected = null; hideCard(); draw(); return; }
-  S.selected = h; showCard(h.rec, h.T, x, y); draw();
+  if (!h) { S.selected = null; S.hl = null; hideCard(); draw(); return; }
+  S.selected = Object.assign(h, { pn: CUR }); S.hl = { name: h.rec.name, id: h.T.id }; showCard(h.rec, h.T, x, gx, y); draw();
 }
 
 const FLAG_BITS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048];
@@ -4457,11 +4664,13 @@ function rgSamples(bam) {
 }
 // Contig name as shown: the reference's name for contigs matched to it, the BAM's otherwise.
 function contigName(bamRef, T) { const v = T.back[bamRef]; return v >= 0 ? S.contigs[v].name : T.bam.refs[bamRef].name; }
-// The loaded mate of a read, if it is in the current window.
+// The loaded mate of a read: in the current panel's window, or else in another panel's.
 function findMate(rec, T) {
-  if (!(rec.flag & 1) || !T.data) return null;
-  const want = rec.flag & 64 ? 128 : 64;
-  return T.data.reads.find(r => r !== rec && r.name === rec.name && (r.flag & want) && !(r.flag & 0x900)) || null;
+  if (!(rec.flag & 1)) return null;
+  const want = rec.flag & 64 ? 128 : 64, look = () => T.data ? T.data.reads.find(r => r !== rec && r.name === rec.name && (r.flag & want) && !(r.flag & 0x900)) || null : null;
+  let m = look();
+  if (!m) forEachPanel(() => { if (!m) m = look(); });
+  return m;
 }
 // Pair orientation as IGV writes it: strand + read number of the left read, then of the right one.
 function pairOrientation2(rec) {
@@ -4522,8 +4731,10 @@ function linesHtml(lines, cls) {
 function linesText(lines) { return lines.map(l => l[0] === 'sep' ? '----------------------' : l[0] === 'txt' ? l[1] : `${l[1]} = ${l[2]}`).filter(x => x !== '').join('\n'); }
 
 let cardState = null;
-function showCard(rec, T, x, y) { cardState = { rec, T, x, y, pos: Math.floor(S.view.start + x * S.view.bpPerPx) }; renderCard(true); }
+function showCard(rec, T, x, gx, y) { cardState = { rec, T, x: gx, y, pos: Math.floor(S.view.start + x * S.view.bpPerPx), pn: CUR }; renderCard(true); }
 function renderCard(place) {
+  if (!S.panels.includes(cardState.pn)) { hideCard(); return; }
+  usePanel(cardState.pn);
   const { rec, T, x, y, pos } = cardState, c = $('card');
   const paired = !!(rec.flag & 1) && !(rec.flag & 0x900);
   const mate = paired && P.cardPair ? findMate(rec, T) : null;
@@ -4541,7 +4752,7 @@ function renderCard(place) {
   c.classList.toggle('wide', cols.length > 1);
   c.innerHTML = seg + `<div class="cols" style="--n:${cols.length}">` + cols.map(col =>
     `<div class="col">${col.title ? `<h3>${esc(col.title)}</h3>` : ''}${linesHtml(col.lines)}${col.base ? '<div class="loc">' + linesHtml(col.base, 'b') + '</div>' : ''}</div>`).join('') + '</div>' +
-    `<div class="card-actions">${goMate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button><button class="btn ghost" id="closeCard">${esc(t('btn.close'))}</button></div>`;
+    `<div class="card-actions">${goMate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button><button class="btn" id="mateSplit">${esc(t('card.mateSplit'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button><button class="btn ghost" id="closeCard">${esc(t('btn.close'))}</button></div>`;
   c.hidden = false;
   if (place) {
     const r = stage.getBoundingClientRect(), cw = c.offsetWidth, ch = c.offsetHeight;
@@ -4557,18 +4768,21 @@ function renderCard(place) {
     const txt = cols.map(col => (col.title ? col.title + '\n' : '') + linesText(col.lines) + (col.base ? '\n' + linesText(col.base) : '')).join('\n\n');
     navigator.clipboard.writeText(txt).then(() => toast(t('copied')), () => toast(t('copyFail')));
   };
+  if (goMate) $('mateSplit').onclick = () => { if (!S.panels.includes(cardState.pn)) return; usePanel(cardState.pn); hideCard(); openMatePanel(rec, T); draw(); };
   if (goMate) $('toMate').onclick = () => {
-    hideCard(); S.selected = null;
+    if (!S.panels.includes(cardState.pn)) return;
+    usePanel(cardState.pn); hideCard(); S.selected = null;
     const v = T.back[rec.mateRef];
     if (v < 0) { toast(t('sample.mateNoContig', { name: T.bam.refs[rec.mateRef].name })); draw(); return; }
     goto(v, rec.matePos - 150, rec.matePos + 300);
   };
 }
-function hideCard() { $('card').hidden = true; }
+function hideCard() { $('card').hidden = true; cardState = null; }
 
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select')) { if (e.key === 'Escape') e.target.blur(); return; }
   if (!S.contigs) return;
+  usePanel(S.active); // keys act on the active panel
   if (e.key === 'ArrowLeft') pan(-W * 0.15);
   else if (e.key === 'ArrowRight') pan(W * 0.15);
   else if (e.key === 'ArrowUp') { for (const T of S.tracks) T.scroll -= 60; clampScroll(); draw(); }
@@ -4577,7 +4791,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === '-' || e.key === '_') zoomAt(W / 2, 2);
   else if (e.key === 's' || e.key === 'ы') sortHere(); // 'ы' / 'р': same keys on a Russian layout
   else if (e.key === 'h' || e.key === 'р') { P.hideToolbar = !P.hideToolbar; applyChrome(); saveProfile(); }
-  else if (e.key === 'Escape') { hideCard(); closePanels(); closeMenu(); $('toast').hidden = true; S.selected = null; S.rubber = null; draw(); }
+  else if (e.key === 'Escape') { hideCard(); closePanels(); closeMenu(); $('toast').hidden = true; S.selected = null; S.hl = null; for (const p of S.panels) p.rubber = null; draw(); }
   else return;
   e.preventDefault();
 });
@@ -4592,9 +4806,9 @@ function sortHere() {
 function resize() {
   const r = stage.getBoundingClientRect();
   DPR = Math.min(window.devicePixelRatio || 1, 3);
-  const oldW = W; W = Math.max(1, r.width); H = Math.max(1, r.height);
-  for (const c of [glCanvas, ov]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
-  if (oldW && S.contigs) { const c = S.view.start + oldW * S.view.bpPerPx / 2; S.view.start = c - W * S.view.bpPerPx / 2; clampView(); }
+  FULL_W = Math.max(1, r.width); H = Math.max(1, r.height);
+  for (const c of [glCanvas, ov]) { c.width = Math.round(FULL_W * DPR); c.height = Math.round(H * DPR); }
+  layoutPanels(false); usePanel(S.active); // each panel keeps its center and scale
   clampScroll(); draw(); syncLocus();
 }
 new ResizeObserver(resize).observe(stage);
@@ -4645,12 +4859,14 @@ async function openBam(bamSrc, baiSrc, opts) {
       S.contigs = bam.refs.map(r => ({ name: r.name, len: r.len })); S._ck = null;
       map = Int32Array.from(bam.refs, (r, i) => i); back.forEach((v, i) => { back[i] = i; });
     }
-    const keepView = !own && S.viewSet && map[S.view.refId] >= 0;
+    usePanel(S.active);
+    const keepView = !own && S.viewSet && S.panels.every(pn => map[pn.view.refId] >= 0);
     if (!opts.demo) for (const x of S.tracks.filter(x => x.demo)) closeTrack(x); // own data replaces the demo sample
-    const T = { id: ++S.trackSeq, key, bam, name: bamSrc.name, demo: !!opts.demo, map, back, data: null, shown: null, layout: null, scroll: 0, msg: null, vao: null, n: 0 };
+    const T = makeTrack({ id: ++S.trackSeq, key, bam, name: bamSrc.name, demo: !!opts.demo, map, back });
     // CRAM keeps reads as differences from the reference: its bases come from the loaded reference
     if (bam.isCram) bam.refProvider = async (id, a, b) => { const v = T.back[id]; return v >= 0 && S.fasta ? S.fasta.fetch(S.contigs[v].name, a, b) : null; };
     await attachWorker(T);
+    usePanel(S.active);
     S.tracks.push(T);
     S.sortPos = S.tracks.length > 1 ? S.sortPos : null; S.selected = null; hideCard();
     updateFileLabel();
@@ -4658,13 +4874,15 @@ async function openBam(bamSrc, baiSrc, opts) {
     S.loading = false;
     if (note) toast(note.trim(), noteSticky);
     const loc = opts.locus ? parseLocus(opts.locus) : null;
-    S.loadToken++; S.data = null; // every track loads the same window: load it again with the new one
-    if (loc && !loc.error) goto(loc.id, loc.s, loc.e);
+    // every track of a panel loads the same window: each panel loads again with the new track
+    forEachPanel(() => { S.loadToken++; S.data = null; });
+    if (loc && !loc.error) { resetPanels(); goto(loc.id, loc.s, loc.e); }
     else if (keepView) { requestLoad(); draw(); }
-    else { const i = Math.max(0, map.findIndex(x => x >= 0)); goto(i, 0, Math.min(S.contigs[i].len, 10000)); }
+    else { resetPanels(); const i = Math.max(0, map.findIndex(x => x >= 0)); goto(i, 0, Math.min(S.contigs[i].len, 10000)); }
     S.viewSet = true;
     return true;
   } catch (e) {
+    usePanel(S.active);
     S.loading = false;
     if (S.tracks.length) toast(t('sample.failed', { name: bamSrc.name, msg: errText(e) }), true);
     else { S.msg = { text: errText(e), error: true }; }
@@ -4674,13 +4892,13 @@ async function openBam(bamSrc, baiSrc, opts) {
 }
 function closeTrack(T) {
   const i = S.tracks.indexOf(T); if (i < 0) return;
-  S.tracks.splice(i, 1); freeVao(T);
+  S.tracks.splice(i, 1); forEachPanel(pn => { freeVao(T); pn.ts.delete(T.id); });
   if (T.worker) T.worker.postMessage({ op: 'close', key: T.id });
   if (S.selected && S.selected.T === T) { S.selected = null; hideCard(); }
   $('examples').hidden = !S.tracks.some(x => x.demo);
   updateFileLabel(); clampScroll(); rebuild(); draw();
 }
-function closeAllTracks() { for (const T of S.tracks) { freeVao(T); if (T.worker) T.worker.postMessage({ op: 'close', key: T.id }); } S.tracks = []; S.selected = null; hideCard(); }
+function closeAllTracks() { for (const T of S.tracks) { forEachPanel(pn => { freeVao(T); pn.ts.delete(T.id); }); if (T.worker) T.worker.postMessage({ op: 'close', key: T.id }); } S.tracks = []; S.selected = null; S.hl = null; hideCard(); }
 function updateFileLabel() {
   const parts = [];
   if (S.fasta) parts.push(S.fasta.name);
@@ -4843,6 +5061,7 @@ async function openReference(ref, opts) {
         toast(t('ref.indexing', { name, done: total ? Math.min(100, Math.round(done / total * 100)) + '%' : fmt(done) }), true));
     }
     const closed = S.tracks.length > 0;
+    resetPanels();
     S.loadToken++;
     S.fasta = fasta; S.contigs = [...fasta.idx].map(([n, e]) => ({ name: n, len: e.len })); S._ck = null;
     closeAllTracks();
@@ -4886,10 +5105,15 @@ function applyLanguage() {
 
 // ======================= Context menu (right click on the reads) =======================
 // Pair view, coloring and sorting live here, as in IGV; sorting uses the clicked position.
-function openMenu(x, y) {
+// x: inside the current panel; gx, y: on the whole view. hit: the read under the pointer, if any.
+let menuState = null;
+function openMenu(x, gx, y, hit) {
   const m = $('ctx'), pos = Math.max(0, Math.floor(S.view.start + x * S.view.bpPerPx));
   const item = (act, val, on, label, kind) => `<button class="mi" role="${kind}" aria-checked="${on}" data-act="${act}" data-val="${val}"><span class="mk" aria-hidden="true">${on ? (kind === 'menuitemcheckbox' ? '✓' : '●') : ''}</span>${esc(label)}</button>`;
+  const r0 = hit && hit.rec, mateOk = r0 && (r0.flag & 1) && !(r0.flag & 8) && r0.mateRef >= 0;
+  menuState = { pn: CUR, hit: mateOk ? hit : null };
   m.innerHTML =
+    (mateOk ? `<button class="mi" role="menuitem" data-act="mateSplit" data-val=""><span class="mk" aria-hidden="true"></span>${esc(t('menu.mateSplit'))}</button><div class="msep"></div>` : '') +
     item('pairs', '', !!P.viewPairs, t('menu.pairs'), 'menuitemcheckbox') +
     item('clips', '', !!P.showSoftClips, t('menu.clips'), 'menuitemcheckbox') +
     `<div class="ms">${esc(t('menu.colorBy'))}</div>` +
@@ -4899,7 +5123,7 @@ function openMenu(x, y) {
     ['start', 'base', 'mapq', 'strand', 'insert'].map(v => item('sort', v, P.sortBy === v && (v === 'start' || S.sortPos === pos), t('sort.' + v), 'menuitemradio')).join('');
   m.dataset.pos = pos; m.hidden = false;
   const r = stage.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
-  m.style.left = Math.max(8, Math.min(r.width - w - 8, x + 2)) + 'px';
+  m.style.left = Math.max(8, Math.min(r.width - w - 8, gx + 2)) + 'px';
   m.style.top = Math.max(8, Math.min(r.height - h - 8, y + 2)) + 'px';
   const tag = $('ctxTag');
   tag.oninput = () => { const v = tag.value.trim(); if (v.length === 2) { P.colorTag = v; saveProfile(); if (P.colorBy === 'tag') { rebuild(); draw(); } } };
@@ -4910,6 +5134,9 @@ function closeMenu() { $('ctx').hidden = true; }
 $('ctx').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act, val = b.dataset.val, pos = +$('ctx').dataset.pos; let reloadNeeded = false;
+  if (!menuState || !S.panels.includes(menuState.pn)) { closeMenu(); return; }
+  usePanel(menuState.pn);
+  if (act === 'mateSplit') { const h = menuState.hit; closeMenu(); hideCard(); if (h) openMatePanel(h.rec, h.T); draw(); return; }
   if (act === 'pairs') P.viewPairs = !P.viewPairs;
   else if (act === 'clips') { P.showSoftClips = !P.showSoftClips; reloadNeeded = true; }
   else if (act === 'color') P.colorBy = val;
@@ -4925,8 +5152,10 @@ $('ctx').addEventListener('keydown', e => {
 stage.addEventListener('contextmenu', e => {
   if (!onCanvas(e)) return;
   e.preventDefault();
-  if (!S.tracks.length) return;
-  hideCard(); openMenu(e.offsetX, e.offsetY);
+  if (!S.tracks.length || !S.contigs) return;
+  const L = local(e); if (L.y < panelHdr()) return;
+  setActive(L.pn);
+  hideCard(); openMenu(L.x, e.offsetX, L.y, hitTest(L.x, L.y));
 });
 document.addEventListener('pointerdown', e => { if (!$('ctx').hidden && !$('ctx').contains(e.target)) closeMenu(); }, true);
 
@@ -4951,14 +5180,15 @@ stage.addEventListener('drop', async e => {
 // Go to the typed locus: Enter in the field or the Go button.
 function goLocus() {
   if (!S.contigs) return;
-  const el = $('locus'), l = parseLocus(el.value);
+  const el = $('locus'), l = parseLoci(el.value);
   if (!l) { toast(t('locus.bad')); return; }
   if (l.error) { toast(l.error); return; }
-  el.blur(); goto(l.id, l.s, l.e);
+  if (l.length > maxPanels()) toast(t('split.full', { n: maxPanels() }));
+  el.blur(); setPanels(l);
 }
 $('locus').addEventListener('keydown', e => { if (e.key === 'Enter') goLocus(); });
 $('goBtn').onclick = goLocus;
-$('examples').onchange = e => { const v = e.target.value; e.target.value = ''; if (!v || !S.contigs) return; const l = parseLocus(v); if (l && !l.error) goto(l.id, l.s, l.e); };
+$('examples').onchange = e => { const v = e.target.value; e.target.value = ''; if (!v || !S.contigs) return; const l = parseLocus(v); if (l && !l.error) setPanels([l]); };
 
 // profile controls: id → [profile path, type, what to recompute]
 const CONTROLS = [
@@ -5002,7 +5232,7 @@ for (const [id, path, type, effect] of CONTROLS) {
     else if (effect === 'chrome') applyChrome();
     else if (effect === 'lang') applyLanguage();
     else if (effect === 'reload') { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(reloadData, 250); }
-    else { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => { if (id === 'sortBy' && S.sortPos == null) S.sortPos = Math.floor(viewCenter()); rebuild(); draw(); }, 30); }
+    else { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => { usePanel(S.active); if (id === 'sortBy' && S.sortPos == null) S.sortPos = Math.floor(viewCenter()); rebuild(); draw(); }, 30); }
   });
 }
 $('copyProfile').onclick = () => navigator.clipboard.writeText(JSON.stringify(P, null, 2)).then(() => toast(t('profile.copied')), () => { $('profileJson').select(); toast(t('copyFail')); });
