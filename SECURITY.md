@@ -26,6 +26,8 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
   `UrlSource`, storage other than the profile, fixed web addresses, HTML built with values not
   passed through `esc()`), checks that the build carries the Content Security Policy, and lists every
   place where HTML is built so a reviewer sees each one.
+- `node tools/test-fuzz.js` fuzzes BGZF, the BAM header and records, BAI, FASTA with .fai and .gzi,
+  FASTA indexing in the browser, the locus field and a pasted profile (see stage 7 below).
 - `node tools/test-cram.js` includes fuzzing: hundreds of randomly damaged CRAM files must each end
   in a clear error, never an unexpected exception or a hang; with checksums switched off the damage
   reaches the record decoder itself.
@@ -44,6 +46,49 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
   CRC32) is still covered by the CRAM block's own CRC32.
 - `test/codecs`: each codec against its reference encoder (htscodecs' tools in every mode, Python's
   bz2 and lzma), and damaged copies of each.
+
+## Review of all of CGV (stage 7)
+
+Every reader of file data outside CRAM was reviewed line by line and fuzzed the same way as CRAM
+(`node tools/test-fuzz.js`, 300 cases per campaign by default, the same seed every run).
+
+- **BGZF** (BAM, bgzip FASTA): every header field is checked (magic, XLEN, BSIZE, ISIZE ≤ 64 KB); the
+  CRC32 and length of every inflated block are compared with the block's trailer, as htslib does;
+  inflating stops as soon as the output passes the block size, so a tiny "deflate bomb" (51 KB that
+  inflates to 50 MB) ends at 64 KB with an error. Before, a damaged block was inflated without any
+  check, and damaged data could reach the screen as real reads. Cost: about 20 ms per 1 Mb window.
+- **BAM header**: text length, number of contigs, name lengths and contig lengths are checked before
+  use (before, a negative length read the header from the wrong place).
+- **BAM records**: block_size is capped at 64 MB and must hold the fields it declares; the read name
+  must end in NUL; CIGAR operations must be valid; a stored sequence must be as long as the CIGAR
+  says (htslib's rule); read length ≤ 8 Mb. Before, a damaged record made CGV buffer the rest of the
+  file looking for its end, or loop over a 268-million-base CIGAR operation: the fuzzer ran the old
+  code out of memory (checked by switching the record check off).
+- **Coverage** visits only the part of an alignment inside the window, so a huge deletion or match
+  costs nothing outside it (BAM and CRAM).
+- **Tags**: a tag area that ends early or a `B` array longer than the record ends the tag list
+  instead of throwing; what was read before is kept.
+- **BAI**: every count (contigs, bins, chunks, intervals) is checked against the bytes left before it
+  is used (before, a negative count walked backwards through the index).
+- **FASTA**: `.fai` lines must be whole numbers with bytes per line = bases + 1 or 2, else an error
+  names the line; `.gzi` entries must increase and blocks hold at most 64 KB; an ordinary gzip FASTA
+  is unpacked to at most 4 GB.
+- **Links**: a server that ignores Range, or sends more than was asked for, cannot make CGV
+  download more than it needs: bodies are read in pieces and cut at the requested length; a file
+  read whole (an index) is capped at 512 MB; reading past 256 MB of a server without Range support is
+  an error that says so.
+- **Workers**: a worker that does not answer in 60 s (30 s for opening) is stopped and replaced, the
+  user sees an error, and the track opens its file again in the new worker on the next read. The page
+  does not retry the same data itself, so a stuck decoder never freezes the view.
+- **Locus field**: positions are clamped to the contig, `500-100` is read as `100-500`, and numbers
+  too large to be exact are refused.
+- **Pasted or stored profile**: besides own keys only, every value must have the default's type, numbers
+  are clamped to a range (read height 1–24 px, and so on), choices must be one of the known ones and
+  tags two characters; unknown keys are dropped.
+- **Audit additions**: file readers may throw only `CgvError`; every reader must have a fuzzing
+  campaign in the tests (the audit fails if one is removed).
+- Found while fixing: a record without a stored sequence (SEQ `*`, common for secondary alignments)
+  was drawn with every base as a mismatch; it now shows no mismatches.
 
 ## Code from others
 
@@ -81,3 +126,6 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
 | 2026-10-21 | htscodecs' JavaScript rANS decoder loops forever on a cut-off block (no bounds checks) | CGV's copy checks every read; reported here, upstream report to consider |
 | 2026-10-21 | htscodecs' JavaScript decoders on cut-off blocks: rANS 4x16 and arithmetic return a full-size block of wrong data without an error, FQZcomp loops forever, the name tokeniser crashes | CGV's copies stop with a clear error; tested on blocks cut to 12, 40 and 100 bytes |
 | 2026-10-21 | A pasted display profile with a `__proto__` key could replace the profile object's prototype (no effect outside it, but not allowed) | only the profile's own keys are taken |
+| 2026-10-28 | BAM, BAI, BGZF and FASTA readers trusted sizes and counts from the file: a damaged record could exhaust memory, a damaged BGZF block could show wrong reads, a negative count misread the index | all checked (stage 7); fuzzed in tools/test-fuzz.js |
+| 2026-10-28 | Inflating was unbounded: a small damaged or hostile block could expand to gigabytes | output capped at the declared size (BGZF, CRAM gzip, .crai, gzip FASTA) |
+| 2026-10-28 | A stuck worker would never answer and the track would wait forever | worker timeout, replaced worker, clear error |

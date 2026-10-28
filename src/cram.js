@@ -44,13 +44,7 @@ Object.assign(CGV_ERR_EN, {
   cramEncoding: 'CRAM data series {ds} uses encoding {enc}, which CGV does not read',
 });
 
-// ---------- CRC32 (IEEE, as in zlib) ----------
-const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-function crc32(u8, start, end) {
-  let c = 0xFFFFFFFF;
-  for (let i = start; i < end; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
-  return (c ^ 0xFFFFFFFF) >>> 0;
-}
+// CRC32: crc32() from core.js (the same check as for BGZF blocks).
 
 // ---------- MD5 (RFC 1321), for the reference check of each slice ----------
 const MD5_K = new Uint32Array(64).map((_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296));
@@ -151,13 +145,8 @@ function parseBlock(u8, off, major, end) {
   b.next = r.pos;
   return b;
 }
-async function inflateGzip(u8) {
-  const ds = new DecompressionStream('gzip');
-  const w = ds.writable.getWriter();
-  w.write(u8).catch(() => {}); w.close().catch(() => {});
-  try { return new Uint8Array(await new Response(ds.readable).arrayBuffer()); }
-  catch (e) { throw new CgvError('cramBad', { what: 'a gzip block does not inflate' }); }
-}
+// gzip: the browser's own inflate, stopped as soon as the output passes the size the block declares.
+function inflateGzip(u8, size) { return inflateStream(u8, 'gzip', size, 'cramBad', { what: 'a gzip block does not inflate to its declared size' }); }
 // Decoded contents of a block. Codecs other than raw and gzip come in later stages.
 // Where decoding time goes (milliseconds by codec, records, reference); shown in tests and diagnostics.
 const CRAM_STATS = { codec: {}, records: 0, ref: 0, read: 0 };
@@ -171,7 +160,7 @@ async function decodeBlock(b) {
 async function decodeBlockRaw(b) {
   let out;
   if (b.method === 0) out = b.data;
-  else if (b.method === 1) out = await inflateGzip(b.data);
+  else if (b.method === 1) out = await inflateGzip(b.data, b.rawSize);
   else if (b.method === 2) out = bzip2Decode(b.data, b.rawSize);         // our own, src/compress.js
   else if (b.method === 3) out = xzDecode(b.data, b.rawSize);
   else if (b.method === 4) out = ransDecode4x8(b.data, b.rawSize); // htscodecs, see src/htscodecs.js
@@ -205,7 +194,7 @@ function parseSamHeaderText(text) {
 // slice offset within the container's data, slice size. Positions are kept 0-based here.
 async function parseCrai(raw) {
   let u8 = raw;
-  if (raw.length >= 2 && raw[0] === 0x1F && raw[1] === 0x8B) u8 = await inflateGzip(raw);
+  if (raw.length >= 2 && raw[0] === 0x1F && raw[1] === 0x8B) u8 = await inflateGzip(raw, CRAM_LIMITS.index);
   if (u8.length > CRAM_LIMITS.index) throw new CgvError('cramLimit', { what: 'index', size: fmtSize(u8.length) });
   const text = new TextDecoder().decode(u8);
   const byRef = new Map(); let n = 0;
@@ -609,7 +598,8 @@ async function decodeSlice(file, c, ch, from, to, containerOffset) {
     // sequence, qualities and CIGAR
     if (seq.length < rl) seq = new Uint8Array(rl * 2);
     const qual = new Uint8Array(rl).fill(255);
-    const cig = []; const op = (o, n) => { if (n <= 0) return; const L = cig.length; if (L && (cig[L - 1] & 15) === o) cig[L - 1] += n * 16; else cig.push(n * 16 + o); };
+    // a CIGAR operation holds at most 2^28 - 1: longer values from a damaged file would wrap around
+    const cig = []; const op = (o, n) => { if (n <= 0) return; if (n > 0xFFFFFFF) throw bad('an alignment operation is too long'); const L = cig.length; if (L && (cig[L - 1] & 15) === o && (cig[L - 1] >>> 4) + n <= 0xFFFFFFF) cig[L - 1] += n * 16; else cig.push(n * 16 + o); };
     const put = (at, b) => { if (at < 0 || at + b.length > rl) throw bad('a feature runs past the end of its read'); seq.set(b, at); };
     if (!(rec.flag & 4)) {
       const fn = E.FN.int(s);
@@ -644,6 +634,7 @@ async function decodeSlice(file, c, ch, from, to, containerOffset) {
         } else for (let k = seqPos; k <= rl; k++) seq[k - 1] = refAt(id, refPos + k - seqPos);
         op(0, rl - seqPos + 1); refPos += rl - seqPos + 1;
       }
+      if (refPos > 0x7FFFFFFF) throw bad('an alignment ends past the largest position');
       rec.end = Math.max(refPos, rec.pos + 1);
       rec.mapq = E.MQ.int(s);
       if (cf & 1) qual.set(E.QS.bytes(s, rl));
@@ -719,16 +710,14 @@ function addCoverageRec(rec, cov) {
   const slot = pos => { const b = Math.floor(pos / COV_BLOCK); if (b !== bi) { bi = b; blk = cov.block(b, true); } return (pos - b * COV_BLOCK) * 6; };
   for (const c of rec.cigar) {
     const op = c & 15, n = c >>> 4;
+    const k0 = Math.max(0, lo - r), k1 = Math.min(n, hi - r); // only the part inside the window
     if (op === 0 || op === 7 || op === 8) {
-      for (let k = 0; k < n; k++) {
-        const pos = r + k;
-        if (pos >= lo && pos < hi) { const qi = q + k; const code = rec.lseq ? (qi & 1 ? rec.seq[qi >> 1] & 15 : rec.seq[qi >> 1] >> 4) : 15; const o = slot(pos); blk[o + NIB_IDX[code]]++; }
-      }
+      for (let k = k0; k < k1; k++) { const qi = q + k; const code = rec.lseq ? (qi & 1 ? rec.seq[qi >> 1] & 15 : rec.seq[qi >> 1] >> 4) : 15; const o = slot(r + k); blk[o + NIB_IDX[code]]++; }
       r += n; q += n;
-    } else if (op === 2) { for (let k = 0; k < n; k++) { const pos = r + k; if (pos >= lo && pos < hi) { const o = slot(pos); blk[o + 5]++; } } r += n; }
+    } else if (op === 2) { for (let k = k0; k < k1; k++) { const o = slot(r + k); blk[o + 5]++; } r += n; }
     else if (op === 3) r += n;
     else if (op === 1 || op === 4) q += n;
   }
 }
 
-if (typeof module !== 'undefined') module.exports = { md5, CRAM_STATS, CRAM_CHECK, decodeSlice, parseCompressionHeader, readEncoding, BitReader, CramFile, CramReader, parseContainerHeader, parseBlock, decodeBlock, parseCrai, parseSamHeaderText, crc32, CRAM_LIMITS };
+if (typeof module !== 'undefined') module.exports = { md5, CRAM_STATS, CRAM_CHECK, decodeSlice, parseCompressionHeader, readEncoding, BitReader, CramFile, CramReader, parseContainerHeader, parseBlock, decodeBlock, parseCrai, parseSamHeaderText, CRAM_LIMITS };

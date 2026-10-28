@@ -33,7 +33,32 @@ function mergeProfile(base, over) {
     if (base[k] && typeof base[k] === 'object' && !Array.isArray(base[k])) out[k] = Object.assign({}, base[k], over[k] && typeof over[k] === 'object' ? over[k] : {});
     else if (typeof over[k] === typeof base[k]) out[k] = over[k];
   }
-  return out;
+  return sanitizeProfile(out, base);
+}
+// Allowed values for a profile pasted or stored by the user: numbers are clamped to a sane range,
+// choices must be one of the listed ones, tags two characters. Anything else keeps the default.
+const PROFILE_RULES = {
+  readHeight: [1, 24], 'mapqAlpha.low': [0, 255], 'mapqAlpha.high': [0, 255], 'mapqAlpha.minAlpha': [0, 1],
+  'filters.minMapq': [0, 255], 'coverage.height': [14, 400], 'coverage.alleleThreshold': [0, 1],
+  'downsample.maxReads': [1, 100000], 'downsample.window': [1, 1000000], maxReads: [1000, 5000000],
+  maxLoadMB: [1, 4096], 'pairs.maxSpan': [0, 10000000], version: [0, 1000],
+  colorBy: ['none', 'strand', 'pair', 'tag'], groupBy: ['none', 'strand', 'pair', 'tag', 'firstOfPair'],
+  sortBy: ['start', 'base', 'mapq', 'strand', 'insert'], language: ['en', 'ru'],
+  colorTag: /^[A-Za-z][A-Za-z0-9]$/, groupTag: /^[A-Za-z][A-Za-z0-9]$/,
+};
+function sanitizeProfile(p, base) {
+  const fix = (obj, def, path) => {
+    for (const k of Object.keys(def)) {
+      const key = path ? path + '.' + k : k, rule = PROFILE_RULES[key], v = obj[k];
+      if (def[k] && typeof def[k] === 'object') { if (!v || typeof v !== 'object' || Array.isArray(v)) obj[k] = clone(def[k]); else fix(v, def[k], key); continue; }
+      if (typeof v !== typeof def[k]) { obj[k] = def[k]; continue; }
+      if (typeof v === 'number') { if (!Number.isFinite(v)) obj[k] = def[k]; else if (Array.isArray(rule)) obj[k] = Math.max(rule[0], Math.min(rule[1], v)); }
+      else if (typeof v === 'string' && rule && (Array.isArray(rule) ? !rule.includes(v) : !rule.test(v))) obj[k] = def[k];
+    }
+    for (const k of Object.keys(obj)) if (!Object.prototype.hasOwnProperty.call(def, k)) delete obj[k];
+  };
+  fix(p, base, '');
+  return p;
 }
 let P = DEFAULT_PROFILE;
 try { const s = localStorage.getItem(PROFILE_KEY); if (s) P = mergeProfile(DEFAULT_PROFILE, JSON.parse(s)); } catch (e) { P = clone(DEFAULT_PROFILE); }
@@ -414,23 +439,36 @@ function pan(dpx) { S.view.start += dpx * S.view.bpPerPx; clampView(); requestLo
 // Samples are read in Web Workers made from the core script's own text (see the end of core.js):
 // several samples inflate in parallel and the page stays responsive. Where workers cannot start
 // (a page policy, an old browser) everything runs on the page as before.
-const POOL = { workers: [], next: 0, seq: 0, wait: new Map(), ok: null };
+const POOL = { workers: [], next: 0, seq: 0, wait: new Map(), ok: null, url: null };
+// A worker that does not answer in time is stopped and replaced: a stuck decoder never hangs CGV,
+// and the page does not retry the same data itself (that would freeze it instead).
+const WORKER_TIMEOUT = { open: 30000, fetch: 60000 };
+function makeWorker() {
+  const w = new Worker(POOL.url);
+  w.onmessage = e => {
+    if (e.data.op === 'ref') { answerRef(w, e.data); return; } // a CRAM in the worker needs reference bases
+    const x = POOL.wait.get(e.data.id); if (x) { POOL.wait.delete(e.data.id); clearTimeout(x.timer); x.cb(e.data); }
+  };
+  w.onerror = () => failWorker(w, 'worker');
+  return w;
+}
+// Ends every call waiting on worker w with an error, and puts a fresh worker in its place.
+function failWorker(w, code, ms) {
+  for (const [id, x] of POOL.wait) if (x.w === w) { POOL.wait.delete(id); clearTimeout(x.timer); x.cb({ ok: false, err: { code, vars: { s: Math.round((ms || 0) / 1000) }, message: 'worker ' + code } }); }
+  const i = POOL.workers.indexOf(w); if (i < 0) return;
+  try { w.terminate(); } catch (e) { /* already gone */ }
+  try { POOL.workers[i] = makeWorker(); } catch (e) { POOL.workers.splice(i, 1); }
+  // tracks that used it open their file again in a new worker before their next read
+  for (const T of S.tracks) if (T.worker === w) { T.worker = null; T.reattach = true; }
+}
 function workerPool() {
-  if (POOL.ok !== null) return POOL.ok;
+  if (POOL.ok !== null) return POOL.ok && POOL.workers.length > 0;
   try {
     const code = $('cgv-core') && $('cgv-core').textContent;
     if (!code || typeof Worker === 'undefined') throw new Error('no worker');
-    const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+    POOL.url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
     const n = Math.max(1, Math.min(6, navigator.hardwareConcurrency || 4));
-    for (let i = 0; i < n; i++) {
-      const w = new Worker(url);
-      w.onmessage = e => {
-        if (e.data.op === 'ref') { answerRef(w, e.data); return; } // a CRAM in the worker needs reference bases
-        const cb = POOL.wait.get(e.data.id); if (cb) { POOL.wait.delete(e.data.id); cb(e.data); }
-      };
-      w.onerror = () => { for (const [id, cb] of POOL.wait) { POOL.wait.delete(id); cb({ ok: false, err: { code: 'worker', message: 'worker failed' } }); } };
-      POOL.workers.push(w);
-    }
+    for (let i = 0; i < n; i++) POOL.workers.push(makeWorker());
     POOL.ok = true;
   } catch (e) { POOL.ok = false; }
   return POOL.ok;
@@ -438,7 +476,9 @@ function workerPool() {
 function callWorker(w, msg) {
   return new Promise((resolve, reject) => {
     const id = ++POOL.seq;
-    POOL.wait.set(id, m => m.ok ? resolve(m) : reject(Object.assign(new CgvError(m.err.code || 'worker', m.err.vars), m.err.code ? {} : { message: m.err.message })));
+    const cb = m => m.ok ? resolve(m) : reject(Object.assign(new CgvError(m.err.code || 'worker', m.err.vars), m.err.code ? {} : { message: m.err.message }));
+    const ms = WORKER_TIMEOUT[msg.op] || WORKER_TIMEOUT.fetch, timer = setTimeout(() => failWorker(w, 'workerTimeout', ms), ms);
+    POOL.wait.set(id, { cb, w, timer });
     w.postMessage(Object.assign({ id }, msg));
   });
 }
@@ -458,6 +498,7 @@ async function attachWorker(T) {
   catch (e) { T.worker = null; }
 }
 async function trackFetch(T, br, ls, le, opts) {
+  if (T.reattach) { T.reattach = false; await attachWorker(T); }
   if (T.worker) {
     try {
       const m = await callWorker(T.worker, { op: 'fetch', key: T.id, args: [br, ls, le, opts] });
@@ -806,6 +847,7 @@ function syncLocus() {
   $('span').textContent = fmtBp(e - s);
 }
 function parseLocus(str) {
+  if (typeof str !== 'string' || str.length > 300) return null;
   str = str.trim().replace(/[  \s]/g, '').replace(/[–—]/g, '-');
   const m = str.match(/^([^:]+?)(?::([\d,.]+)(?:-([\d,.]+))?)?$/);
   if (!m) return null;
@@ -813,9 +855,16 @@ function parseLocus(str) {
   const num = x => parseInt(x.replace(/[,.]/g, ''), 10);
   const L = S.contigs[id].len;
   if (!m[2]) return { id, s: 0, e: L };
+  // positions are 1-based in the text; out-of-range values are clamped to the contig
+  const clamp = v => Math.max(0, Math.min(L, v));
   const a = num(m[2]) - 1;
-  if (!m[3]) return { id, s: a - 50, e: a + 51, center: a };
-  return { id, s: a, e: num(m[3]) };
+  if (!Number.isSafeInteger(a)) return null;
+  if (!m[3]) { const c = clamp(a); return { id, s: c - 50, e: c + 51, center: c }; }
+  const b = num(m[3]);
+  if (!Number.isSafeInteger(b)) return null;
+  // "500-100" means the same region as "100-500"
+  const s = clamp(Math.min(a, b - 1)), e = clamp(Math.max(a + 1, b));
+  return { id, s, e: Math.max(e, s + 1) };
 }
 
 // ======================= Input =======================

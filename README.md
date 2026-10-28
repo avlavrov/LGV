@@ -70,7 +70,8 @@ src/index.html markup and styles
 tools/         demo data generator, build, tests
 ```
 
-BGZF is inflated with the browser's built-in `DecompressionStream('deflate-raw')`. There are
+BGZF is inflated with the browser's built-in `DecompressionStream('deflate-raw')`; the CRC32 and
+length of every block are checked, and every size read from a file is checked before use (see SECURITY.md). There are
 no third-party libraries: a smaller attack surface and nothing to keep patched. The local
 build (`dist/cgv.html`) carries a strict Content Security Policy: no remote scripts, styles
 or fonts, and network access only for data the user points to.
@@ -81,6 +82,7 @@ or fonts, and network access only for data the user points to.
 node tools/gen-demo.js                      # demo data in demo/
 node tools/test-core.js                     # core checks on the demo data
 node tools/test-cram.js                     # CRAM checks against the same data as BAM, with fuzzing
+node tools/test-fuzz.js                     # fuzzing of BGZF, BAM, BAI, FASTA/.fai/.gzi, locus field, profile
 node tools/audit.js                         # security audit of our own code (see SECURITY.md)
 node tools/build.js                         # dist/cgv.html and dist/artifact.html
 CGV_L=1000000 node tools/gen-demo.js big    # 1 Mb at 30× for speed tests

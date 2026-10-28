@@ -31,25 +31,48 @@ class UrlSource {
     if (!r.ok) throw new CgvError('http', { status: r.status, name: this.name });
     return r;
   }
+  // Reads the body of a response, at most `max` bytes: a server that sends more than was asked for
+  // (or ignores Range on a large file) cannot make CGV download or hold more than it needs.
+  async _body(r, max) {
+    if (!r.body) { const b = new Uint8Array(await r.arrayBuffer()); return b.length > max ? b.subarray(0, max) : b; }
+    const rd = r.body.getReader(), parts = []; let n = 0;
+    try {
+      while (n < max) { const { value, done } = await rd.read(); if (done) break; parts.push(value); n += value.length; }
+    } catch (e) { throw new CgvError('network', { name: this.name }); }
+    if (n >= max) rd.cancel().catch(() => {});
+    const out = new Uint8Array(Math.min(n, max)); let o = 0;
+    for (const p of parts) { if (o >= out.length) break; const k = Math.min(p.length, out.length - o); out.set(k === p.length ? p : p.subarray(0, k), o); o += k; }
+    this.bytes += out.length;
+    return out;
+  }
   async read(start, len) {
     const r = await this._fetch('bytes=' + start + '-' + (start + len - 1));
-    const buf = new Uint8Array(await r.arrayBuffer());
-    this.bytes += buf.length;
-    if (r.status === 200) { // server ignored Range and sent the whole file
+    if (r.status === 200) { // the server ignored Range and sends the whole file from the start
+      if (start + len > URL_NO_RANGE_MAX) { r.body && r.body.cancel().catch(() => {}); throw new CgvError('noRange', { name: this.name }); }
       this.noRange = true;
-      return buf.subarray(start, Math.min(start + len, buf.length));
+      const buf = await this._body(r, start + len);
+      return buf.subarray(Math.min(start, buf.length));
     }
-    return buf;
+    return this._body(r, len);
   }
-  async readAll() { const r = await this._fetch(null); const b = new Uint8Array(await r.arrayBuffer()); this.bytes += b.length; return b; }
+  async readAll() { const r = await this._fetch(null); const b = await this._body(r, URL_READ_ALL_MAX + 1); if (b.length > URL_READ_ALL_MAX) throw new CgvError('tooBig', { name: this.name }); return b; }
 }
+// Without Range support only the start of a file can be read (each read downloads it from byte 0).
+const URL_NO_RANGE_MAX = 256 << 20;
+// Whole files read at once are indexes (.bai, .crai, .fai, .gzi): far smaller than this.
+const URL_READ_ALL_MAX = 512 << 20;
 
 // Errors carry a code and values; the UI turns them into text in the chosen language.
 const CGV_ERR_EN = {
   network: 'Cannot reach {name}. Check the link and that the server allows CORS and Range requests.',
   auth: 'Access denied ({status}): {name}. The link has expired or a token is needed.',
+  noRange: 'The server of {name} does not support Range requests, so only the start of the file can be read. Use a server or bucket with Range support',
+  tooBig: '{name} is too large to read as a whole: is it really an index file?',
   notfound: 'File not found (404): {name}', noIndex: 'No index found for {name} (tried {tried})', http: 'The server answered {status} for {name}',
   bgzf: 'The file is damaged or not BGZF (offset {offset})', bsize: 'A BGZF block has no BSIZE field',
+  bgzfCrc: 'A compressed block is damaged: its checksum or length does not match (offset {offset})', inflate: 'A compressed block is damaged and does not decompress',
+  baiBad: 'The BAI index is damaged or cut short', bamRecord: 'A BAM record is damaged (offset {offset})', faiBad: 'The FASTA index (.fai) is damaged at line {line}',
+  faGzipBig: 'This gzip FASTA unpacks to more than {size}. Compress it with bgzip and index it (samtools faidx), then load it with its .fai and .gzi',
   notBai: 'This is not a BAI index (.bai)', notBam: 'This is not a BAM file (no BAM signature)', header: 'Could not read the BAM header',
   headerCut: 'The BAM header is cut short — the file is incomplete', headerBig: 'The BAM header is too large',
   fai: 'Empty or invalid FASTA index (.fai)', gzi: 'Invalid .gzi index', needGzi: 'A compressed .fa.gz needs its .gzi index',
@@ -63,38 +86,91 @@ class CgvError extends Error {
 }
 
 // ======================= BGZF =======================
-async function inflateRaw(u8) {
-  const ds = new DecompressionStream('deflate-raw');
+// CRC32 (IEEE, as in zlib and gzip), slicing by 8: fast enough to check every BGZF block.
+const CRC_T = (() => {
+  const t = new Uint32Array(256 * 8);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  for (let n = 0; n < 256; n++) for (let k = 1; k < 8; k++) t[k * 256 + n] = (t[(k - 1) * 256 + n] >>> 8) ^ t[t[(k - 1) * 256 + n] & 255];
+  return t;
+})();
+function crc32(u8, start, end) {
+  if (start === undefined) { start = 0; end = u8.length; }
+  const t = CRC_T; let c = 0xFFFFFFFF, i = start;
+  for (; i + 8 <= end; i += 8) {
+    const a = (c ^ (u8[i] | u8[i + 1] << 8 | u8[i + 2] << 16 | u8[i + 3] << 24)) >>> 0;
+    c = t[1792 + (a & 255)] ^ t[1536 + (a >>> 8 & 255)] ^ t[1280 + (a >>> 16 & 255)] ^ t[1024 + (a >>> 24)] ^
+      t[768 + u8[i + 4]] ^ t[512 + u8[i + 5]] ^ t[256 + u8[i + 6]] ^ t[u8[i + 7]];
+  }
+  for (; i < end; i++) c = t[(c ^ u8[i]) & 255] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+// Built-in deflate (DecompressionStream). Reads the output in pieces and stops as soon as it grows
+// past `max`, so a small damaged or hostile block cannot inflate into gigabytes ("zip bomb").
+// Any failure is a CgvError.
+async function inflateStream(u8, format, max, code, vars) {
+  const ds = new DecompressionStream(format);
   const w = ds.writable.getWriter();
   w.write(u8).catch(() => {}); w.close().catch(() => {});
-  return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+  const r = ds.readable.getReader(), parts = []; let total = 0;
+  try {
+    for (;;) {
+      const { value, done } = await r.read();
+      if (done) break;
+      total += value.length;
+      if (total > max) { r.cancel().catch(() => {}); throw new CgvError(code, vars); }
+      parts.push(value);
+    }
+  } catch (e) { if (e instanceof CgvError) throw e; throw new CgvError(code, vars); }
+  if (parts.length === 1) return parts[0];
+  const out = new Uint8Array(total); let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
 }
+async function inflateRaw(u8, max) { return inflateStream(u8, 'deflate-raw', max || 65536, 'inflate', { offset: '?' }); }
 
+// BGZF blocks in buf (a slab read at file offset baseCoff). A block cut off by the end of the slab
+// is left for the next read. Every field is checked: a damaged block gives a CgvError, never a
+// negative length or a read outside the slab.
 function parseBgzfBlocks(buf, baseCoff) {
   const blocks = []; let p = 0;
   while (p + 18 <= buf.length) {
-    if (buf[p] !== 31 || buf[p + 1] !== 139) throw new CgvError('bgzf', { offset: baseCoff + p });
+    if (buf[p] !== 31 || buf[p + 1] !== 139 || buf[p + 2] !== 8 || !(buf[p + 3] & 4)) throw new CgvError('bgzf', { offset: baseCoff + p });
     const xlen = buf[p + 10] | (buf[p + 11] << 8);
     let q = p + 12, bsize = -1; const xend = p + 12 + xlen;
+    if (xend > buf.length) break;
     while (q + 4 <= xend) {
       const slen = buf[q + 2] | (buf[q + 3] << 8);
-      if (buf[q] === 66 && buf[q + 1] === 67) bsize = buf[q + 4] | (buf[q + 5] << 8);
+      if (buf[q] === 66 && buf[q + 1] === 67 && slen === 2 && q + 6 <= xend) bsize = buf[q + 4] | (buf[q + 5] << 8);
       q += 4 + slen;
     }
     if (bsize < 0) throw new CgvError('bsize');
     const total = bsize + 1;
+    // header (12 + xlen) + deflate data + CRC32 + ISIZE (8)
+    if (total < xlen + 20) throw new CgvError('bgzf', { offset: baseCoff + p });
     if (p + total > buf.length) break;
-    blocks.push({ coff: baseCoff + p, cstart: p + 12 + xlen, clen: total - xlen - 20 });
+    const t = p + total - 8;
+    const crc = (buf[t] | buf[t + 1] << 8 | buf[t + 2] << 16 | buf[t + 3] << 24) >>> 0;
+    const isize = (buf[t + 4] | buf[t + 5] << 8 | buf[t + 6] << 16 | buf[t + 7] << 24) >>> 0;
+    if (isize > 65536) throw new CgvError('bgzf', { offset: baseCoff + p });
+    blocks.push({ coff: baseCoff + p, cstart: p + 12 + xlen, clen: total - xlen - 20, crc, isize });
     p += total;
   }
   return blocks;
+}
+// Checksums are verified always; the tests switch them off to send damaged data deeper into the parsers.
+const BGZF_CHECK = { crc: true };
+// Inflates one block from parseBgzfBlocks and checks its length and CRC32 against the block trailer.
+async function inflateBgzf(raw, b) {
+  const out = await inflateStream(raw.subarray(b.cstart, b.cstart + b.clen), 'deflate-raw', b.isize, 'bgzfCrc', { offset: b.coff });
+  if (out.length !== b.isize || (BGZF_CHECK.crc && crc32(out, 0, out.length) !== b.crc)) throw new CgvError('bgzfCrc', { offset: b.coff });
+  return out;
 }
 
 // Reads and inflates the blocks from cStart through the block starting at cLast.
 async function readBgzf(source, cStart, cLast) {
   const raw = await source.read(cStart, cLast - cStart + 65536);
   const blocks = parseBgzfBlocks(raw, cStart).filter(b => b.coff <= cLast);
-  const parts = await Promise.all(blocks.map(b => inflateRaw(raw.subarray(b.cstart, b.cstart + b.clen))));
+  const parts = await Promise.all(blocks.map(b => inflateBgzf(raw, b)));
   let total = 0; const offs = new Map();
   blocks.forEach((b, i) => { offs.set(b.coff, total); total += parts[i].length; });
   const data = new Uint8Array(total); let o = 0;
@@ -120,12 +196,16 @@ class BaiIndex {
   constructor(u8) {
     if (u8.length < 8 || u8[0] !== 66 || u8[1] !== 65 || u8[2] !== 73 || u8[3] !== 1) throw new CgvError('notBai');
     this.dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-    const nref = this.dv.getInt32(4, true);
-    this.refs = []; let p = 8; const dv = this.dv;
+    const dv = this.dv, L = u8.length;
+    // every count is checked against the bytes that are left before it is used, so a damaged index
+    // gives a clear error instead of reading outside the file or allocating a huge table
+    const count = (p, size) => { if (p + 4 > L) throw new CgvError('baiBad'); const n = dv.getInt32(p, true); if (n < 0 || p + 4 + n * size > L) throw new CgvError('baiBad'); return n; };
+    const nref = count(4, 8);
+    this.refs = []; let p = 8;
     for (let r = 0; r < nref; r++) {
-      const start = p; const nbin = dv.getInt32(p, true); p += 4;
-      for (let b = 0; b < nbin; b++) { const nchunk = dv.getInt32(p + 4, true); p += 8 + nchunk * 16; }
-      const nintv = dv.getInt32(p, true); p += 4 + nintv * 8;
+      const start = p; const nbin = count(p, 8); p += 4;
+      for (let b = 0; b < nbin; b++) { const nchunk = count(p + 4, 16); p += 8 + nchunk * 16; }
+      const nintv = count(p, 8); p += 4 + nintv * 8;
       this.refs.push({ start, parsed: null });
     }
   }
@@ -172,6 +252,27 @@ function latin1(u8, start, len) { let s = ''; for (let i = 0; i < len; i++) s +=
 const SEQ_CODES = '=ACMGRSVTWYHKDBN';
 const CIGAR_OPS = 'MIDNSHP=X';
 
+// Sizes taken from a BAM file are checked against these before anything is allocated or looped over.
+const BAM_LIMITS = {
+  header: 64 << 20,     // SAM header text
+  refs: 10000000,       // reference sequences in the header
+  record: 64 << 20,     // one alignment record (an 8 Mb nanopore read with qualities and tags fits)
+  readLength: 1 << 23,  // bases in one read, as for CRAM
+};
+// Checks that the fields of the record at p (block_size at p) fit inside it and agree with each
+// other, as htslib does when it reads a record. Returns false for a damaged record.
+function bamRecordOk(buf, dv, p, bs) {
+  const s = p + 4, lrn = buf[s + 8], ncig = dv.getUint16(s + 12, true), lseq = dv.getInt32(s + 16, true);
+  if (lrn < 1 || lseq < 0 || lseq > BAM_LIMITS.readLength) return false;
+  const cig = s + 32 + lrn;
+  if (32 + lrn + 4 * ncig + ((lseq + 1) >> 1) + lseq > bs) return false;
+  if (buf[cig - 1] !== 0) return false; // the read name ends with NUL
+  let qlen = 0;
+  for (let i = 0; i < ncig; i++) { const c = dv.getUint32(cig + 4 * i, true), op = c & 15; if (op > 8) return false; if (op === 0 || op === 1 || op === 4 || op === 7 || op === 8) qlen += c >>> 4; }
+  // a stored sequence must be as long as the CIGAR says; without one, the CIGAR is still bounded
+  return lseq ? qlen === lseq || ncig === 0 : qlen <= BAM_LIMITS.readLength;
+}
+
 class BamFile {
   constructor(bamSource, baiSource) { this.src = bamSource; this.baiSrc = baiSource; this.maxSpan = 0; }
   // baiSource may be a list of candidates (e.g. sample.bam.bai, then sample.bai): the first one that
@@ -201,7 +302,7 @@ class BamFile {
       const raw = await this.src.read(0, size);
       const blocks = parseBgzfBlocks(raw, 0);
       if (!blocks.length) throw new CgvError('header');
-      const parts = await Promise.all(blocks.map(b => inflateRaw(raw.subarray(b.cstart, b.cstart + b.clen))));
+      const parts = await Promise.all(blocks.map(b => inflateBgzf(raw, b)));
       let total = 0; parts.forEach(p => total += p.length);
       const d = new Uint8Array(total); let o = 0; for (const p of parts) { d.set(p, o); o += p.length; }
       const h = tryParseBamHeader(d);
@@ -281,7 +382,7 @@ class BamFile {
       const blocks = raw.length ? parseBgzfBlocks(raw, coff) : [];
       if (!blocks.length) return;
       const use = blocks.filter(b => b.coff <= cEnd);
-      const parts = await Promise.all(use.map(b => inflateRaw(raw.subarray(b.cstart, b.cstart + b.clen))));
+      const parts = await Promise.all(use.map(b => inflateBgzf(raw, b)));
       for (let i = 0; i < use.length; i++) {
         const bcoff = use[i].coff, shift = first ? u0 : 0;
         let part = shift ? parts[i].subarray(shift) : parts[i];
@@ -292,13 +393,15 @@ class BamFile {
         let p = 0, cached = this.blocks.has(bcoff);
         while (p + 4 <= buf.length) {
           const bs = dv.getInt32(p, true);
-          if (bs < 32 || p + 4 + bs > buf.length) break;
+          if (bs < 32 || bs > BAM_LIMITS.record) throw new CgvError('bamRecord', { offset: bcoff });
+          if (p + 4 + bs > buf.length) break;
           const inBlock = p - cl; // >= 0: the record starts in this block, at uoff inBlock + shift
           if (bcoff === cEnd && inBlock >= 0 && inBlock + shift >= uEnd) return;
           const refID = dv.getInt32(p + 4, true), pos = dv.getInt32(p + 8, true);
           if (!cached && inBlock >= 0) { this.blocks.set(bcoff, { refID, pos, uoff: inBlock + shift }); cached = true; }
           if (refID !== refId) { if (refID > refId || refID < 0) return; p += 4 + bs; continue; }
           if (pos >= end) return;
+          if (!bamRecordOk(buf, dv, p, bs)) throw new CgvError('bamRecord', { offset: bcoff });
           visit(buf, dv, p, pos);
           p += 4 + bs;
         }
@@ -419,13 +522,12 @@ function addCoverage(buf, dv, p, cov) {
   const slot = pos => { const b = Math.floor(pos / COV_BLOCK); if (b !== bi) { bi = b; blk = cov.block(b, true); } return (pos - b * COV_BLOCK) * 6; };
   for (let i = 0; i < ncig; i++) {
     const c = dv.getUint32(cig + 4 * i, true), op = c & 15, n = c >>> 4;
+    // only the part inside [lo, hi) is visited, so a long operation costs nothing outside the window
+    const k0 = Math.max(0, lo - r), k1 = Math.min(n, hi - r);
     if (op === 0 || op === 7 || op === 8) {
-      for (let k = 0; k < n; k++) {
-        const pos = r + k;
-        if (pos >= lo && pos < hi) { const qi = q + k; const code = lseq ? (qi & 1 ? buf[seq + (qi >> 1)] & 15 : buf[seq + (qi >> 1)] >> 4) : 15; const o = slot(pos); blk[o + NIB_IDX[code]]++; }
-      }
+      for (let k = k0; k < k1; k++) { const qi = q + k; const code = lseq ? (qi & 1 ? buf[seq + (qi >> 1)] & 15 : buf[seq + (qi >> 1)] >> 4) : 15; const o = slot(r + k); blk[o + NIB_IDX[code]]++; }
       r += n; q += n;
-    } else if (op === 2) { for (let k = 0; k < n; k++) { const pos = r + k; if (pos >= lo && pos < hi) { const o = slot(pos); blk[o + 5]++; } } r += n; }
+    } else if (op === 2) { for (let k = k0; k < k1; k++) { const o = slot(r + k); blk[o + 5]++; } r += n; }
     else if (op === 3) r += n;
     else if (op === 1 || op === 4) q += n;
   }
@@ -505,17 +607,23 @@ function tryParseBamHeader(d) {
   if (d.length < 12) return null;
   if (d[0] !== 66 || d[1] !== 65 || d[2] !== 77 || d[3] !== 1) throw new CgvError('notBam');
   const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
-  const lText = dv.getInt32(4, true); let p = 8 + lText;
+  const lText = dv.getInt32(4, true);
+  if (lText < 0) throw new CgvError('header');
+  if (lText > BAM_LIMITS.header) throw new CgvError('headerBig');
+  let p = 8 + lText;
   if (p + 4 > d.length) return null;
   const text = new TextDecoder().decode(d.subarray(8, 8 + lText)).replace(/\0+$/, '');
   const nRef = dv.getInt32(p, true); p += 4;
+  if (nRef < 0 || nRef > BAM_LIMITS.refs) throw new CgvError('header');
   const refs = [], refIndex = new Map();
   for (let i = 0; i < nRef; i++) {
     if (p + 4 > d.length) return null;
     const ln = dv.getInt32(p, true); p += 4;
+    if (ln < 1 || ln > 65536) throw new CgvError('header');
     if (p + ln + 4 > d.length) return null;
     const name = latin1(d, p, ln - 1); p += ln;
     const len = dv.getInt32(p, true); p += 4;
+    if (len < 0) throw new CgvError('header');
     refs.push({ name, len }); refIndex.set(name, i);
   }
   const samples = [];
@@ -553,9 +661,13 @@ function recTags(rec) {
   if (rec._tags) return rec._tags;
   const t = rec.tagBytes, out = {}, dv = new DataView(t.buffer, t.byteOffset, t.byteLength);
   let p = 0;
+  const SZ = { A: 1, c: 1, C: 1, s: 2, S: 2, i: 4, I: 4, f: 4 };
+  // a damaged tag area ends the list: what was read before it is kept
   while (p + 3 <= t.length) {
     const key = String.fromCharCode(t[p], t[p + 1]), type = String.fromCharCode(t[p + 2]); p += 3;
     let v;
+    if (SZ[type] && p + SZ[type] > t.length) break;
+    if (type === 'B' && p + 5 > t.length) break;
     switch (type) {
       case 'A': v = String.fromCharCode(t[p]); p += 1; break;
       case 'c': v = dv.getInt8(p); p += 1; break;
@@ -568,7 +680,7 @@ function recTags(rec) {
       case 'Z': case 'H': { let e = p; while (e < t.length && t[e] !== 0) e++; v = latin1(t, p, e - p); p = e + 1; break; }
       case 'B': {
         const sub = String.fromCharCode(t[p]), n = dv.getInt32(p + 1, true); p += 5;
-        const sz = { c: 1, C: 1, s: 2, S: 2, i: 4, I: 4, f: 4 }[sub]; if (!sz) return (rec._tags = out);
+        const sz = { c: 1, C: 1, s: 2, S: 2, i: 4, I: 4, f: 4 }[sub]; if (!sz || n < 0 || p + n * sz > t.length) return (rec._tags = out);
         const arr = new Array(n);
         for (let i = 0; i < n; i++) {
           const o = p + i * sz;
@@ -586,6 +698,7 @@ function recTags(rec) {
 // Rebuilds reference bases from the MD tag into refArr (indexed from winStart).
 function fillRefFromMD(rec, refArr, winStart) {
   const md = recTags(rec).MD; if (typeof md !== 'string') return;
+  if (rec.end - rec.pos > 1 << 22) return; // per-base lists below: skip implausibly long alignments
   // aligned positions in order: refPos, and queryPos or -1 for deletions
   const rp = [], qp = []; let r = rec.pos, q = 0;
   for (const c of rec.cigar) {
@@ -614,7 +727,8 @@ function computeFeatures(rec, refAt) {
   for (let ci = 0; ci < nc; ci++) {
     const c = rec.cigar[ci], op = c & 15, n = c >>> 4;
     if (op === 0 || op === 7 || op === 8) {
-      for (let i = 0; i < n; i++) {
+      // a record without a stored sequence (SEQ "*") has no bases to compare
+      if (rec.lseq) for (let i = 0; i < n; i++) {
         const qb = readBase(rec, q + i);
         if (op === 8) { f.push({ t: 0, pos: r + i, b: qb, q: rec.qual[q + i] }); continue; }
         if (op === 7) continue;
@@ -685,6 +799,8 @@ class FaiBuilder {
   }
 }
 
+// An ordinary (not bgzip) .fa.gz is unpacked into memory; this caps it (a whole human genome fits).
+const FASTA_GZIP_MAX = 4 * 1024 * 1024 * 1024;
 function isBgzfHeader(b) { return b.length >= 18 && b[0] === 31 && b[1] === 139 && (b[3] & 4) && b[12] === 66 && b[13] === 67; }
 
 // Indexes a FASTA source with no .fai. Handles plain FASTA, BGZF (.fa.gz from bgzip,
@@ -701,7 +817,7 @@ async function indexFasta(src, size, onProgress) {
       if (!raw.length) break;
       const blocks = parseBgzfBlocks(raw, coff);
       if (!blocks.length) break;
-      const parts = await Promise.all(blocks.map(bl => inflateRaw(raw.subarray(bl.cstart, bl.cstart + bl.clen))));
+      const parts = await Promise.all(blocks.map(bl => inflateBgzf(raw, bl)));
       for (let i = 0; i < blocks.length; i++) {
         if (blocks[i].coff && parts[i].length) gzi.push([blocks[i].coff, uoff]);
         b.push(parts[i]); uoff += parts[i].length;
@@ -718,7 +834,14 @@ async function indexFasta(src, size, onProgress) {
     const all = await src.readAll();
     const ds = new DecompressionStream('gzip'); const w = ds.writable.getWriter(); w.write(all).catch(() => {}); w.close().catch(() => {});
     const r = ds.readable.getReader(), chunks = []; let done = 0;
-    for (;;) { const { value, done: end } = await r.read(); if (end) break; b.push(value); chunks.push(value); done += value.length; report(done); }
+    try {
+      for (;;) {
+        const { value, done: end } = await r.read(); if (end) break;
+        done += value.length;
+        if (done > FASTA_GZIP_MAX) { r.cancel().catch(() => {}); throw new CgvError('faGzipBig', { size: '4 GB' }); }
+        b.push(value); chunks.push(value); report(done);
+      }
+    } catch (e) { if (e instanceof CgvError) throw e; throw new CgvError('inflate'); }
     return { idx: b.finish(), gzi: null, src: new FileSource(new Blob(chunks), src.name.replace(/\.gz$/i, '')) };
   }
   for (let off = 0; ; off += SLAB) {
@@ -743,9 +866,14 @@ class IndexedFasta {
     if (/\.gz$/i.test(this.src.name || '') && !this.gziSrc) throw new CgvError('needGzi');
     const t = new TextDecoder().decode(await this.faiSrc.readAll());
     this.idx = new Map();
-    for (const line of t.split('\n')) {
-      const f = line.split('\t'); if (f.length < 5) continue;
-      this.idx.set(f[0], { len: +f[1], off: +f[2], lb: +f[3], lw: +f[4] });
+    const lines = t.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].replace(/\r$/, ''); if (!line) continue;
+      const f = line.split('\t'), int = x => /^\d{1,15}$/.test(x) ? +x : -1;
+      const e = f.length >= 5 ? { len: int(f[1]), off: int(f[2]), lb: int(f[3]), lw: int(f[4]) } : null;
+      // bases per line > 0, bytes per line = bases + 1 or 2 (\n or \r\n)
+      if (!e || !f[0] || e.len < 0 || e.off < 0 || e.lb < 1 || e.lw < e.lb + 1 || e.lw > e.lb + 2) throw new CgvError('faiBad', { line: i + 1 });
+      if (!this.idx.has(f[0])) this.idx.set(f[0], e);
     }
     if (!this.idx.size) throw new CgvError('fai');
     if (this.gziSrc) {
@@ -754,7 +882,13 @@ class IndexedFasta {
       const n = dv.getUint32(0, true) + dv.getUint32(4, true) * 4294967296;
       if (g.length < 8 + n * 16) throw new CgvError('gzi');
       this.gzi = [[0, 0]];
-      for (let i = 0; i < n; i++) { const o = 8 + i * 16; this.gzi.push([dv.getUint32(o, true) + dv.getUint32(o + 4, true) * 4294967296, dv.getUint32(o + 8, true) + dv.getUint32(o + 12, true) * 4294967296]); }
+      for (let i = 0; i < n; i++) {
+        const o = 8 + i * 16, c = dv.getUint32(o, true) + dv.getUint32(o + 4, true) * 4294967296, u = dv.getUint32(o + 8, true) + dv.getUint32(o + 12, true) * 4294967296;
+        // entries go up in both offsets, and a block holds at most 64 KB
+        const last = this.gzi[this.gzi.length - 1];
+        if (c <= last[0] || u <= last[1] || u - last[1] > 65536 || c > Number.MAX_SAFE_INTEGER || u > Number.MAX_SAFE_INTEGER) throw new CgvError('gzi');
+        this.gzi.push([c, u]);
+      }
     }
     return this;
   }
@@ -807,10 +941,11 @@ function computeCoverage(reads, winStart, winLen) {
     let r = rec.pos, q = 0;
     for (const c of rec.cigar) {
       const op = c & 15, n = c >>> 4;
+      const i0 = Math.max(0, winStart - r), i1 = Math.min(n, winStart + winLen - r);
       if (op === 0 || op === 7 || op === 8) {
-        for (let i = 0; i < n; i++) { const j = r + i - winStart; if (j >= 0 && j < winLen) cov[j * 6 + BASE_IDX[readBase(rec, q + i)]]++; }
+        for (let i = i0; i < i1; i++) cov[(r + i - winStart) * 6 + (rec.lseq ? BASE_IDX[readBase(rec, q + i)] : 4)]++;
         r += n; q += n;
-      } else if (op === 2) { for (let i = 0; i < n; i++) { const j = r + i - winStart; if (j >= 0 && j < winLen) cov[j * 6 + 5]++; } r += n; }
+      } else if (op === 2) { for (let i = i0; i < i1; i++) cov[(r + i - winStart) * 6 + 5]++; r += n; }
       else if (op === 3) r += n;
       else if (op === 1 || op === 4) q += n;
     }
@@ -1061,4 +1196,4 @@ if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && s
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { CGV_ERR_EN, inflateRaw, COV_BLOCK, NIB_IDX, DepthDiff, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, NIB_IDX, DepthDiff, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

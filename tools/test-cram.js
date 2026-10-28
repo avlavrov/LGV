@@ -27,7 +27,7 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
     const vals = [0, 1, 127, 128, 16383, 16384, 2097151, 2097152, 268435455, 268435456, 2147483647, -1, -2, -4542278];
     const bad = vals.filter(v => { const r = new R.CramReader(Uint8Array.from(enc(v))); return r.itf8() !== v || r.pos !== r.end; });
     ok(!bad.length, 'ITF8 round trip on edge values' + (bad.length ? ' (bad: ' + bad + ')' : ''));
-    ok(R.crc32(new TextEncoder().encode('123456789'), 0, 9) === 0xCBF43926, 'CRC32 check value');
+    ok(C.crc32(new TextEncoder().encode('123456789'), 0, 9) === 0xCBF43926, 'CRC32 check value');
     const cut = await throwsCode(() => new R.CramReader(Uint8Array.from([0xE0, 1])).itf8(), 'cramBad');
     ok(cut === true, 'a value cut short is a CgvError, not a crash (' + cut + ')');
   }
