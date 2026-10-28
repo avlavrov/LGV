@@ -38,6 +38,13 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
 - CRAM and BAM are decoded in Web Workers; the page owns the reference and answers the workers'
   requests for bases, so the workers see only the sample files and the bases they ask for.
 
+- bzip2 and xz/LZMA2 (`src/compress.js`) are CGV's own code: output never grows past the size the
+  CRAM block states, distances and table entries are checked, and bzip2 block/stream CRCs and xz
+  CRC32/CRC64 are verified. An xz stream written without a check (CRAM's never are: htslib uses
+  CRC32) is still covered by the CRAM block's own CRC32.
+- `test/codecs`: each codec against its reference encoder (htscodecs' tools in every mode, Python's
+  bz2 and lzma), and damaged copies of each.
+
 ## Code from others
 
 | Code | From | Version | License | Status |

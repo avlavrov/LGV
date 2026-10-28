@@ -25,3 +25,6 @@ if [ -n "$HTSLIB_TEST" ]; then
   done
   rm -f "$H/tmp.bam"
 fi
+# bzip2 and lzma blocks (stage 6)
+$ST view -C -T "$D/demo.fa" -o "$O/v30_lzma.cram" --output-fmt-option version=3.0 --output-fmt-option use_rans=0 --output-fmt-option use_bzip2=0 --output-fmt-option use_lzma=1 --output-fmt-option level=9 "$D/demo.bam" && $ST index "$O/v30_lzma.cram"
+$ST view -C -T "$D/demo.fa" -o "$O/v31_arith_bz.cram" --output-fmt-option version=3.1 --output-fmt-option use_arith=1 --output-fmt-option use_bzip2=1 --output-fmt-option use_lzma=1 --output-fmt-option level=9 "$D/demo.bam" && $ST index "$O/v31_arith_bz.cram"

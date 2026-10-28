@@ -40,7 +40,7 @@ More languages are one dictionary in `src/i18n.js`.
 
 | Requirement | State |
 | --- | --- |
-| F1 BAM by HTTPS link (Range) | done; CRAM in progress: CRAM 3.0 / 3.1 records are read and match BAM read for read; CRAM 3.0 and 3.1 open, including 3.1 archive mode, decoded in Web Workers; each slice's reference MD5 is checked against the loaded reference; bzip2 and lzma blocks next |
+| F1 BAM by HTTPS link (Range) | done; CRAM in progress: CRAM 3.0 / 3.1 records are read and match BAM read for read; CRAM 3.0 and 3.1 open, including 3.1 archive mode, decoded in Web Workers; each slice's reference MD5 is checked against the loaded reference; every CRAM block codec is read, bzip2 and lzma by CGV's own decoders |
 | F2 Local BAM + BAI | done: several samples at once as tracks, index paired by name, folder or drag and drop |
 | F3 Reference (GRCh38, GRCh37, T2T-CHM13) | done: files or link, plain or bgzip, public presets |
 | F4 Access token / presigned URL | done |
@@ -61,6 +61,7 @@ More languages are one dictionary in `src/i18n.js`.
 ```
 src/core.js    data sources (file, URL), BGZF, BAI, BAM, FASTA (+ .gzi), coverage, layout
 src/cram.js    CRAM 3.0 / 3.1: containers, blocks, SAM header, .crai, records
+src/compress.js   bzip2 and xz/LZMA2 decoders, written for CGV
 src/htscodecs.js  CRAM block codecs adapted from htscodecs: rANS 4x8 / 4x16, arithmetic, FQZcomp, names (BSD; changes in SECURITY.md)
 test/cram/     CRAM test files made with samtools (tools/make-cram-tests.sh); htslib/ holds htslib's own test cases
 src/app.js     WebGL2 read rendering, Canvas2D ruler and coverage, UI, display profile

@@ -15,6 +15,7 @@
 'use strict';
 if (typeof CgvError === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./core.js'));
 if (typeof ransDecode4x8 === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./htscodecs.js'));
+if (typeof bzip2Decode === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./compress.js'));
 
 const CRAM_LIMITS = {
   block: 256 << 20,       // decoded size of one block
@@ -171,6 +172,8 @@ async function decodeBlockRaw(b) {
   let out;
   if (b.method === 0) out = b.data;
   else if (b.method === 1) out = await inflateGzip(b.data);
+  else if (b.method === 2) out = bzip2Decode(b.data, b.rawSize);         // our own, src/compress.js
+  else if (b.method === 3) out = xzDecode(b.data, b.rawSize);
   else if (b.method === 4) out = ransDecode4x8(b.data, b.rawSize); // htscodecs, see src/htscodecs.js
   else if (b.method === 5) out = ransDecode4x16(b.data, b.rawSize);   // CRAM 3.1 codecs, also from htscodecs
   else if (b.method === 6) out = arithDecode(b.data, b.rawSize);

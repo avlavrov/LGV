@@ -42,7 +42,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px)); background: var(--bg); min-width: 0; }
 body.bare .bar { display: none; }
 .mark { font: 700 13px/1 var(--mono); letter-spacing: .06em; color: var(--accent); flex: none; }
-.locus { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 330px; }
+.locus { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 390px; }
+.locus input { min-width: 0; }
 #locus { width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 #span { color: var(--muted); font: 11.5px var(--mono); white-space: nowrap; }
 .btn { height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; white-space: nowrap; }
@@ -56,8 +57,7 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 @media (max-width: 900px) { .status, .file { display: none; } }
 @media (max-width: 560px) { #span, #examples { display: none; } .locus { flex-basis: 200px; } }
 
-#stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
-#stage:active { cursor: grabbing; }
+#stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; cursor: default; user-select: none; -webkit-user-select: none; }
 #stage.drop::after { content: attr(data-drop-text); position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: grid; place-items: center; color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--bg) 80%, transparent); }
 #gl, #ov { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .msg { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); max-width: min(520px, calc(100% - 32px)); padding: 10px 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 6px 24px rgb(0 0 0 / .08); text-align: center; }
@@ -136,6 +136,7 @@ body.bare .side { top: 0; }
   <span class="mark" title="Convenient, custom, genomic viewer">CGV</span>
   <div class="locus">
     <input id="locus" type="text" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
+    <button class="btn" id="goBtn" data-i18n="btn.go">Go</button>
     <span id="span"></span>
   </div>
   <select id="examples" class="btn" data-i18n-aria="examples" aria-label="Examples" hidden>

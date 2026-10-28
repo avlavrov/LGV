@@ -842,13 +842,13 @@ stage.addEventListener('pointermove', e => {
   }
   if (!drag) { stage.style.cursor = S.contigs && onCanvas(e) && inRuler(e.offsetY) ? 'crosshair' : ''; return; }
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-  if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+  if (Math.abs(dx) + Math.abs(dy) > 3) { if (!drag.moved) stage.style.cursor = 'grabbing'; drag.moved = true; }
   if (!drag.moved) return;
   S.view.start = drag.sx - dx * S.view.bpPerPx; clampView();
   if (drag.inReads && S.tracks[drag.ti] === drag.T) { drag.T.scroll = drag.sc - dy; clampTrackScroll(drag.T, drag.ti); }
   requestLoad(); draw(); syncLocus();
 });
-stage.addEventListener('pointercancel', () => { if (S.rubber) { S.rubber = null; draw(); } drag = null; });
+stage.addEventListener('pointercancel', () => { if (S.rubber) { S.rubber = null; draw(); } drag = null; stage.style.cursor = ''; });
 stage.addEventListener('pointerup', e => {
   if (S.rubber) {
     const r = S.rubber; S.rubber = null;
@@ -858,7 +858,7 @@ stage.addEventListener('pointerup', e => {
     return;
   }
   if (!drag) return;
-  const d = drag; drag = null;
+  const d = drag; drag = null; stage.style.cursor = '';
   if (!d.moved) onClick(e.offsetX, e.offsetY);
 });
 stage.addEventListener('dblclick', e => { if (S.contigs && onCanvas(e)) zoomAt(e.offsetX, 0.5); });
@@ -1410,13 +1410,16 @@ stage.addEventListener('drop', async e => {
   catch (err) { if (e.dataTransfer.files.length) openLocalFiles(e.dataTransfer.files); }
 });
 
-$('locus').addEventListener('keydown', e => {
-  if (e.key !== 'Enter' || !S.contigs) return;
-  const l = parseLocus(e.target.value);
+// Go to the typed locus: Enter in the field or the Go button.
+function goLocus() {
+  if (!S.contigs) return;
+  const el = $('locus'), l = parseLocus(el.value);
   if (!l) { toast(t('locus.bad')); return; }
   if (l.error) { toast(l.error); return; }
-  e.target.blur(); goto(l.id, l.s, l.e);
-});
+  el.blur(); goto(l.id, l.s, l.e);
+}
+$('locus').addEventListener('keydown', e => { if (e.key === 'Enter') goLocus(); });
+$('goBtn').onclick = goLocus;
 $('examples').onchange = e => { const v = e.target.value; e.target.value = ''; if (!v || !S.contigs) return; const l = parseLocus(v); if (l && !l.error) goto(l.id, l.s, l.e); };
 
 // profile controls: id → [profile path, type, what to recompute]

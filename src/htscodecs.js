@@ -38,6 +38,7 @@
 // ---------------------------------------------------------------------------------------------
 'use strict';
 if (typeof CgvError === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./core.js'));
+if (typeof bzip2Decode === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./compress.js'));
 
 // CGV: errors from the codecs are CgvErrors, so a damaged block gives a clear message.
 const HtsError = what => new CgvError('cramBad', { what });
@@ -400,7 +401,7 @@ function arithDecodeStream(stream, n_out, depth) {
   if (flags & ARITH_PACK) { nsym = stream.ReadByte(); P = new Uint8Array(Math.max(nsym, 1)); for (let i = 0; i < nsym; i++) P[i] = stream.ReadByte(); e_len = htsSize(stream.ReadUint7(), 'packed'); }
   let data;
   if (flags & ARITH_CAT) data = stream.ReadData(e_len);
-  else if (flags & ARITH_EXT) throw new CgvError('cramCodec', { codec: 'bzip2 inside arithmetic coding' }); // CGV: bzip2 comes in a later stage
+  else if (flags & ARITH_EXT) { data = bzip2Decode(stream.buf.subarray(stream.pos), e_len); stream.pos = stream.length; } // CGV: CGV's own bzip2 (src/compress.js) in place of the bzip2 package
   else if (flags & ARITH_RLE) data = arithDecodeRLE(stream, e_len, order);
   else data = arithDecodeOrder(stream, e_len, order);
   if (flags & ARITH_PACK) data = nsym > 16 ? data : htsDecodePack(data, P, nsym, n_out);

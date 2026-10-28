@@ -4,7 +4,7 @@
 'use strict';
 const fs = require('fs'), path = require('path');
 const R = p => path.join(__dirname, '..', p);
-const files = ['src/core.js', 'src/htscodecs.js', 'src/cram.js', 'src/app.js', 'src/i18n.js', 'src/index.html'];
+const files = ['src/core.js', 'src/compress.js', 'src/htscodecs.js', 'src/cram.js', 'src/app.js', 'src/i18n.js', 'src/index.html'];
 let fails = 0;
 const fail = (f, n, line, why) => { fails++; console.log(`FAIL ${f}:${n}  ${why}\n       ${line.trim().slice(0, 150)}`); };
 
@@ -52,7 +52,7 @@ for (const f of files) {
 // top-level names must not repeat across the scripts that share one page (core + cram + app + i18n)
 {
   const seen = new Map();
-  for (const f of ['src/i18n.js', 'src/core.js', 'src/htscodecs.js', 'src/cram.js', 'src/app.js']) for (const m of fs.readFileSync(R(f), 'utf8').matchAll(/^(?:const|let|var|class|function|async function) ([A-Za-z_$][\w$]*)/gm)) {
+  for (const f of ['src/i18n.js', 'src/core.js', 'src/compress.js', 'src/htscodecs.js', 'src/cram.js', 'src/app.js']) for (const m of fs.readFileSync(R(f), 'utf8').matchAll(/^(?:const|let|var|class|function|async function) ([A-Za-z_$][\w$]*)/gm)) {
     if (seen.has(m[1])) { fails++; console.log(`FAIL ${f}: top-level name ${m[1]} is also declared in ${seen.get(m[1])}`); } else seen.set(m[1], f);
   }
   console.log('OK   top-level names checked across the page\'s scripts: ' + seen.size);

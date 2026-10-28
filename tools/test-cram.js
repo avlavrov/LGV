@@ -54,7 +54,7 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
     const list = await cram.scan();
     const recs = list.reduce((a, c) => a + c.header.nRecords, 0);
     const methods = [...new Set(list.flatMap(c => c.methods))];
-    cram.decodable = methods.every(m => ['raw', 'gzip', 'rANS 4x8', 'rANS 4x16', 'arithmetic', 'fqzcomp', 'name tokenizer'].includes(m));
+    cram.decodable = true; // every codec CRAM 3.0 and 3.1 use is read now
     ok(list[list.length - 1].header.eof && recs === 8286, `${f}: ${list.length} containers to the end marker, all checksums correct, ${recs} records (BAM: 8286); block compression: ${methods.join(', ')}`);
     ok(cram.index.slices > 0 && cram.estimateBytes(0, 11000, 13000) > 0 && cram.estimateBytes(0, 0, 1) >= 0, `${f}: index has ${cram.index.slices} slices; size estimate for a window works`);
     // ---- records: every read equal to the BAM's (stage 2) ----
@@ -162,6 +162,35 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
       }
       ok(crashes === 0 && mine.length > 0, `${names[m]} fuzzing: ${n} damaged blocks (from ${mine.length} real ones), ${errors} clear errors, ${crashes} unexpected, ${Date.now() - t0} ms`);
     }
+  }
+
+  // ---- codecs against their reference encoders (test/codecs): htscodecs' arith_dynamic and
+  // rans4x16pr in every mode (order 0/1, 32-way, stripes, packing, RLE, raw, bzip2 inside arithmetic),
+  // Python's bz2 and lzma for bzip2 and xz; then damaged copies of each ----
+  {
+    const H = require('../src/htscodecs.js'), Z = require('../src/compress.js');
+    const CD = path.join(__dirname, '..', 'test', 'codecs'), rd = f => fs.readFileSync(path.join(CD, f));
+    const blocksOf = b => { const out = []; for (let p = 0; p < b.length;) { const n = b.readUInt32LE(p); p += 4; out.push(new Uint8Array(b.subarray(p, p + n))); p += n; } return out; };
+    const raw = rd('in.txt'), bad = [], cases = [];
+    for (const f of fs.readdirSync(CD)) {
+      let dec = null, expect = null, blocks = null;
+      if (/^arith\./.test(f)) { dec = b => H.arithDecode(b); expect = raw; blocks = blocksOf(rd(f)); }
+      else if (/^r16\./.test(f)) { dec = b => H.ransDecode4x16(b); expect = raw; blocks = blocksOf(rd(f)); }
+      else if (/\.bz\d$/.test(f)) { expect = rd(f.replace(/\.bz\d$/, '.raw')); dec = b => Z.bzip2Decode(b, expect.length); blocks = [new Uint8Array(rd(f))]; }
+      else if (/\.xz-/.test(f)) { expect = rd(f.replace(/\.xz-.*$/, '.raw')); dec = b => Z.xzDecode(b, expect.length); blocks = [new Uint8Array(rd(f))]; }
+      else continue;
+      try { const got = Buffer.concat(blocks.map(b => Buffer.from(dec(b)))); if (Buffer.compare(got, expect)) bad.push(f + ' differs'); } catch (e) { bad.push(f + ': ' + e.message); }
+      cases.push([f, dec, blocks]);
+    }
+    ok(!bad.length && cases.length >= 35, `codec vectors: ${cases.length - bad.length} of ${cases.length} decode exactly` + (bad.length ? ': ' + bad.join('; ') : ''));
+    let seed = 3, crashes = 0, errors = 0, n = 0; const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296; const t0 = Date.now();
+    for (const [f, dec, blocks] of cases.filter(c => /bz|xz/.test(c[0]))) for (let k = 0; k < 150; k++, n++) {
+      const d = Uint8Array.from(blocks[0]);
+      for (let j = 0; j < 1 + Math.floor(rnd() * 5); j++) d[Math.floor(rnd() * Math.min(d.length, k % 2 ? 200 : d.length))] = Math.floor(rnd() * 256);
+      const cut = k % 5 === 0 ? d.subarray(0, Math.floor(rnd() * d.length)) : d;
+      try { dec(cut); } catch (e) { if (e.code) errors++; else { crashes++; if (crashes < 3) console.log('   crash:', f, e.stack.split('\n').slice(0, 2).join(' | ')); } }
+    }
+    ok(crashes === 0, `bzip2 and xz fuzzing: ${n} damaged streams, ${errors} clear errors, ${crashes} unexpected, ${Date.now() - t0} ms`);
   }
 
   // ---- damaged files: a CgvError with a clear message, never a crash or a hang ----
