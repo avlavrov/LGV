@@ -41,7 +41,7 @@ More languages are one dictionary in `src/i18n.js`.
 | Requirement | State |
 | --- | --- |
 | F1 BAM by HTTPS link (Range) | done; CRAM in progress: CRAM 3.0 / 3.1 records are read and match BAM read for read; CRAM 3.0 and 3.1 open, including 3.1 archive mode, decoded in Web Workers; each slice's reference MD5 is checked against the loaded reference; every CRAM block codec is read, bzip2 and lzma by CGV's own decoders |
-| F2 Local BAM + BAI | done: several samples at once as tracks, index paired by name, folder or drag and drop |
+| F2 Local BAM + BAI | done: several samples at once as tracks, index paired by name, folder or drag and drop; with many samples each keeps a minimum height (View → Coverage, 240 px by default) and the whole stack scrolls under the ruler: wheel over coverage or a header, wheel past the end of a sample's reads, the scrollbar on the right, PageUp / PageDown |
 | F3 Reference (GRCh38, GRCh37, T2T-CHM13) | done: files or link, plain or bgzip, public presets |
 | F4 Access token / presigned URL | done |
 | F5 Go to coordinate | done, contig names case-insensitive (chr1 = Chr1 = 1); drag on the ruler to zoom to a region, click it to center; gene names come with the gene track |

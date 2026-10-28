@@ -15,6 +15,7 @@ const DEFAULT_PROFILE = {
   filters: { minMapq: 0, hideDuplicates: true, hideSecondary: true, hideSupplementary: false, hideQcFail: true },
   showSoftClips: true,
   coverage: { height: 56, alleleThreshold: 0.2 },
+  trackMinHeight: 240,           // px: with many samples each keeps at least this height; the view scrolls
   downsample: { enabled: true, maxReads: 100, window: 50 }, // like IGV: reads kept per window; coverage counts all
   maxReads: 300000,
   maxLoadMB: 64,                 // windows with more compressed alignment data ask before loading
@@ -41,7 +42,7 @@ const PROFILE_RULES = {
   readHeight: [1, 24], 'mapqAlpha.low': [0, 255], 'mapqAlpha.high': [0, 255], 'mapqAlpha.minAlpha': [0, 1],
   'filters.minMapq': [0, 255], 'coverage.height': [14, 400], 'coverage.alleleThreshold': [0, 1],
   'downsample.maxReads': [1, 100000], 'downsample.window': [1, 1000000], maxReads: [1000, 5000000],
-  maxLoadMB: [1, 4096], 'pairs.maxSpan': [0, 10000000], version: [0, 1000],
+  maxLoadMB: [1, 4096], trackMinHeight: [80, 2000], 'pairs.maxSpan': [0, 10000000], version: [0, 1000],
   colorBy: ['none', 'strand', 'pair', 'tag'], groupBy: ['none', 'strand', 'pair', 'tag', 'firstOfPair'],
   sortBy: ['start', 'base', 'mapq', 'strand', 'insert'], language: ['en', 'ru'],
   colorTag: /^[A-Za-z][A-Za-z0-9]$/, groupTag: /^[A-Za-z][A-Za-z0-9]$/,
@@ -191,8 +192,14 @@ function covTop() { return panelHdr() + RULER_H + REF_H + 4; } // where the trac
 function groupGap() { return P.groupBy === 'none' ? 0 : 20; }
 // Vertical place of track i: the space under the ruler is shared equally. With one track there is
 // no header and the layout is the same as before tracks existed.
+// When the samples do not fit at their minimum height, they are stacked taller than the view and the
+// whole stack scrolls under the fixed ruler (S.vscroll, shared by all panels).
+function trackSlot() { const N = Math.max(1, S.tracks.length), avail = H - covTop(); return N > 1 ? Math.max(avail / N, P.trackMinHeight) : avail; }
+function tracksHeight() { return trackSlot() * Math.max(1, S.tracks.length); }
+function clampVScroll() { S.vscroll = Math.max(0, Math.min(tracksHeight() - (H - covTop()), S.vscroll || 0)); }
+function vscrollBy(d) { const v = S.vscroll || 0; S.vscroll = v + d; clampVScroll(); if (S.vscroll !== v) draw(); return S.vscroll - v; }
 function trackGeom(i) {
-  const N = Math.max(1, S.tracks.length), top = covTop(), slot = (H - top) / N, y0 = top + i * slot;
+  const N = Math.max(1, S.tracks.length), top = covTop(), slot = trackSlot(), y0 = top + i * slot - (S.vscroll || 0);
   const hdr = N > 1 ? TRACK_HDR : 0;
   const covH = N > 1 ? Math.max(14, Math.min(P.coverage.height, Math.round((slot - hdr) * 0.3))) : P.coverage.height;
   const ct = y0 + hdr, rt = ct + covH + 6;
@@ -736,12 +743,13 @@ function render() {
   const t0 = performance.now(), tp = {};
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, FULL_W, H);
+  clampVScroll();
   if (GL_OK) { gl.viewport(0, 0, glCanvas.width, glCanvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
   const prev = CUR;
   for (const pn of S.panels) { usePanel(pn); renderPanel(pn, tp); }
   usePanel(S.panels.includes(prev) ? prev : S.active);
   drawPanelFrames();
-  drawMessage();
+  drawMessage(); updateVBar();
   S.stats.drawMs = performance.now() - t0;
   S.stats.parts = tp;
   frameTimes.push(S.stats.drawMs); if (frameTimes.length > 15) frameTimes.shift();
@@ -765,10 +773,12 @@ function renderPanel(pn, tp) {
     gl.uniform2f(GL.u.u_size, vw / DPR, H);
     gl.uniform1f(GL.u.u_mmFade, 1.5);
     gl.enable(gl.SCISSOR_TEST);
+    const clipTop = covTop();
     S.tracks.forEach((T, i) => {
       if (!T.shown || !T.n) return;
-      const g = trackGeom(i);
-      gl.scissor(vx, Math.max(0, Math.floor((H - g.bottom) * DPR)), vw, Math.max(0, Math.floor((g.bottom - g.readsTop) * DPR)));
+      const g = trackGeom(i), y0 = Math.max(g.readsTop, clipTop), y1 = Math.min(g.bottom, H);
+      if (y1 <= y0) return; // scrolled out of sight
+      gl.scissor(vx, Math.max(0, Math.floor((H - y1) * DPR)), vw, Math.max(0, Math.floor((y1 - y0) * DPR)));
       gl.bindVertexArray(T.vao);
       gl.uniform1f(GL.u.u_scroll, T.scroll);
       gl.uniform1f(GL.u.u_top, g.readsTop + groupGap());
@@ -781,8 +791,12 @@ function renderPanel(pn, tp) {
   const part = (k, f) => { f(); const m = performance.now(); add(k, m - tl); tl = m; };
   part('ruler', () => { ctx.save(); ctx.translate(0, panelHdr()); drawRuler(); drawRefTrack(); ctx.restore(); });
   drawRubber();
-  part('coverage', () => S.tracks.forEach((T, i) => drawCoverage(T, trackGeom(i))));
-  part('labels', () => S.tracks.forEach((T, i) => { const g = trackGeom(i); drawTrackHeader(T, i, g); drawReadsOverlay(T, g); }));
+  // tracks: below the ruler only, and only those in sight
+  ctx.save(); ctx.beginPath(); ctx.rect(0, covTop(), pn.w, H - covTop()); ctx.clip();
+  const inSight = i => { const g = trackGeom(i); return g.end > covTop() && g.y0 < H; };
+  part('coverage', () => S.tracks.forEach((T, i) => { if (inSight(i)) drawCoverage(T, trackGeom(i)); }));
+  part('labels', () => S.tracks.forEach((T, i) => { if (!inSight(i)) return; const g = trackGeom(i); drawTrackHeader(T, i, g); drawReadsOverlay(T, g); }));
+  ctx.restore();
   ctx.restore();
 }
 // With several panels: a header over each (its locus and ×, the active one underlined) and a
@@ -1077,7 +1091,7 @@ stage.addEventListener('pointerdown', e => {
   stage.setPointerCapture(e.pointerId);
   if (inRuler(L.y)) { S.rubber = { x0: clampX(L.x), x1: clampX(L.x), moved: false }; draw(); return; }
   const ti = trackAtY(L.y), T = S.tracks[ti];
-  drag = { pn, x: e.clientX, y: e.clientY, sx: S.view.start, T, ti, sc: T ? T.scroll : 0, moved: false, inReads: !!T && L.y > trackGeom(ti).readsTop };
+  drag = { pn, x: e.clientX, y: e.clientY, sx: S.view.start, T, ti, sc: T ? T.scroll : 0, vs: S.vscroll || 0, moved: false, inReads: !!T && L.y > trackGeom(ti).readsTop };
 });
 stage.addEventListener('pointermove', e => {
   const rp = S.panels.find(p => p.rubber);
@@ -1095,6 +1109,7 @@ stage.addEventListener('pointermove', e => {
   if (!drag.moved) return;
   S.view.start = drag.sx - dx * S.view.bpPerPx; clampView();
   if (drag.inReads && S.tracks[drag.ti] === drag.T) { drag.T.scroll = drag.sc - dy; clampTrackScroll(drag.T, drag.ti); }
+  else if (!drag.inReads) { S.vscroll = drag.vs - dy; clampVScroll(); } // over a coverage track or a header: the whole stack moves
   requestLoad(); draw(); syncLocus();
 });
 stage.addEventListener('pointercancel', () => { for (const p of S.panels) p.rubber = null; drag = null; stage.style.cursor = ''; draw(); });
@@ -1123,8 +1138,14 @@ stage.addEventListener('wheel', e => {
   const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY, dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
   if (e.ctrlKey || e.metaKey) { zoomAt(L.x, Math.exp(dy * 0.01)); return; }
   if (e.shiftKey || Math.abs(dx) > Math.abs(dy)) { pan(e.shiftKey ? dy : dx); return; }
-  const ti = trackAtY(L.y); if (ti < 0) return;
-  S.tracks[ti].scroll += dy; clampTrackScroll(S.tracks[ti], ti); draw();
+  // over the reads: the sample's own rows, and once they reach their end, the whole stack of samples;
+  // over coverage or a header: the stack
+  const ti = trackAtY(L.y), T = S.tracks[ti];
+  if (!T || L.y < trackGeom(ti).readsTop) { vscrollBy(dy); return; }
+  const before = T.scroll; T.scroll += dy; clampTrackScroll(T, ti);
+  const rest = dy - (T.scroll - before);
+  if (Math.abs(rest) >= 1) vscrollBy(rest);
+  draw();
 }, { passive: false });
 
 function hitTest(x, y) {
@@ -1295,6 +1316,7 @@ document.addEventListener('keydown', e => {
   usePanel(S.active); // keys act on the active panel
   if (e.key === 'ArrowLeft') pan(-W * 0.15);
   else if (e.key === 'ArrowRight') pan(W * 0.15);
+  else if (e.key === 'PageDown' || e.key === 'PageUp') vscrollBy((e.key === 'PageDown' ? 1 : -1) * (H - covTop()) * 0.9);
   else if (e.key === 'ArrowUp') { for (const T of S.tracks) T.scroll -= 60; clampScroll(); draw(); }
   else if (e.key === 'ArrowDown') { for (const T of S.tracks) T.scroll += 60; clampScroll(); draw(); }
   else if (e.key === '+' || e.key === '=') zoomAt(W / 2, 0.5);
@@ -1311,6 +1333,26 @@ function sortHere() {
   if (P.sortBy === 'start') { P.sortBy = 'base'; syncPanel(); saveProfile(); }
   rebuild(); draw();
 }
+
+// ======================= Scrollbar of the sample stack =======================
+const vbar = $('vbar'), vthumb = vbar.firstElementChild;
+function vbarGeom() { const avail = H - covTop(), total = tracksHeight(), th = Math.max(24, avail * avail / total); return { avail, total, th }; }
+function updateVBar() {
+  const { avail, total, th } = vbarGeom(), on = S.tracks.length > 1 && total > avail + 1;
+  vbar.hidden = !on; if (!on) return;
+  vbar.style.top = covTop() + 'px'; vbar.style.height = avail + 'px';
+  vthumb.style.height = th + 'px'; vthumb.style.top = (avail - th) * (S.vscroll || 0) / (total - avail) + 'px';
+}
+let vdrag = null;
+vthumb.addEventListener('pointerdown', e => { e.stopPropagation(); vthumb.setPointerCapture(e.pointerId); vdrag = { y: e.clientY, v: S.vscroll || 0 }; });
+vthumb.addEventListener('pointermove', e => {
+  if (!vdrag) return;
+  const { avail, total, th } = vbarGeom();
+  S.vscroll = vdrag.v + (e.clientY - vdrag.y) * (total - avail) / Math.max(1, avail - th); clampVScroll(); draw();
+});
+vthumb.addEventListener('pointerup', () => { vdrag = null; });
+// a click on the bar beside the thumb moves a page that way
+vbar.addEventListener('pointerdown', e => { if (e.target !== vbar) return; const r = vthumb.getBoundingClientRect(); vscrollBy((e.clientY < r.top ? -1 : 1) * (H - covTop()) * 0.9); });
 
 // ======================= Size =======================
 function resize() {
@@ -1711,7 +1753,7 @@ const CONTROLS = [
   ['minMapq', 'filters.minMapq', 'num', 'reload'], ['hideDup', 'filters.hideDuplicates', 'bool', 'reload'],
   ['hideSec', 'filters.hideSecondary', 'bool', 'reload'], ['hideSupp', 'filters.hideSupplementary', 'bool', 'reload'], ['hideQc', 'filters.hideQcFail', 'bool', 'reload'],
   ['dsOn', 'downsample.enabled', 'bool', 'reload'], ['dsMax', 'downsample.maxReads', 'num', 'reload'], ['dsWin', 'downsample.window', 'num', 'reload'],
-  ['covHeight', 'coverage.height', 'num', 'draw'], ['alleleThr', 'coverage.alleleThreshold', 'num', 'rebuild'],
+  ['covHeight', 'coverage.height', 'num', 'draw'], ['trackMinH', 'trackMinHeight', 'num', 'draw'], ['alleleThr', 'coverage.alleleThreshold', 'num', 'rebuild'],
   ['hideToolbar', 'hideToolbar', 'bool', 'chrome'], ['language', 'language', 'str', 'lang'],
 ];
 const getPath = (o, p) => p.split('.').reduce((a, k) => a[k], o);
@@ -1722,6 +1764,7 @@ function syncPanel() {
   $('mqMinAlphaOut').textContent = Math.round(P.mapqAlpha.minAlpha * 100) + '%';
   $('alleleThrOut').textContent = Math.round(P.coverage.alleleThreshold * 100) + '%';
   $('covHeightOut').textContent = P.coverage.height + ' px';
+  $('trackMinHOut').textContent = P.trackMinHeight + ' px';
   $('groupTagRow').hidden = P.groupBy !== 'tag';
   $('profileJson').value = JSON.stringify(P, null, 2);
   updateMqLegend();
