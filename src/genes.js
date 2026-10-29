@@ -79,4 +79,18 @@ function txPart(tx, pos) {
   return null;
 }
 
-if (typeof module !== 'undefined') module.exports = { GENES, parseGenes, genesIn, findGene, geneSuggest, txPart };
+// ---- Chromosome bands (GRCh38, bundled: data/cytoband.grch38.tsv) for the chromosome map ----
+const CYTO = new Map(); // contig key → [{ s, e, name, stain }]
+function parseCyto(text) {
+  for (const line of text.split('\n')) {
+    if (!line || line[0] === '#') continue;
+    const f = line.split('\t'); if (f.length < 5) continue;
+    const s = +f[1], e = +f[2]; if (!Number.isSafeInteger(s) || !Number.isSafeInteger(e) || e <= s) continue;
+    const k = geneChrKey(f[0]); let a = CYTO.get(k); if (!a) CYTO.set(k, a = []);
+    a.push({ s, e, name: f[3], stain: f[4] });
+  }
+}
+function cytoIn(contig) { return CYTO.get(geneChrKey(contig)) || null; }
+function cytoBandAt(contig, pos) { const a = cytoIn(contig); if (!a) return null; const b = a.find(x => pos >= x.s && pos < x.e); return b ? b.name : null; }
+
+if (typeof module !== 'undefined') module.exports = { CYTO, parseCyto, cytoIn, cytoBandAt, GENES, parseGenes, genesIn, findGene, geneSuggest, txPart };

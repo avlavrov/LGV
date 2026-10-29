@@ -118,7 +118,10 @@ function makeTrack(o) {
 }
 // As many panels as fit at a useful width, and never fewer than 6.
 function maxPanels() { return Math.max(6, Math.floor((FULL_W + PANEL_GAP) / (PANEL_MIN_W + PANEL_GAP))); }
-function panelHdr() { return S.panels.length > 1 ? PANEL_HDR : 0; }
+// The chromosome map runs across the top; panel headers (with several panels) come under it.
+const IDEO_H = 30;
+function ideoH() { return S.contigs ? IDEO_H : 0; }
+function panelHdr() { return ideoH() + (S.panels.length > 1 ? PANEL_HDR : 0); }
 // Places the panels side by side over the full width. keepSpan: each panel keeps the stretch of
 // genome it shows (panels added or closed); otherwise it keeps its scale (the window was resized).
 function layoutPanels(keepSpan) {
@@ -265,12 +268,27 @@ function initGL() {
     // and a fraction, so the subtraction stays exact in 32-bit floats even far into a large window
     float px0 = ((a_x.x - u_viewInt) - u_viewFrac) / u_bpPerPx;
     float px1 = ((a_x.y - u_viewInt) - u_viewFrac) / u_bpPerPx;
-    if (px1 - px0 < minpx) { float c = (px0 + px1) * 0.5; px0 = c - minpx * 0.5; px1 = c + minpx * 0.5; }
     float h = max(u_rowH - u_gap, 1.0);
     float y0 = u_top + a_x.z * u_rowH + a_x.w * u_grpGap - u_scroll;
     float ya = y0 + h * a_y.x, yb = y0 + h * a_y.y;
     if (yb - ya < 1.0) yb = ya + 1.0;
-    float x = mix(px0, px1, a_corner.x), y = mix(ya, yb, a_corner.y);
+    float x, y;
+    if (a_y.z >= 499.0) {
+      // strand arrow, as in IGV: a corner cut off the read's 3' end in the background color, so the
+      // end comes to a point. 500/501: right end (forward read), top/bottom corner; 502/503: left end.
+      // x0, x1: the read's extent; the cut is at most half the row high and a quarter of the read long.
+      float code = a_y.z - 500.0, right = code < 1.5 ? 1.0 : 0.0, bottom = mod(code, 2.0);
+      float w = min(h * 0.45, (px1 - px0) * 0.25);
+      float e = right > 0.5 ? px1 : px0, dir = right > 0.5 ? -1.0 : 1.0;
+      float edge = bottom > 0.5 ? yb : ya, mid = (ya + yb) * 0.5;
+      if (w < 1.5 || h < 4.0) w = 0.0;
+      // triangle (e + dir*w, edge), (e, edge), (e, mid); the 4th corner repeats the 3rd
+      x = a_corner.y > 0.5 ? e : (a_corner.x < 0.5 ? e + dir * w : e);
+      y = a_corner.y > 0.5 ? mid : edge;
+    } else {
+      if (px1 - px0 < minpx) { float c = (px0 + px1) * 0.5; px0 = c - minpx * 0.5; px1 = c + minpx * 0.5; }
+      x = mix(px0, px1, a_corner.x); y = mix(ya, yb, a_corner.y);
+    }
     gl_Position = vec4(x / u_size.x * 2.0 - 1.0, 1.0 - y / u_size.y * 2.0, 0.0, 1.0);
     v_color = vec4(a_color.rgb, a_color.a * fade);
   }`;
@@ -478,6 +496,13 @@ function rebuildTrack(T) {
     if (u.reads.length !== 2) continue;
     const [p, q] = u.reads, o0 = Math.max(p.pos, q.pos), o1 = Math.min(p.end, q.end);
     if (o1 > o0) ib.add(o0 - d.start, o1 - d.start, R, gi, 0, 1, 1, COL.overlap, 0.22);
+  }
+  // strand arrows last: the 3' end of every read is cut to a point (seen when the row is tall enough)
+  const bgc = hexToRgb(COL.css.bg);
+  for (const [rec, R, gi] of bodies) {
+    const [e0, e1] = readExtent(rec, P.showSoftClips), c = rec.flag & F_REV ? 502 : 500;
+    ib.add(e0 - d.start, e1 - d.start, R, gi, 0, 1, c, bgc, 1);
+    ib.add(e0 - d.start, e1 - d.start, R, gi, 0, 1, c + 1, bgc, 1);
   }
   T.shown = { reads, cov, groups, totalRows: rowCursor, sampled, total: td.total };
   if (GL_OK) {
@@ -762,6 +787,7 @@ function render() {
   for (const pn of S.panels) { usePanel(pn); renderPanel(pn, tp); }
   usePanel(S.panels.includes(prev) ? prev : S.active);
   drawPanelFrames();
+  drawIdeogram();
   drawMessage(); updateVBar();
   S.stats.drawMs = performance.now() - t0;
   S.stats.parts = tp;
@@ -820,16 +846,19 @@ function drawPanelFrames() {
   const prev = CUR;
   for (const pn of S.panels) {
     usePanel(pn);
-    const x = pn.x0, w = pn.w, act = pn === S.active;
+    const x = pn.x0, w = pn.w, act = pn === S.active, y0 = ideoH();
+    ctx.save(); ctx.translate(0, y0);
     ctx.fillStyle = COL.css.panel; ctx.fillRect(x, 0, w, PANEL_HDR - 1);
     if (act) { ctx.fillStyle = COL.css.accent; ctx.fillRect(x, PANEL_HDR - 3, w, 2); }
     ctx.font = (act ? '600 ' : '') + '11px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = act ? COL.css.fg : COL.css.muted;
-    let label = locusText(); const maxW = w - 30;
-    if (ctx.measureText(label).width > maxW) label = S.contigs[S.view.refId].name + ':' + fmtInt(Math.round(viewCenter()) + 1);
+    const num = S.panels.indexOf(pn) + 1 + '  '; // the same number marks the panel on the chromosome map
+    let label = num + locusText(); const maxW = w - 30;
+    if (ctx.measureText(label).width > maxW) label = num + S.contigs[S.view.refId].name + ':' + fmtInt(Math.round(viewCenter()) + 1);
     while (label.length > 2 && ctx.measureText(label).width > maxW) label = label.slice(0, -2);
     ctx.fillText(label, x + w / 2 - 6, PANEL_HDR / 2);
     ctx.font = '13px ' + SANS; ctx.fillStyle = COL.css.muted; ctx.fillText('×', x + w - 10, PANEL_HDR / 2);
     if (pn !== S.panels[0]) { ctx.fillStyle = COL.css.fg; ctx.globalAlpha = 0.3; ctx.fillRect(x - PANEL_GAP / 2 - 0.5, 0, 1, H); ctx.globalAlpha = 1; }
+    ctx.restore();
   }
   usePanel(S.panels.includes(prev) ? prev : S.active);
   ctx.textBaseline = 'alphabetic';
@@ -1107,8 +1136,10 @@ const inRuler = y => y >= panelHdr() && y < geneTop();
 const inGenes = y => geneH() > 0 && y >= geneTop() && y < geneTop() + GENE_H;
 const clampX = x => Math.max(0, Math.min(W, x));
 function setActive(pn) { if (S.active !== pn) { S.active = pn; syncLocus(); draw(); } }
+let ideoDrag = false;
 stage.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !S.contigs || !onCanvas(e)) return;
+  if (e.offsetY < ideoH()) { stage.setPointerCapture(e.pointerId); ideoDrag = true; ideoGo(e.offsetX); return; } // the chromosome map
   const L = local(e), pn = L.pn;
   setActive(pn);
   if (L.y < panelHdr()) { if (L.x > W - 22) closePanel(pn); return; } // a panel's header: × closes it
@@ -1118,6 +1149,7 @@ stage.addEventListener('pointerdown', e => {
   drag = { pn, x: e.clientX, y: e.clientY, sx: S.view.start, T, ti, sc: T ? T.scroll : 0, vs: S.vscroll || 0, moved: false, inReads: !!T && L.y > trackGeom(ti).readsTop };
 });
 stage.addEventListener('pointermove', e => {
+  if (ideoDrag) { ideoGo(e.offsetX); return; }
   const rp = S.panels.find(p => p.rubber);
   if (rp) {
     usePanel(rp);
@@ -1125,7 +1157,7 @@ stage.addEventListener('pointermove', e => {
     if (Math.abs(S.rubber.x1 - S.rubber.x0) > 3) S.rubber.moved = true;
     draw(); return;
   }
-  if (!drag) { if (!S.contigs || !onCanvas(e)) { stage.style.cursor = ''; return; } const L = local(e); stage.style.cursor = inRuler(L.y) ? 'crosshair' : L.y < panelHdr() && L.x > W - 22 ? 'pointer' : ''; return; }
+  if (!drag) { if (!S.contigs || !onCanvas(e)) { stage.style.cursor = ''; return; } if (e.offsetY < ideoH()) { stage.style.cursor = 'pointer'; return; } const L = local(e); stage.style.cursor = inRuler(L.y) ? 'crosshair' : L.y < panelHdr() && L.x > W - 22 ? 'pointer' : ''; return; }
   if (!S.panels.includes(drag.pn)) { drag = null; return; }
   usePanel(drag.pn);
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -1136,8 +1168,10 @@ stage.addEventListener('pointermove', e => {
   else if (!drag.inReads) { S.vscroll = drag.vs - dy; clampVScroll(); } // over a coverage track or a header: the whole stack moves
   requestLoad(); draw(); syncLocus();
 });
+stage.addEventListener('pointercancel', () => { ideoDrag = false; });
 stage.addEventListener('pointercancel', () => { for (const p of S.panels) p.rubber = null; drag = null; stage.style.cursor = ''; draw(); });
 stage.addEventListener('pointerup', e => {
+  if (ideoDrag) { ideoDrag = false; return; }
   const rp = S.panels.find(p => p.rubber);
   if (rp) {
     usePanel(rp);
@@ -1515,9 +1549,50 @@ function pairBams(files) {
 }
 // Files chosen or dropped: any number of samples (each with its index) and optionally a reference.
 // A folder with several samples first lists them, so a whole run directory is not opened at once.
-function openLocalFiles(fileList, fromFolder) {
+// ---- The index next to a chosen file (File System Access: Chrome, Edge) ----
+// A web page reads only the files the user picks. Where the browser can grant a folder, choosing just
+// the .bam or .cram is enough: CGV asks once to read its folder and takes the index from there.
+// Granted folders are read-only and kept for this session only (never stored), so later files from
+// the same folder open without asking again.
+const FSA = typeof showOpenFilePicker === 'function' && typeof showDirectoryPicker === 'function';
+const grantedDirs = [];
+// Is this the folder the file came from? Same name, size and modification time.
+async function dirHolds(dir, f) {
+  try { const g = await (await dir.getFileHandle(f.name)).getFile(); return g.size === f.size && g.lastModified === f.lastModified; } catch (e) { return false; }
+}
+// The index of an alignment file in a granted folder, by the same names as pairBams.
+async function indexInDirs(f) {
+  const n = f.name.toLowerCase(), ext = alnExt(n); if (!ext) return null;
+  const want = [n + IDX_EXT[ext], n.slice(0, -ext.length) + IDX_EXT[ext]];
+  for (const dir of grantedDirs) {
+    if (!(await dirHolds(dir, f))) continue;
+    for await (const [name, h] of dir.entries()) if (h.kind === 'file' && want.includes(name.toLowerCase())) return h.getFile();
+  }
+  return null;
+}
+// Asks for the folder of the files left without an index; the picker opens in that folder.
+function askFolder(missing, files, fromFolder) {
+  const el = $('toast'), withHandle = missing.find(f => f._h);
+  el.innerHTML = `<span>${esc(t('files.askFolder', { names: missing.map(f => f.name).join(', ') }))}</span> <button class="btn primary" id="allowDir">${esc(t('files.allowFolder'))}</button><button class="toast-x" aria-label="${esc(t('btn.close'))}">×</button>`;
+  el.hidden = false; clearTimeout(toastTimer);
+  $('allowDir').onclick = async ev => {
+    ev.stopPropagation(); el.hidden = true;
+    let dir;
+    try { dir = await showDirectoryPicker({ id: 'cgv-data', mode: 'read', startIn: withHandle ? withHandle._h : 'documents' }); }
+    catch (e) { return; } // closed without choosing
+    if (!(await dirHolds(dir, missing[0]))) { toast(t('files.dirWrong', { name: missing[0].name }), true); return; }
+    grantedDirs.push(dir);
+    openLocalFiles(files, fromFolder);
+  };
+}
+async function openLocalFiles(fileList, fromFolder) {
   const files = [...fileList], L = f => f.name.toLowerCase();
   $('toast').hidden = true; // a message about an earlier choice no longer applies
+  if (FSA) { // indexes from folders this session can already read
+    for (const f of pairBams(files).missing) { const idx = await indexInDirs(f); if (idx) files.push(idx); }
+    const left = pairBams(files).missing;
+    if (left.length && left.some(f => f._h)) { askFolder(left, files, fromFolder); return; }
+  }
   const { bams, pairs, missing } = pairBams(files);
   const ref = pickRefFiles(files);
   if (!bams.length) {
@@ -1561,8 +1636,14 @@ function showFolderList(files, pairs, missing) {
 }
 // Files of a dropped folder (and its subfolders, a few levels deep).
 async function droppedFiles(dt) {
+  // handles must be asked for during the drop event itself; they let CGV find an index next to a file
+  const hp = [...dt.items].map(it => it.kind === 'file' && it.getAsFileSystemHandle ? it.getAsFileSystemHandle().catch(() => null) : null);
   const entries = [...dt.items].map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
-  if (!entries.some(e => e.isDirectory)) return { files: [...dt.files], folder: false };
+  if (!entries.some(e => e.isDirectory)) {
+    const files = [...dt.files], hs = await Promise.all(hp);
+    hs.forEach(h => { if (!h) return; if (h.kind === 'directory') grantedDirs.push(h); else { const f = files.find(x => x.name === h.name); if (f) f._h = h; } });
+    return { files, folder: false };
+  }
   const out = [];
   const walk = async (e, depth) => {
     if (e.isFile) { out.push(await new Promise((res, rej) => e.file(res, rej))); return; }
@@ -1744,6 +1825,16 @@ $('viewBtn').onclick = () => togglePanel('panel', $('viewBtn'));
 $('openBtn').onclick = () => togglePanel('openPanel', $('openBtn'));
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = closePanels);
 $('pickFiles').onchange = e => { if (e.target.files.length) openLocalFiles(e.target.files); e.target.value = ''; };
+// Chrome, Edge: the browser's own file picker with handles, so the folder can be asked for when needed
+document.querySelectorAll('label[for="pickFiles"]').forEach(lb => lb.addEventListener('click', async e => {
+  if (!FSA) return;
+  e.preventDefault();
+  let hs;
+  try { hs = await showOpenFilePicker({ multiple: true, id: 'cgv-data' }); }
+  catch (err) { if (err.name !== 'AbortError') $('pickFiles').click(); return; } // not allowed here (an embedded page): the plain picker
+  const files = await Promise.all(hs.map(async h => { const f = await h.getFile(); f._h = h; return f; }));
+  openLocalFiles(files);
+}));
 $('pickFolder').onchange = e => { if (e.target.files.length) openLocalFiles(e.target.files, true); e.target.value = ''; };
 $('openUrl').onclick = openUrls;
 $('openDemo').onclick = () => { openDemo(); closePanels(); };
@@ -1927,9 +2018,66 @@ function updateGeneSuggest() {
 }
 $('locus').addEventListener('input', updateGeneSuggest);
 
+// ======================= Chromosome map =======================
+// The chromosome of every panel, side by side across the top when panels show different ones, with
+// a red box where each panel is (numbered like the panel headers; the active panel's box filled).
+// GRCh38 has its bands and centromere; other genomes get a plain bar. A click or drag moves the
+// active panel there.
+const IDEO = { segs: [] };
+const STAIN = { gneg: 0.02, gpos25: 0.28, gpos50: 0.48, gpos75: 0.68, gpos100: 0.86, gvar: 0.36, stalk: 0.3 };
+function drawIdeogram() {
+  IDEO.segs = [];
+  if (!ideoH()) return;
+  const chroms = []; for (const pn of S.panels) if (!chroms.includes(pn.view.refId)) chroms.push(pn.view.refId);
+  const k = chroms.length, gap = 14, segW = (FULL_W - gap * (k - 1)) / k;
+  const bg = hexToRgb(COL.css.bg), fg = hexToRgb(COL.css.fg), mix = d => `rgb(${bg.map((c, i) => Math.round(c + (fg[i] - c) * d)).join(' ')})`;
+  ctx.save();
+  ctx.fillStyle = COL.css.bg; ctx.fillRect(0, 0, FULL_W, IDEO_H);
+  chroms.forEach((rid, j) => {
+    const x = j * (segW + gap), name = S.contigs[rid].name, len = S.contigs[rid].len;
+    ctx.font = '600 11px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL.css.fg;
+    const lw = Math.min(ctx.measureText(name).width + 10, segW * 0.35);
+    ctx.save(); ctx.beginPath(); ctx.rect(x, 0, lw - 4, IDEO_H); ctx.clip(); ctx.fillText(name, x + 4, 19); ctx.restore();
+    const bx = x + lw, bw = Math.max(8, segW - lw - 6), by = 13, bh = 12;
+    const bands = genesActive() ? cytoIn(name) : null;
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, bh / 2); ctx.clip();
+    ctx.fillStyle = mix(STAIN.gneg); ctx.fillRect(bx, by, bw, bh);
+    if (bands) for (const b of bands) {
+      const x0 = bx + b.s / len * bw, x1 = bx + b.e / len * bw;
+      if (b.stain === 'acen') { ctx.fillStyle = '#c4544e'; ctx.fillRect(x0, by + 3, Math.max(0.5, x1 - x0), bh - 6); ctx.fillStyle = COL.css.bg; ctx.fillRect(x0, by, x1 - x0, 3); ctx.fillRect(x0, by + bh - 3, x1 - x0, 3); continue; }
+      if (b.stain === 'gneg') continue;
+      ctx.fillStyle = mix(STAIN[b.stain] ?? 0.4); ctx.fillRect(x0, by, Math.max(0.5, x1 - x0), bh);
+    }
+    ctx.restore();
+    ctx.strokeStyle = mix(0.55); ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(bx + 0.5, by + 0.5, bw - 1, bh - 1, bh / 2); ctx.stroke();
+    // where the panels are
+    S.panels.forEach((pn, i) => {
+      if (pn.view.refId !== rid) return;
+      const s = Math.max(0, pn.view.start), e = Math.min(len, pn.view.start + pn.w * pn.view.bpPerPx);
+      let m0 = bx + s / len * bw, m1 = bx + e / len * bw;
+      if (m1 - m0 < 3) { const c = (m0 + m1) / 2; m0 = c - 1.5; m1 = c + 1.5; }
+      ctx.strokeStyle = '#e0312b'; ctx.lineWidth = 2; ctx.strokeRect(m0, by - 2, m1 - m0, bh + 4);
+      if (pn === S.active) { ctx.fillStyle = 'rgb(224 49 43 / .28)'; ctx.fillRect(m0, by - 2, m1 - m0, bh + 4); }
+      if (S.panels.length > 1) { ctx.font = '700 9px ' + SANS; ctx.textAlign = 'center'; ctx.fillStyle = '#e0312b'; ctx.fillText(String(i + 1), (m0 + m1) / 2, 6); }
+    });
+    IDEO.segs.push({ rid, x, w: segW, bx, bw, len });
+  });
+  ctx.strokeStyle = COL.css.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, IDEO_H - 0.5); ctx.lineTo(FULL_W, IDEO_H - 0.5); ctx.stroke();
+  ctx.restore();
+}
+// A click or drag on the map: the active panel moves there (to that chromosome if it is another one).
+function ideoGo(x) {
+  const seg = IDEO.segs.find(g => x >= g.x && x < g.x + g.w + 14) || IDEO.segs[IDEO.segs.length - 1]; if (!seg) return;
+  usePanel(S.active);
+  const pos = Math.max(0, Math.min(seg.len, (x - seg.bx) / seg.bw * seg.len)), span = W * S.view.bpPerPx;
+  goto(seg.rid, pos - span / 2, pos + span / 2);
+}
+
 // ======================= Startup =======================
 // The bundled genes load in the background; the chosen reference (GRCh38 by default) opens.
 async function startup() {
+  const cyto = $('cgv-cyto'); if (cyto) parseCyto(cyto.textContent);
   const mane = $('cgv-mane');
   if (mane && mane.textContent.trim()) loadGenes(mane.textContent.trim()).then(() => { S._g38 = null; draw(); }).catch(e => console.error(e));
   const what = P.startReference;

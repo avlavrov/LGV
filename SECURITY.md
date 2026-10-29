@@ -18,7 +18,9 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
    computer. No telemetry, no CDN, no
    fonts from the web. The local build carries a strict Content Security Policy
    (`default-src 'none'`, no `unsafe-eval`, connections only over HTTPS or to this computer).
-5. **Storage only for the display profile.** Tokens and links are never saved.
+5. **Storage only for the display profile.** Tokens and links are never saved. Folders the user lets CGV read
+   (Chrome, Edge: to find the index next to a chosen file) are read only and kept in memory for the
+   session; they are never stored.
 6. **Every file is untrusted.** Parsers check every read against the data's bounds, check sizes from
    the file against limits before allocating, verify checksums where the format has them, and turn
    any damage into a clear error instead of a crash or a hang. Heavy reading runs in Web Workers.
@@ -97,6 +99,7 @@ Every reader of file data outside CRAM was reviewed line by line and fuzzed the 
 
 | Data | Source | Version | Terms | Use |
 | --- | --- | --- | --- | --- |
+| Chromosome bands, GRCh38 (`data/cytoband.grch38.tsv`) | ideogram by Eric Weitz, `data/bands/native/homo-sapiens.json` | 850-band resolution, NCBI | CC0 (public domain) | chromosome map |
 | MANE Select and MANE Plus Clinical transcripts, GRCh38 (`data/mane.grch38.tsv`, made by `tools/make-mane.py`) | MANE summary (NCBI / EMBL-EBI) and Ensembl 111 exon coordinates, as exported by genome-nexus-importer (`data/common_input/MANE.GRCh38.v1.2.summary.txt`, `data/grch38_ensembl111/export/ensembl_biomart_transcripts.json.gz`) | MANE v1.2 | public data, no restrictions (NCBI, Ensembl) | gene track and gene search; all 19,268 transcripts on chr1–22, X, Y; every Ensembl transcript version matched the MANE summary |
 
 ## Code from others

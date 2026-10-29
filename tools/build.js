@@ -8,6 +8,7 @@ const safe = s => s.replace(/<\/script/gi, '<\\/script');
 let html = fs.readFileSync(R('src/index.html'), 'utf8');
 html = html.replace('/*DEMO*/', () => demo).replace('/*I18N*/', () => safe(fs.readFileSync(R('src/i18n.js'), 'utf8'))).replace('/*CORE*/', () => safe(fs.readFileSync(R('src/core.js'), 'utf8') + '\n' + fs.readFileSync(R('src/compress.js'), 'utf8') + '\n' + fs.readFileSync(R('src/htscodecs.js'), 'utf8') + '\n' + fs.readFileSync(R('src/cram.js'), 'utf8'))).replace('/*APP*/', () => safe(fs.readFileSync(R('src/genes.js'), 'utf8') + '\n' + fs.readFileSync(R('src/app.js'), 'utf8')))
   // MANE transcripts (data/mane.grch38.tsv), gzip + base64: read by src/genes.js at start
+  .replace('/*CYTO*/', () => safe(fs.readFileSync(R('data/cytoband.grch38.tsv'), 'utf8')))
   .replace('/*MANE*/', () => require('zlib').gzipSync(fs.readFileSync(R('data/mane.grch38.tsv')), { level: 9 }).toString('base64'));
 fs.mkdirSync(R('dist'), { recursive: true });
 // for claude.ai: no <html>/<head> of its own — the platform adds them
