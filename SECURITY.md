@@ -12,7 +12,10 @@ user chose and the user's device.** CGV sends nothing anywhere by itself.
 3. **Text from files is text.** Read names, tags, sample names and file names are shown with
    `textContent` or passed through `esc()`; HTML is built from strings only in a few reviewed places.
 4. **Network only to what the user gave.** The only network call is `UrlSource` reading the links the
-   user typed (plus the public reference presets when the user picks one). No telemetry, no CDN, no
+   user typed, plus the public reference presets: GRCh38 opens at start by default (sequence only,
+   from the IGV team's public bucket; View → "At start open" changes it or turns it off). Gene search
+   needs no network: the MANE gene table is bundled with CGV, so typed gene names never leave the
+   computer. No telemetry, no CDN, no
    fonts from the web. The local build carries a strict Content Security Policy
    (`default-src 'none'`, no `unsafe-eval`, connections only over HTTPS or to this computer).
 5. **Storage only for the display profile.** Tokens and links are never saved.
@@ -89,6 +92,12 @@ Every reader of file data outside CRAM was reviewed line by line and fuzzed the 
   campaign in the tests (the audit fails if one is removed).
 - Found while fixing: a record without a stored sequence (SEQ `*`, common for secondary alignments)
   was drawn with every base as a mismatch; it now shows no mismatches.
+
+## Data from others
+
+| Data | Source | Version | Terms | Use |
+| --- | --- | --- | --- | --- |
+| MANE Select and MANE Plus Clinical transcripts, GRCh38 (`data/mane.grch38.tsv`, made by `tools/make-mane.py`) | MANE summary (NCBI / EMBL-EBI) and Ensembl 111 exon coordinates, as exported by genome-nexus-importer (`data/common_input/MANE.GRCh38.v1.2.summary.txt`, `data/grch38_ensembl111/export/ensembl_biomart_transcripts.json.gz`) | MANE v1.2 | public data, no restrictions (NCBI, Ensembl) | gene track and gene search; all 19,268 transcripts on chr1–22, X, Y; every Ensembl transcript version matched the MANE summary |
 
 ## Code from others
 

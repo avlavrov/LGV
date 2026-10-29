@@ -15,7 +15,9 @@ const DEFAULT_PROFILE = {
   filters: { minMapq: 0, hideDuplicates: true, hideSecondary: true, hideSupplementary: false, hideQcFail: true },
   showSoftClips: true,
   coverage: { height: 56, alleleThreshold: 0.2 },
-  trackMinHeight: 240,           // px: with many samples each keeps at least this height; the view scrolls
+  trackMinHeight: 240,
+  showGenes: true,               // MANE transcripts under the reference (GRCh38 only)
+  startReference: 'hg38',        // opened at start: hg38 | hg19 | chm13 | demo | none           // px: with many samples each keeps at least this height; the view scrolls
   downsample: { enabled: true, maxReads: 100, window: 50 }, // like IGV: reads kept per window; coverage counts all
   maxReads: 300000,
   maxLoadMB: 64,                 // windows with more compressed alignment data ask before loading
@@ -42,7 +44,7 @@ const PROFILE_RULES = {
   readHeight: [1, 24], 'mapqAlpha.low': [0, 255], 'mapqAlpha.high': [0, 255], 'mapqAlpha.minAlpha': [0, 1],
   'filters.minMapq': [0, 255], 'coverage.height': [14, 400], 'coverage.alleleThreshold': [0, 1],
   'downsample.maxReads': [1, 100000], 'downsample.window': [1, 1000000], maxReads: [1000, 5000000],
-  maxLoadMB: [1, 4096], trackMinHeight: [80, 2000], 'pairs.maxSpan': [0, 10000000], version: [0, 1000],
+  maxLoadMB: [1, 4096], trackMinHeight: [80, 2000], startReference: ['hg38', 'hg19', 'chm13', 'demo', 'none'], 'pairs.maxSpan': [0, 10000000], version: [0, 1000],
   colorBy: ['none', 'strand', 'pair', 'tag'], groupBy: ['none', 'strand', 'pair', 'tag', 'firstOfPair'],
   sortBy: ['start', 'base', 'mapq', 'strand', 'insert'], language: ['en', 'ru'],
   colorTag: /^[A-Za-z][A-Za-z0-9]$/, groupTag: /^[A-Za-z][A-Za-z0-9]$/,
@@ -188,7 +190,18 @@ let W = 0, H = 0, DPR = 1, FULL_W = 0; // W: width of the current panel; FULL_W:
 
 // track geometry (CSS px)
 const RULER_H = 26, REF_H = 14, TRACK_HDR = 18;
-function covTop() { return panelHdr() + RULER_H + REF_H + 4; } // where the tracks begin
+function covTop() { return panelHdr() + RULER_H + REF_H + geneH() + 4; } // where the tracks begin
+// ---- gene track (MANE, GRCh38): a fixed band under the reference sequence ----
+const GENE_ROW = 21, GENE_H = 2 * GENE_ROW + 4;
+// The bundled genes are GRCh38: shown only when the coordinates are GRCh38 (chr1 of its length).
+function genesActive() {
+  if (!GENES.ready || !S.contigs) return false;
+  if (S._g38 && S._g38[0] === S.contigs) return S._g38[1];
+  const i = contigId('chr1'), on = i >= 0 && S.contigs[i].len === 248956422;
+  S._g38 = [S.contigs, on]; return on;
+}
+function geneH() { return P.showGenes && genesActive() ? GENE_H : 0; }
+function geneTop() { return panelHdr() + RULER_H + REF_H + 2; }
 function groupGap() { return P.groupBy === 'none' ? 0 : 20; }
 // Vertical place of track i: the space under the ruler is shared equally. With one track there is
 // no header and the layout is the same as before tracks existed.
@@ -219,7 +232,7 @@ function readColors() {
   const cs = getComputedStyle(document.documentElement);
   const g = n => cs.getPropertyValue(n).trim();
   COL = {
-    css: { bg: g('--bg'), fg: g('--fg'), muted: g('--muted'), line: g('--line'), cov: g('--cov'), accent: g('--accent'), panel: g('--panel') },
+    css: { bg: g('--bg'), fg: g('--fg'), muted: g('--muted'), line: g('--line'), cov: g('--cov'), accent: g('--accent'), panel: g('--panel'), gene: g('--gene'), geneClin: g('--gene-clin') },
     read: hexToRgb(g('--read')), fwd: hexToRgb(g('--read-fwd')), rev: hexToRgb(g('--read-rev')),
     del: hexToRgb(g('--del')), skip: hexToRgb(g('--muted')), ins: hexToRgb(g('--ins')), clip: hexToRgb(g('--clip')),
     big: hexToRgb(g('--pair-large')), small: hexToRgb(g('--pair-small')), rf: hexToRgb(g('--pair-rf')), ff: hexToRgb(g('--pair-ff')), mu: hexToRgb(g('--pair-unmapped')),
@@ -789,7 +802,7 @@ function renderPanel(pn, tp) {
   let n = performance.now(); add('reads', n - tl); tl = n;
   ctx.save(); ctx.translate(pn.x0, 0); ctx.beginPath(); ctx.rect(0, 0, pn.w, H); ctx.clip();
   const part = (k, f) => { f(); const m = performance.now(); add(k, m - tl); tl = m; };
-  part('ruler', () => { ctx.save(); ctx.translate(0, panelHdr()); drawRuler(); drawRefTrack(); ctx.restore(); });
+  part('ruler', () => { ctx.save(); ctx.translate(0, panelHdr()); drawRuler(); drawRefTrack(); ctx.restore(); drawGenes(pn); });
   drawRubber();
   // tracks: below the ruler only, and only those in sight
   ctx.save(); ctx.beginPath(); ctx.rect(0, covTop(), pn.w, H - covTop()); ctx.clip();
@@ -1046,7 +1059,17 @@ function parseLocus(str) {
   str = str.trim().replace(/[  \s]/g, '').replace(/[–—]/g, '-');
   const m = str.match(/^([^:]+?)(?::([\d,.]+)(?:-([\d,.]+))?)?$/);
   if (!m) return null;
-  const id = contigId(m[1]); if (id < 0) return { error: t('locus.noContig', { name: m[1] }) };
+  const id = contigId(m[1]);
+  if (id < 0) {
+    // not a contig: a gene symbol or a MANE transcript id (ENST…, NM_…)
+    if (!m[2] && GENES.ready) {
+      const tx = findGene(m[1])[0];
+      if (tx && !genesActive()) return { error: t('locus.genesGrch38') };
+      const gid = tx ? contigId(tx.chr) : -1;
+      if (gid >= 0) { const pad = Math.max(50, Math.round((tx.end - tx.start) * 0.05)); return { id: gid, s: Math.max(0, tx.start - pad), e: Math.min(S.contigs[gid].len, tx.end + pad), gene: tx }; }
+    }
+    return { error: t(GENES.ready ? 'locus.noContigGene' : 'locus.noContig', { name: m[1] }) };
+  }
   const num = x => parseInt(x.replace(/[,.]/g, ''), 10);
   const L = S.contigs[id].len;
   if (!m[2]) return { id, s: 0, e: L };
@@ -1080,7 +1103,8 @@ let drag = null;
 const onCanvas = e => e.target === ov;
 // The ruler band (coordinates + reference bases): drag selects a region to zoom into, as in IGV;
 // a plain click centers the view there.
-const inRuler = y => y >= panelHdr() && y < covTop();
+const inRuler = y => y >= panelHdr() && y < geneTop();
+const inGenes = y => geneH() > 0 && y >= geneTop() && y < geneTop() + GENE_H;
 const clampX = x => Math.max(0, Math.min(W, x));
 function setActive(pn) { if (S.active !== pn) { S.active = pn; syncLocus(); draw(); } }
 stage.addEventListener('pointerdown', e => {
@@ -1176,6 +1200,7 @@ function hitTest(x, y) {
 
 // x: inside the current panel; gx: on the whole view (where the card goes).
 function onClick(x, y, gx) {
+  if (inGenes(y)) { const h = geneHit(x, y); if (h) { S.selected = null; S.hl = null; showGeneCard(h, Math.floor(S.view.start + x * S.view.bpPerPx), gx, y); } else hideCard(); draw(); return; }
   const ti = trackAtY(y);
   if (ti >= 0) { const g = trackGeom(ti); if (g.hdr && y < g.y0 + g.hdr && x > W - 28 && CUR === S.panels[S.panels.length - 1]) { closeTrack(S.tracks[ti]); return; } }
   const h = hitTest(x, y);
@@ -1612,6 +1637,7 @@ async function openReference(ref, opts) {
       fasta = await new IndexedFasta(ref.fa).openUnindexed(ref.size, (done, total) =>
         toast(t('ref.indexing', { name, done: total ? Math.min(100, Math.round(done / total * 100)) + '%' : fmt(done) }), true));
     }
+    if (opts.ifIdle && (S.tracks.length || S.fasta)) return 'busy'; // opened at start, but the user was quicker
     const closed = S.tracks.length > 0;
     resetPanels();
     S.loadToken++;
@@ -1754,7 +1780,7 @@ const CONTROLS = [
   ['hideSec', 'filters.hideSecondary', 'bool', 'reload'], ['hideSupp', 'filters.hideSupplementary', 'bool', 'reload'], ['hideQc', 'filters.hideQcFail', 'bool', 'reload'],
   ['dsOn', 'downsample.enabled', 'bool', 'reload'], ['dsMax', 'downsample.maxReads', 'num', 'reload'], ['dsWin', 'downsample.window', 'num', 'reload'],
   ['covHeight', 'coverage.height', 'num', 'draw'], ['trackMinH', 'trackMinHeight', 'num', 'draw'], ['alleleThr', 'coverage.alleleThreshold', 'num', 'rebuild'],
-  ['hideToolbar', 'hideToolbar', 'bool', 'chrome'], ['language', 'language', 'str', 'lang'],
+  ['hideToolbar', 'hideToolbar', 'bool', 'chrome'], ['showGenes', 'showGenes', 'bool', 'draw'], ['startRef', 'startReference', 'str', 'none'], ['language', 'language', 'str', 'lang'],
 ];
 const getPath = (o, p) => p.split('.').reduce((a, k) => a[k], o);
 const setPath = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k], o)[last] = v; };
@@ -1820,4 +1846,107 @@ LANG = STRINGS[P.language] ? P.language : 'en';
 buildLanguageSelect(); applyI18n(); readColors(); syncPanel(); applyChrome(); updateRefInfo();
 if (!GL_OK) { $('msg').hidden = false; $('msg').className = 'msg err'; $('msg').textContent = t('nowebgl'); }
 else { warmUpGL(); if (GL_SOFTWARE) setTimeout(() => toast(t('gl.software')), 1500); }
-openDemo();
+
+// ======================= Genes =======================
+// Transcripts of the current panel drawn in two rows: line = intron (arrows give the strand),
+// thin boxes = UTR, thick boxes = coding exons, the symbol under the transcript where it fits.
+function drawGenes(pn) {
+  pn.geneHits = [];
+  if (!geneH()) return;
+  const y0 = geneTop(), vs = S.view.start, ve = viewEnd(), bpp = S.view.bpPerPx;
+  const txs = genesIn(S.contigs[S.view.refId].name, Math.floor(vs), Math.ceil(ve));
+  ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, GENE_H); ctx.clip();
+  ctx.font = '600 10.5px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  const ends = [-Infinity, -Infinity], px = p => (p - vs) / bpp;
+  for (const tx of txs) {
+    const x0 = px(tx.start), x1 = px(tx.end), a = Math.max(x0, 0), b = Math.min(x1, W);
+    const label = tx.sym + (tx.clinical ? ' (Plus Clinical)' : ''), lw = ctx.measureText(label).width;
+    const cx = Math.max(lw / 2 + 2, Math.min(W - lw / 2 - 2, (a + b) / 2));
+    const e0 = Math.min(a, cx - lw / 2), e1 = Math.max(b, cx + lw / 2);
+    let row = ends.findIndex(e => e + 6 <= e0), withLabel = true;
+    if (row < 0) { row = ends[0] <= ends[1] ? 0 : 1; withLabel = false; }
+    ends[row] = Math.max(ends[row], withLabel ? e1 : b);
+    const top = y0 + row * GENE_ROW, mid = top + 6.5, col = tx.clinical ? COL.css.geneClin : COL.css.gene;
+    ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(a, mid + 0.5); ctx.lineTo(b, mid + 0.5); ctx.stroke();
+    if (b - a > 30) { // strand arrows on the line
+      ctx.beginPath();
+      for (let x = a + 10; x < b - 6; x += 22) { const d = tx.strand > 0 ? 2.5 : -2.5; ctx.moveTo(x - d, mid - 2); ctx.lineTo(x + d, mid + 0.5); ctx.lineTo(x - d, mid + 3); }
+      ctx.stroke();
+    }
+    for (let i = 0; i < tx.exons.length; i += 2) {
+      const s = tx.exons[i], e = tx.exons[i + 1]; if (e < vs || s > ve) continue;
+      const ex0 = px(s), ex1 = px(e);
+      ctx.fillRect(ex0, mid - 3, Math.max(1, ex1 - ex0), 7); // UTR height
+      const c0 = Math.max(s, tx.cdsStart), c1 = Math.min(e, tx.cdsEnd);
+      if (c1 > c0) ctx.fillRect(px(c0), mid - 5.5, Math.max(1, px(c1) - px(c0)), 12);
+      // exon number (in the transcript's direction) inside the exon when there is room
+      if (ex1 - ex0 >= 26) {
+        const n = tx.strand > 0 ? i / 2 + 1 : tx.exons.length / 2 - i / 2, xa = Math.max(ex0, 0), xb = Math.min(ex1, W);
+        if (xb - xa >= 26) { ctx.save(); ctx.font = '600 9px ' + SANS; ctx.fillStyle = COL.css.panel; ctx.textBaseline = 'middle'; ctx.fillText(t('gene.exShort', { n }), (xa + xb) / 2, mid + 0.5); ctx.restore(); }
+      }
+    }
+    if (withLabel) ctx.fillText(label, cx, top + GENE_ROW - 1);
+    pn.geneHits.push({ tx, row, x0: Math.min(a, withLabel ? e0 : a), x1: Math.max(b, withLabel ? e1 : b) });
+  }
+  ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, y0 + GENE_H - 1.5); ctx.lineTo(W, y0 + GENE_H - 1.5); ctx.stroke();
+  ctx.restore();
+}
+function geneHit(x, y) {
+  const row = Math.floor((y - geneTop()) / GENE_ROW), hits = CUR.geneHits || [];
+  return (hits.find(h => h.row === row && x >= h.x0 - 2 && x <= h.x1 + 2) || hits.find(h => x >= h.x0 - 2 && x <= h.x1 + 2) || {}).tx || null;
+}
+// Details of a transcript, and where the clicked position falls in it (exon / intron number).
+function showGeneCard(tx, pos, gx, y) {
+  const c = $('card'), name = S.contigs[S.view.refId].name, part = txPart(tx, pos);
+  const L = [['kv', t('gene.symbol'), tx.sym + (tx.hgnc ? ' (' + tx.hgnc + ')' : '')], ['txt', tx.name], ['sep'],
+    ['kv', t('gene.set'), tx.clinical ? 'MANE Plus Clinical' : 'MANE Select'], ['kv', 'Ensembl', tx.enst], ['kv', 'RefSeq', tx.nm],
+    ['kv', t('gene.loc'), `${name}:${fmtInt(tx.start + 1)}-${fmtInt(tx.end)} (${tx.strand > 0 ? '+' : '−'})`],
+    ['kv', t('gene.exons'), tx.exons.length / 2]];
+  if (tx.cdsEnd > tx.cdsStart) L.push(['kv', t('gene.cds'), `${fmtInt(tx.cdsStart + 1)}-${fmtInt(tx.cdsEnd)}`]);
+  const B = [['kv', t('card.location'), `${name}:${fmtInt(pos + 1)}`]];
+  if (part) B.push(['kv', t('gene.where'), part.exon ? t('gene.exonN', { n: part.exon, of: part.of }) + (part.coding ? '' : ' (UTR)') : t('gene.intronN', { n: part.intron, of: part.of })]);
+  c.classList.remove('wide');
+  c.innerHTML = `<div class="cols" style="--n:1"><div class="col">${linesHtml(L)}<div class="loc">${linesHtml(B, 'b')}</div></div></div>` +
+    `<div class="card-actions"><button class="btn" id="geneZoom">${esc(t('gene.zoom'))}</button><button class="btn" id="copyGene">${esc(t('card.copy'))}</button><button class="btn ghost" id="closeCard">${esc(t('btn.close'))}</button></div>`;
+  c.hidden = false;
+  const r = stage.getBoundingClientRect();
+  c.style.left = Math.max(8, Math.min(r.width - c.offsetWidth - 8, gx + 14)) + 'px';
+  c.style.top = Math.max(8, Math.min(r.height - c.offsetHeight - 8, y + 14)) + 'px';
+  const pn = CUR;
+  $('closeCard').onclick = () => { hideCard(); };
+  $('copyGene').onclick = () => navigator.clipboard.writeText(linesText(L) + '\n' + linesText(B)).then(() => toast(t('copied')), () => toast(t('copyFail')));
+  $('geneZoom').onclick = () => { if (!S.panels.includes(pn)) return; usePanel(pn); hideCard(); const pad = Math.max(50, Math.round((tx.end - tx.start) * 0.05)); goto(contigId(tx.chr), tx.start - pad, tx.end + pad); };
+}
+// Gene names offered while typing in the locus field (for the word being typed).
+function updateGeneSuggest() {
+  const dl = $('geneList'); if (!dl) return;
+  const v = $('locus').value, word = v.slice(v.lastIndexOf(' ') + 1);
+  const list = /[:\-]/.test(word) ? [] : geneSuggest(word, 12);
+  dl.replaceChildren(...list.map(sym => { const o = document.createElement('option'); o.value = v.slice(0, v.length - word.length) + sym; return o; }));
+}
+$('locus').addEventListener('input', updateGeneSuggest);
+
+// ======================= Startup =======================
+// The bundled genes load in the background; the chosen reference (GRCh38 by default) opens.
+async function startup() {
+  const mane = $('cgv-mane');
+  if (mane && mane.textContent.trim()) loadGenes(mane.textContent.trim()).then(() => { S._g38 = null; draw(); }).catch(e => console.error(e));
+  const what = P.startReference;
+  if (what === 'demo') { openDemo(); return; }
+  const pr = REF_PRESETS[what]; if (!pr) return;
+  $('refUrl').value = pr.fa;
+  const ok = await openReference({ fa: new UrlSource(pr.fa), fai: new UrlSource(addSuffix(pr.fa, '.fai')) }, { quiet: true, noGoto: true, ifIdle: true });
+  if (ok === 'busy') return; // the user opened something first
+  if (!ok) { toast(t('start.refFailed', { name: pr.label }), true); openDemo(); return; }
+  toast(t('start.ref', { name: pr.label }));
+  const i = Math.max(0, contigId('chr1'));
+  // waits for the genes (a moment) so the first view can open on a gene
+  for (let k = 0; k < 20 && !GENES.ready; k++) await new Promise(r => setTimeout(r, 100));
+  const l = what === 'hg38' ? parseLocus(START_GENE) : null;
+  if (S.tracks.length) return;
+  if (l && !l.error) goto(l.id, l.s, l.e); else goto(i, 0, Math.min(S.contigs[i].len, 100000));
+  S.viewSet = true;
+}
+const START_GENE = 'BRCA1';
+startup();

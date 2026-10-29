@@ -216,18 +216,22 @@ async function readAllWays(bam, bai) {
   // 8. the locus field and a pasted profile: the functions are taken from app.js as they are
   const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'app.js'), 'utf8');
   const grab = (start, end) => { const a = app.indexOf(start), b = app.indexOf(end, a); if (a < 0 || b < 0) throw new Error('app.js changed: ' + start); return app.slice(a, b); };
-  const ctx = { S: { contigs: [{ name: 'chr1', len: 248956422 }, { name: 'chrM', len: 16569 }] }, t: k => k, result: null };
+  const Gn = require('../src/genes.js'); Gn.parseGenes(fs.readFileSync(path.join(__dirname, '..', 'data', 'mane.grch38.tsv'), 'utf8'));
+  const ctx = { S: { contigs: [{ name: 'chr1', len: 248956422 }, { name: 'chrM', len: 16569 }, { name: 'chr17', len: 83257441 }] }, t: k => k, result: null,
+    GENES: Gn.GENES, findGene: Gn.findGene, genesActive: () => true };
   ctx.contigId = n => ctx.S.contigs.findIndex(c => c.name === n || c.name === 'chr' + n);
   vm.createContext(ctx);
   vm.runInContext(grab('const DEFAULT_PROFILE', 'let P = DEFAULT_PROFILE;') + grab('function parseLocus', '// ======================= Input') +
     ';this.mergeProfile = mergeProfile; this.parseLocus = parseLocus; this.DEFAULT_PROFILE = DEFAULT_PROFILE;', ctx);
   {
-    const loci = ['chr1:1-100', 'chr1:100', 'chrM:20000-30000', 'chr1:500-100', 'chr1:99999999999999999999-1', 'chr1:0-0', 'chr1:-5', 'chr1:1,000,000-2,000,000', '1:5', 'x'.repeat(5000), 'chr1:' + '9'.repeat(400), ':::', 'chr1:1-2-3', '', 'chrM:1.000-5'];
+    const loci = ['chr1:1-100', 'chr1:100', 'chrM:20000-30000', 'chr1:500-100', 'chr1:99999999999999999999-1', 'chr1:0-0', 'chr1:-5', 'chr1:1,000,000-2,000,000', '1:5', 'x'.repeat(5000), 'chr1:' + '9'.repeat(400), ':::', 'chr1:1-2-3', '', 'chrM:1.000-5', 'BRCA1', 'brca1', 'NM_007294.4', 'ENST00000357654', 'BRCA1:5', 'NOTAGENE', 'BRCA1 BRCA2'];
     const badLoc = [];
     for (const l of loci) {
       const r = ctx.parseLocus(l);
       if (r && !r.error) { const L = ctx.S.contigs[r.id].len; if (!(Number.isSafeInteger(r.s) && Number.isSafeInteger(r.e) && r.e > r.s && r.e <= L + 51 && r.s >= -50)) badLoc.push(l.slice(0, 40) + ' → ' + JSON.stringify(r)); }
     }
+    const g = ctx.parseLocus('BRCA1');
+    if (!g || g.error || ctx.S.contigs[g.id].name !== 'chr17' || g.s > 43044294 || g.e < 43125364) badLoc.push('BRCA1 is not found where MANE puts it: ' + JSON.stringify(g));
     const r1 = ctx.parseLocus('chr1:500-100'), r2 = ctx.parseLocus('chr1:100-500');
     if (JSON.stringify(r1) !== JSON.stringify(r2) || r2.s !== 99 || r2.e !== 500) badLoc.push('500-100 is not the same as 100-500: ' + JSON.stringify([r1, r2]));
     ok(!badLoc.length, `locus field: ${loci.length} odd inputs, every result inside its contig` + (badLoc.length ? ': ' + badLoc.join('; ') : ''));

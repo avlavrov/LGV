@@ -5,7 +5,7 @@
 /* Data fills the screen; the UI is one thin bar on top plus slide-in panels. */
 :root {
   --bg: #fafbfb; --panel: #ffffff; --fg: #1b1f24; --muted: #6a717b; --line: #e2e5e9; --accent: #0b6e8a;
-  --read: #b9bec6; --read-fwd: #d8a9a6; --read-rev: #9fb5d6; --cov: #a8aeb7;
+  --gene: #1f4e9c; --gene-clin: #a3431f; --read: #b9bec6; --read-fwd: #d8a9a6; --read-rev: #9fb5d6; --cov: #a8aeb7;
   --del: #2a2e34; --ins: #7a3fd0; --clip: #d23f8a;
   --pair-large: #d0453c; --pair-small: #3b6fd4; --pair-rf: #3d9a5c; --pair-ff: #1e9aa3; --pair-unmapped: #d49a1a;
   --base-a: #1e9a4e; --base-c: #2a5fd6; --base-g: #d48a0f; --base-t: #d0362f;
@@ -16,7 +16,7 @@
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #121417; --panel: #1a1d21; --fg: #e3e6ea; --muted: #959ca6; --line: #2a2f35; --accent: #4cb4d4;
-  --read: #4e555e; --read-fwd: #7d5654; --read-rev: #4d6283; --cov: #69717b;
+  --gene: #82aee8; --gene-clin: #e8a07e; --read: #4e555e; --read-fwd: #7d5654; --read-rev: #4d6283; --cov: #69717b;
   --del: #dfe3e8; --ins: #a77bf0; --clip: #ec6aac;
   --pair-large: #e8665d; --pair-small: #6d96ec; --pair-rf: #5cbf7c; --pair-ff: #3cc0c8; --pair-unmapped: #e8b542;
   --base-a: #3cc06e; --base-c: #5a89f0; --base-g: #f0a73a; --base-t: #f0605a;
@@ -24,7 +24,7 @@
   color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #121417; --panel: #1a1d21; --fg: #e3e6ea; --muted: #959ca6; --line: #2a2f35; --accent: #4cb4d4;
-  --read: #4e555e; --read-fwd: #7d5654; --read-rev: #4d6283; --cov: #69717b;
+  --gene: #82aee8; --gene-clin: #e8a07e; --read: #4e555e; --read-fwd: #7d5654; --read-rev: #4d6283; --cov: #69717b;
   --del: #dfe3e8; --ins: #a77bf0; --clip: #ec6aac;
   --pair-large: #e8665d; --pair-small: #6d96ec; --pair-rf: #5cbf7c; --pair-ff: #3cc0c8; --pair-unmapped: #e8b542;
   --base-a: #3cc06e; --base-c: #5a89f0; --base-g: #f0a73a; --base-t: #f0605a;
@@ -139,7 +139,8 @@ body.bare .side { top: 0; }
 <header class="bar">
   <span class="mark" title="Convenient, custom, genomic viewer">CGV</span>
   <div class="locus">
-    <input id="locus" type="text" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
+    <input id="locus" type="text" list="geneList" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
+    <datalist id="geneList"></datalist>
     <button class="btn" id="goBtn" data-i18n="btn.go">Go</button>
     <span id="span"></span>
   </div>
@@ -258,6 +259,9 @@ body.bare .side { top: 0; }
       <h2 data-i18n="view.screen">Screen</h2>
       <div class="field"><label for="language" data-i18n="view.language">Language</label><select id="language"></select></div>
       <div class="check"><input id="hideToolbar" type="checkbox"><label for="hideToolbar" data-i18n="view.hideToolbar"></label></div>
+      <div class="check"><input id="showGenes" type="checkbox"><label for="showGenes" data-i18n="view.showGenes"></label></div>
+      <div class="field"><label for="startRef" data-i18n="view.startRef">At start open</label>
+        <select id="startRef"><option value="hg38">GRCh38 / hg38</option><option value="hg19">GRCh37 / hg19</option><option value="chm13">T2T-CHM13 v2.0</option><option value="demo" data-i18n="start.demo"></option><option value="none" data-i18n="start.none"></option></select></div>
     </section>
     <section>
       <h2 data-i18n="view.profile">Profile</h2>
@@ -288,6 +292,7 @@ body.bare .side { top: 0; }
 /*DEMO*/
 /*I18N*/
 </script>
+<script type="text/plain" id="cgv-mane">/*MANE*/</script>
 <script id="cgv-core">
 /*CORE*/
 </script>

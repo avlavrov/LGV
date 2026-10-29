@@ -44,7 +44,9 @@ More languages are one dictionary in `src/i18n.js`.
 | F2 Local BAM + BAI | done: several samples at once as tracks, index paired by name, folder or drag and drop; with many samples each keeps a minimum height (View → Coverage, 240 px by default) and the whole stack scrolls under the ruler: wheel over coverage or a header, wheel past the end of a sample's reads, the scrollbar on the right, PageUp / PageDown |
 | F3 Reference (GRCh38, GRCh37, T2T-CHM13) | done: files or link, plain or bgzip, public presets |
 | F4 Access token / presigned URL | done |
-| F5 Go to coordinate | done, contig names case-insensitive (chr1 = Chr1 = 1); drag on the ruler to zoom to a region, click it to center; gene names come with the gene track |
+| F5 Go to coordinate | done, contig names case-insensitive (chr1 = Chr1 = 1); drag on the ruler to zoom to a region, click it to center; **gene search**: a gene symbol, an ENST or NM id (MANE), with suggestions while typing; several genes or loci separated by spaces open side by side |
+| Genes | **MANE track** (GRCh38): MANE Select and Plus Clinical transcripts under the reference — coding exons thick, UTRs thin, strand arrows, exon numbers when zoomed in; click a transcript for its ids, span and the exon or intron at that position. Bundled with CGV (MANE v1.2), works offline |
+| Start | GRCh38 opens by default (View → "At start open": hg38, hg19, T2T, demo or nothing); without a connection the demo opens instead |
 | F6 No hard window limit | windows load on their own up to 64 MB of compressed data, larger on request; downsampling keeps deep regions fast; isolated sequencing errors fade when zoomed out |
 | F8 Coverage with allele highlight | done, threshold adjustable |
 | F9 Smooth read height | done, 1–24 px |
