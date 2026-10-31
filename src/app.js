@@ -476,10 +476,10 @@ function rebuildTrack(T) {
       }
     }
     if (r > segStart) ib.add(segStart - d.start, r - d.start, R, gi, 0, 1, 1, col, a);
-    if (P.showSoftClips) { // clipped bases: a lighter, slightly thinner continuation of the read
+    if (P.showSoftClips) { // clipped bases: the read's own color, a little thinner so the clip boundary shows
       const [L, Rc] = clipLens(rec);
-      if (L) ib.add(rec.pos - L - d.start, rec.pos - d.start, R, gi, 0.1, 0.9, 1, col, a * 0.45);
-      if (Rc) ib.add(rec.end - d.start, rec.end + Rc - d.start, R, gi, 0.1, 0.9, 1, col, a * 0.45);
+      if (L) ib.add(rec.pos - L - d.start, rec.pos - d.start, R, gi, 0.12, 0.88, 1, col, a);
+      if (Rc) ib.add(rec.end - d.start, rec.end + Rc - d.start, R, gi, 0.12, 0.88, 1, col, a);
     }
   }
   for (const [t, x0, x1, R, gi, a] of marks) ib.add(x0 - d.start, x1 - d.start, R, gi, t === 2 ? 0.44 : 0.48, t === 2 ? 0.56 : 0.52, 0, t === 2 ? COL.del : COL.skip, a);
