@@ -1344,9 +1344,11 @@ function renderCard(place) {
   const seg = paired ? `<div class="seg" role="group" aria-label="${esc(t('card.show'))}"><button class="btn${P.cardPair ? '' : ' on'}" data-pair="0" aria-pressed="${!P.cardPair}">${esc(t('card.showRead'))}</button><button class="btn${P.cardPair ? ' on' : ''}" data-pair="1" aria-pressed="${P.cardPair}">${esc(t('card.showPair'))}</button></div>` : '';
   const goMate = paired && rec.mateRef >= 0 && !(rec.flag & 8);
   c.classList.toggle('wide', cols.length > 1);
-  c.innerHTML = seg + `<div class="cols" style="--n:${cols.length}">` + cols.map(col =>
+  // top row: Read / Read and mate on the left, × on the right
+  const head = '<div class="card-head">' + seg + '<button class="card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
+  c.innerHTML = head + `<div class="cols" style="--n:${cols.length}">` + cols.map(col =>
     `<div class="col">${col.title ? `<h3>${esc(col.title)}</h3>` : ''}${linesHtml(col.lines)}${col.base ? '<div class="loc">' + linesHtml(col.base, 'b') + '</div>' : ''}</div>`).join('') + '</div>' +
-    `<div class="card-actions">${goMate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button><button class="btn" id="mateSplit">${esc(t('card.mateSplit'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button><button class="btn ghost" id="closeCard">${esc(t('btn.close'))}</button></div>`;
+    `<div class="card-actions">${goMate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button><button class="btn" id="mateSplit">${esc(t('card.mateSplit'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button></div>`;
   c.hidden = false;
   if (place) {
     const r = stage.getBoundingClientRect(), cw = c.offsetWidth, ch = c.offsetHeight;
@@ -2002,8 +2004,8 @@ function showGeneCard(tx, pos, gx, y) {
   const B = [['kv', t('card.location'), `${name}:${fmtInt(pos + 1)}`]];
   if (part) B.push(['kv', t('gene.where'), part.exon ? t('gene.exonN', { n: part.exon, of: part.of }) + (part.coding ? '' : ' (UTR)') : t('gene.intronN', { n: part.intron, of: part.of })]);
   c.classList.remove('wide');
-  c.innerHTML = `<div class="cols" style="--n:1"><div class="col">${linesHtml(L)}<div class="loc">${linesHtml(B, 'b')}</div></div></div>` +
-    `<div class="card-actions"><button class="btn" id="geneZoom">${esc(t('gene.zoom'))}</button><button class="btn" id="copyGene">${esc(t('card.copy'))}</button><button class="btn ghost" id="closeCard">${esc(t('btn.close'))}</button></div>`;
+  c.innerHTML = '<div class="card-head"><button class="card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' + `<div class="cols" style="--n:1"><div class="col">${linesHtml(L)}<div class="loc">${linesHtml(B, 'b')}</div></div></div>` +
+    `<div class="card-actions"><button class="btn" id="geneZoom">${esc(t('gene.zoom'))}</button><button class="btn" id="copyGene">${esc(t('card.copy'))}</button></div>`;
   c.hidden = false;
   const r = stage.getBoundingClientRect();
   c.style.left = Math.max(8, Math.min(r.width - c.offsetWidth - 8, gx + 14)) + 'px';

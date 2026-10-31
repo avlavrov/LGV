@@ -90,7 +90,10 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .card .ln.b { font-weight: 600; }
 .card .sep { border-top: 1px dashed var(--line); margin: 3px 0; }
 .card .loc { border-top: 1px solid var(--muted); margin-top: 5px; padding-top: 3px; }
-.card .seg { display: inline-flex; margin-bottom: 6px; }
+.card-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; min-height: 24px; }
+.card .seg { display: inline-flex; }
+.card-x { margin-left: auto; width: 26px; height: 24px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; flex: none; }
+.card-x:hover { background: var(--line); color: var(--fg); }
 .card .seg .btn { height: 24px; font-size: 12px; border-radius: 0; }
 .card .seg .btn:first-child { border-radius: 6px 0 0 6px; } .card .seg .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
 .card .seg .btn.on { border-color: var(--accent); color: var(--accent); position: relative; }
