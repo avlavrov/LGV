@@ -4728,7 +4728,7 @@ function initGL() {
   layout(location=1) in vec4 a_x;      // x0, x1, row, grp
   layout(location=2) in vec3 a_y;      // yA, yB, minpx
   layout(location=3) in vec4 a_color;
-  uniform float u_viewInt, u_viewFrac, u_bpPerPx, u_rowH, u_gap, u_grpGap, u_scroll, u_top, u_mmFade;
+  uniform float u_viewInt, u_viewFrac, u_bpPerPx, u_rowH, u_gap, u_grpGap, u_scroll, u_top, u_mmFade, u_dpr;
   uniform vec2 u_size;
   out vec4 v_color;
   void main() {
@@ -4742,7 +4742,10 @@ function initGL() {
     float h = max(u_rowH - u_gap, 1.0);
     float y0 = u_top + a_x.z * u_rowH + a_x.w * u_grpGap - u_scroll;
     float ya = y0 + h * a_y.x, yb = y0 + h * a_y.y;
-    if (yb - ya < 1.0) yb = ya + 1.0;
+    // snap to whole device pixels: a thin line (a pair link, a deletion) keeps the same thickness
+    // wherever scrolling puts it, instead of covering one pixel row at one offset and two at another
+    float th = max(max(1.0, floor(u_dpr)), floor((yb - ya) * u_dpr + 0.5));
+    ya = floor((ya + yb) * 0.5 * u_dpr - th * 0.5 + 0.5) / u_dpr; yb = ya + th / u_dpr;
     float x, y;
     if (a_y.z >= 499.0) {
       // strand arrow, as in IGV: a corner cut off the read's 3' end in the background color, so the
@@ -4772,7 +4775,7 @@ function initGL() {
   gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
   GL.prog = prog;
-  GL.u = {}; for (const n of ['u_viewInt', 'u_viewFrac', 'u_bpPerPx', 'u_rowH', 'u_gap', 'u_grpGap', 'u_scroll', 'u_top', 'u_size', 'u_mmFade']) GL.u[n] = gl.getUniformLocation(prog, n);
+  GL.u = {}; for (const n of ['u_viewInt', 'u_viewFrac', 'u_bpPerPx', 'u_rowH', 'u_gap', 'u_grpGap', 'u_scroll', 'u_top', 'u_size', 'u_mmFade', 'u_dpr']) GL.u[n] = gl.getUniformLocation(prog, n);
   GL.quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, GL.quad);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
   Object.assign(GL, makeVao());
@@ -4805,7 +4808,7 @@ function warmUpGL() {
   gl.bindBuffer(gl.ARRAY_BUFFER, GL.fbuf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 1, 0, 0, 0, 1, 1]), gl.STATIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, GL.cbuf); gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array([0, 0, 0, 0]), gl.STATIC_DRAW);
   gl.useProgram(GL.prog); gl.bindVertexArray(GL.vao);
-  gl.uniform2f(GL.u.u_size, 1, 1); gl.uniform1f(GL.u.u_bpPerPx, 1); gl.uniform1f(GL.u.u_rowH, 1);
+  gl.uniform2f(GL.u.u_size, 1, 1); gl.uniform1f(GL.u.u_bpPerPx, 1); gl.uniform1f(GL.u.u_rowH, 1); gl.uniform1f(GL.u.u_dpr, 1);
   gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, 1);
   gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
 }
@@ -5282,6 +5285,7 @@ function renderPanel(pn, tp) {
     gl.uniform1f(GL.u.u_grpGap, groupGap());
     gl.uniform2f(GL.u.u_size, vw / DPR, H);
     gl.uniform1f(GL.u.u_mmFade, 1.5);
+    gl.uniform1f(GL.u.u_dpr, DPR);
     gl.enable(gl.SCISSOR_TEST);
     const clipTop = covTop();
     S.tracks.forEach((T, i) => {
