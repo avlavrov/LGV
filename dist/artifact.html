@@ -77,10 +77,11 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .vthumb { position: absolute; left: 1px; right: 1px; border-radius: 4px; background: var(--muted); opacity: .45; cursor: grab; touch-action: none; }
 .vbar:hover .vthumb, .vthumb:active { opacity: .8; }
 .ctx .msep { border-top: 1px solid var(--line); margin: 3px 2px; }
-.mi { display: flex; align-items: center; gap: 6px; text-align: left; border: 0; background: none; padding: 4px 10px 4px 6px; border-radius: 5px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
-.mi:hover, .mi:focus-visible { background: color-mix(in srgb, var(--accent) 14%, transparent); outline: none; }
+.mi { display: flex; align-items: center; gap: 6px; text-align: left; border: 0; background: none; padding: 2px 10px 2px 6px; line-height: 1.25; border-radius: 5px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.mi:disabled { opacity: .45; cursor: default; background: none; }
+.mi:hover:not(:disabled), .mi:focus-visible { background: color-mix(in srgb, var(--accent) 14%, transparent); outline: none; }
 .mk { width: 14px; flex: none; text-align: center; color: var(--accent); font-size: 11px; }
-.ms { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 8px 10px 3px 26px; border-top: 1px solid var(--line); margin-top: 4px; }
+.ms { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 5px 10px 2px 26px; border-top: 1px solid var(--line); margin-top: 3px; }
 .mt { display: flex; align-items: center; gap: 8px; padding: 2px 10px 4px 26px; font-size: 12px; color: var(--muted); }
 .mt input { width: 46px; height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); font-family: var(--mono); }
 .card.wide { width: min(760px, calc(100% - 16px)); }
@@ -92,8 +93,9 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .card .loc { border-top: 1px solid var(--muted); margin-top: 5px; padding-top: 3px; }
 .card-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; min-height: 24px; }
 .card .seg { display: inline-flex; }
-.card-x { margin-left: auto; width: 26px; height: 24px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; flex: none; }
-.card-x:hover { background: var(--line); color: var(--fg); }
+.card-head { cursor: move; }
+.card.dragging { user-select: none; -webkit-user-select: none; }
+.card .card-x { margin-left: auto; height: 24px; width: 28px; padding: 0; font-size: 15px; line-height: 1; flex: none; }
 .card .seg .btn { height: 24px; font-size: 12px; border-radius: 0; }
 .card .seg .btn:first-child { border-radius: 6px 0 0 6px; } .card .seg .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
 .card .seg .btn.on { border-color: var(--accent); color: var(--accent); position: relative; }
@@ -388,7 +390,7 @@ const STRINGS = {
     'copied': 'Copied', 'copyFail': 'Could not copy — select the text manually',
     'profile.copied': 'Profile copied', 'profile.applied': 'Profile applied', 'profile.reset': 'Profile reset', 'profile.bad': 'The profile has a JSON error: {msg}',
     'card.name': 'Name', 'card.pos': 'Position', 'card.flag': 'Flag', 'card.len': 'Length', 'card.mate': 'Mate', 'card.mateUnmapped': 'unmapped', 'card.tlen': 'Insert (TLEN)',
-    'card.toMate': 'Go to mate', 'card.mateSplit': 'Mate in split screen', 'menu.mateSplit': 'View mate region in split screen', 'split.full': 'No room for more panels ({n}). Close one with × in its header', 'card.copy': 'Copy',
+    'card.toMate': 'Go to mate', 'menu.copySeq': 'Copy read sequence', 'menu.copyLeft': 'Copy left soft-clipped sequence', 'menu.copyRight': 'Copy right soft-clipped sequence', 'menu.copyPair': 'Copy read pair (FASTA)', 'menu.copyPairNo': 'Copy read pair (mate not loaded)', 'copied.seq': 'Copied: {n} bases', 'card.mateSplit': 'Mate in split screen', 'menu.mateSplit': 'View mate region in split screen', 'split.full': 'No room for more panels ({n}). Close one with × in its header', 'card.copy': 'Copy',
     'card.clicked': 'Base', 'card.bq': 'Base quality', 'card.ref': 'ref', 'card.del': 'deletion',
     'flag.1': 'paired', 'flag.2': 'proper pair', 'flag.4': 'unmapped', 'flag.8': 'mate unmapped', 'flag.16': 'reverse strand', 'flag.32': 'mate reverse',
     'flag.64': 'first in pair', 'flag.128': 'second in pair', 'flag.256': 'secondary', 'flag.512': 'QC fail', 'flag.1024': 'duplicate', 'flag.2048': 'supplementary',
@@ -504,7 +506,7 @@ const STRINGS = {
     'copied': 'Скопировано', 'copyFail': 'Не удалось скопировать — выделите текст вручную',
     'profile.copied': 'Профиль скопирован', 'profile.applied': 'Профиль применён', 'profile.reset': 'Профиль сброшен', 'profile.bad': 'В профиле ошибка JSON: {msg}',
     'card.name': 'Имя', 'card.pos': 'Позиция', 'card.flag': 'Флаг', 'card.len': 'Длина', 'card.mate': 'Мейт', 'card.mateUnmapped': 'не выровнен', 'card.tlen': 'Вставка (TLEN)',
-    'card.toMate': 'К мейту', 'card.mateSplit': 'Мейт в соседнем окне', 'menu.mateSplit': 'Показать регион мейта в соседнем окне', 'split.full': 'Больше окон не помещается ({n}). Закройте одно крестиком в его заголовке', 'card.copy': 'Копировать',
+    'card.toMate': 'К мейту', 'menu.copySeq': 'Копировать последовательность рида', 'menu.copyLeft': 'Копировать левый soft clip', 'menu.copyRight': 'Копировать правый soft clip', 'menu.copyPair': 'Копировать пару ридов (FASTA)', 'menu.copyPairNo': 'Копировать пару ридов (мейт не загружен)', 'copied.seq': 'Скопировано оснований: {n}', 'card.mateSplit': 'Мейт в соседнем окне', 'menu.mateSplit': 'Показать регион мейта в соседнем окне', 'split.full': 'Больше окон не помещается ({n}). Закройте одно крестиком в его заголовке', 'card.copy': 'Копировать',
     'card.clicked': 'Основание', 'card.bq': 'Качество основания', 'card.ref': 'реф.', 'card.del': 'делеция',
     'flag.1': 'парный', 'flag.2': 'правильная пара', 'flag.4': 'не выровнен', 'flag.8': 'мейт не выровнен', 'flag.16': 'обратная цепь', 'flag.32': 'мейт на обратной',
     'flag.64': 'первый в паре', 'flag.128': 'второй в паре', 'flag.256': 'вторичное', 'flag.512': 'не прошёл QC', 'flag.1024': 'дубликат', 'flag.2048': 'дополнительное',
@@ -5819,16 +5821,13 @@ function renderCard(place) {
   const goMate = paired && rec.mateRef >= 0 && !(rec.flag & 8);
   c.classList.toggle('wide', cols.length > 1);
   // top row: Read / Read and mate on the left, × on the right
-  const head = '<div class="card-head">' + seg + '<button class="card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
+  const head = '<div class="card-head">' + seg + '<button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
   c.innerHTML = head + `<div class="cols" style="--n:${cols.length}">` + cols.map(col =>
     `<div class="col">${col.title ? `<h3>${esc(col.title)}</h3>` : ''}${linesHtml(col.lines)}${col.base ? '<div class="loc">' + linesHtml(col.base, 'b') + '</div>' : ''}</div>`).join('') + '</div>' +
     `<div class="card-actions">${goMate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button><button class="btn" id="mateSplit">${esc(t('card.mateSplit'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button></div>`;
   c.hidden = false;
-  if (place) {
-    const r = stage.getBoundingClientRect(), cw = c.offsetWidth, ch = c.offsetHeight;
-    c.style.left = Math.max(8, Math.min(r.width - cw - 8, x + 14)) + 'px';
-    c.style.top = Math.max(8, Math.min(r.height - ch - 8, y + 14)) + 'px';
-  } else { // keep it on screen after a width change
+  if (place) placeCard(x, y);
+  else { // keep it on screen after a width change
     const r = stage.getBoundingClientRect(), cw = c.offsetWidth;
     c.style.left = Math.max(8, Math.min(r.width - cw - 8, parseFloat(c.style.left) || 8)) + 'px';
   }
@@ -5848,6 +5847,31 @@ function renderCard(place) {
   };
 }
 function hideCard() { $('card').hidden = true; cardState = null; }
+// The card opens next to the click, or where it was dragged to last (kept until the page is closed,
+// never stored). It is dragged by its top row.
+let cardPos = null;
+function placeCard(x, y) {
+  const c = $('card'), r = stage.getBoundingClientRect(), cw = c.offsetWidth, ch = c.offsetHeight;
+  const left = cardPos ? cardPos.left : x + 14, top = cardPos ? cardPos.top : y + 14;
+  c.style.left = Math.max(8, Math.min(r.width - cw - 8, left)) + 'px';
+  c.style.top = Math.max(8, Math.min(r.height - ch - 8, top)) + 'px';
+}
+{
+  const c = $('card'); let d = null;
+  c.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !e.target.closest('.card-head') || e.target.closest('button')) return;
+    d = { x: e.clientX, y: e.clientY, left: parseFloat(c.style.left) || 0, top: parseFloat(c.style.top) || 0 };
+    c.setPointerCapture(e.pointerId); c.classList.add('dragging'); e.preventDefault();
+  });
+  c.addEventListener('pointermove', e => {
+    if (!d) return;
+    const r = stage.getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.width - c.offsetWidth - 8, d.left + e.clientX - d.x)), top = Math.max(8, Math.min(r.height - 40, d.top + e.clientY - d.y));
+    c.style.left = left + 'px'; c.style.top = top + 'px'; cardPos = { left, top };
+  });
+  const end = () => { d = null; c.classList.remove('dragging'); };
+  c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
+}
 
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select')) { if (e.key === 'Escape') e.target.blur(); return; }
@@ -6250,9 +6274,16 @@ function openMenu(x, gx, y, hit) {
   const m = $('ctx'), pos = Math.max(0, Math.floor(S.view.start + x * S.view.bpPerPx));
   const item = (act, val, on, label, kind) => `<button class="mi" role="${kind}" aria-checked="${on}" data-act="${act}" data-val="${val}"><span class="mk" aria-hidden="true">${on ? (kind === 'menuitemcheckbox' ? '✓' : '●') : ''}</span>${esc(label)}</button>`;
   const r0 = hit && hit.rec, mateOk = r0 && (r0.flag & 1) && !(r0.flag & 8) && r0.mateRef >= 0;
-  menuState = { pn: CUR, hit: mateOk ? hit : null };
+  menuState = { pn: CUR, hit: hit || null };
+  const act = (a, label, off) => `<button class="mi" role="menuitem" data-act="${a}" data-val=""${off ? ' disabled' : ''}><span class="mk" aria-hidden="true"></span>${esc(label)}</button>`;
+  let copy = '';
+  if (r0) {
+    const [cl, cr] = clipLens(r0), noSeq = !r0.lseq, mate = (r0.flag & 1) ? findMate(r0, hit.T) : null;
+    copy = act('copySeq', t('menu.copySeq'), noSeq) + act('copyLeft', t('menu.copyLeft'), noSeq || !cl) + act('copyRight', t('menu.copyRight'), noSeq || !cr) +
+      act('copyPair', t(mate || !(r0.flag & 1) ? 'menu.copyPair' : 'menu.copyPairNo'), noSeq || !mate || !mate.lseq) + '<div class="msep"></div>';
+  }
   m.innerHTML =
-    (mateOk ? `<button class="mi" role="menuitem" data-act="mateSplit" data-val=""><span class="mk" aria-hidden="true"></span>${esc(t('menu.mateSplit'))}</button><div class="msep"></div>` : '') +
+    (mateOk ? act('mateSplit', t('menu.mateSplit')) + '<div class="msep"></div>' : '') + copy +
     item('pairs', '', !!P.viewPairs, t('menu.pairs'), 'menuitemcheckbox') +
     item('clips', '', !!P.showSoftClips, t('menu.clips'), 'menuitemcheckbox') +
     `<div class="ms">${esc(t('menu.colorBy'))}</div>` +
@@ -6270,12 +6301,29 @@ function openMenu(x, gx, y, hit) {
   (m.querySelector('[aria-checked="true"]') || m.querySelector('.mi')).focus({ preventScroll: true });
 }
 function closeMenu() { $('ctx').hidden = true; }
+// Read sequences as stored in the file: on the reference's forward strand, as IGV copies them.
+function seqOf(rec, from, to) { let s = ''; for (let i = from; i < to; i++) s += String.fromCharCode(readBaseAt(rec, i)); return s; }
+function copyReadSeq(rec, T, act) {
+  const [cl, cr] = clipLens(rec);
+  let txt = '';
+  if (act === 'copySeq') txt = seqOf(rec, 0, rec.lseq);
+  else if (act === 'copyLeft') txt = seqOf(rec, 0, cl);
+  else if (act === 'copyRight') txt = seqOf(rec, rec.lseq - cr, rec.lseq);
+  else if (act === 'copyPair') {
+    const mate = findMate(rec, T); if (!mate) return;
+    const [r1, r2] = rec.flag & 64 ? [rec, mate] : [mate, rec];
+    txt = `>${r1.name}/1\n${seqOf(r1, 0, r1.lseq)}\n>${r2.name}/2\n${seqOf(r2, 0, r2.lseq)}\n`;
+  }
+  if (!txt) return;
+  navigator.clipboard.writeText(txt).then(() => toast(t('copied.seq', { n: fmtInt(act === 'copyPair' ? txt.replace(/^>.*$/gm, '').replace(/\s/g, '').length : txt.length) })), () => toast(t('copyFail')));
+}
 $('ctx').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act, val = b.dataset.val, pos = +$('ctx').dataset.pos; let reloadNeeded = false;
   if (!menuState || !S.panels.includes(menuState.pn)) { closeMenu(); return; }
   usePanel(menuState.pn);
   if (act === 'mateSplit') { const h = menuState.hit; closeMenu(); hideCard(); if (h) openMatePanel(h.rec, h.T); draw(); return; }
+  if (act.startsWith('copy')) { const h = menuState.hit; closeMenu(); if (h) copyReadSeq(h.rec, h.T, act); return; }
   if (act === 'pairs') P.viewPairs = !P.viewPairs;
   else if (act === 'clips') { P.showSoftClips = !P.showSoftClips; reloadNeeded = true; }
   else if (act === 'color') P.colorBy = val;
@@ -6478,12 +6526,10 @@ function showGeneCard(tx, pos, gx, y) {
   const B = [['kv', t('card.location'), `${name}:${fmtInt(pos + 1)}`]];
   if (part) B.push(['kv', t('gene.where'), part.exon ? t('gene.exonN', { n: part.exon, of: part.of }) + (part.coding ? '' : ' (UTR)') : t('gene.intronN', { n: part.intron, of: part.of })]);
   c.classList.remove('wide');
-  c.innerHTML = '<div class="card-head"><button class="card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' + `<div class="cols" style="--n:1"><div class="col">${linesHtml(L)}<div class="loc">${linesHtml(B, 'b')}</div></div></div>` +
+  c.innerHTML = '<div class="card-head"><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' + `<div class="cols" style="--n:1"><div class="col">${linesHtml(L)}<div class="loc">${linesHtml(B, 'b')}</div></div></div>` +
     `<div class="card-actions"><button class="btn" id="geneZoom">${esc(t('gene.zoom'))}</button><button class="btn" id="copyGene">${esc(t('card.copy'))}</button></div>`;
   c.hidden = false;
-  const r = stage.getBoundingClientRect();
-  c.style.left = Math.max(8, Math.min(r.width - c.offsetWidth - 8, gx + 14)) + 'px';
-  c.style.top = Math.max(8, Math.min(r.height - c.offsetHeight - 8, y + 14)) + 'px';
+  placeCard(gx, y);
   const pn = CUR;
   $('closeCard').onclick = () => { hideCard(); };
   $('copyGene').onclick = () => navigator.clipboard.writeText(linesText(L) + '\n' + linesText(B)).then(() => toast(t('copied')), () => toast(t('copyFail')));

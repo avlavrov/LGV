@@ -1345,16 +1345,13 @@ function renderCard(place) {
   const goMate = paired && rec.mateRef >= 0 && !(rec.flag & 8);
   c.classList.toggle('wide', cols.length > 1);
   // top row: Read / Read and mate on the left, × on the right
-  const head = '<div class="card-head">' + seg + '<button class="card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
+  const head = '<div class="card-head">' + seg + '<button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
   c.innerHTML = head + `<div class="cols" style="--n:${cols.length}">` + cols.map(col =>
     `<div class="col">${col.title ? `<h3>${esc(col.title)}</h3>` : ''}${linesHtml(col.lines)}${col.base ? '<div class="loc">' + linesHtml(col.base, 'b') + '</div>' : ''}</div>`).join('') + '</div>' +
     `<div class="card-actions">${goMate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button><button class="btn" id="mateSplit">${esc(t('card.mateSplit'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button></div>`;
   c.hidden = false;
-  if (place) {
-    const r = stage.getBoundingClientRect(), cw = c.offsetWidth, ch = c.offsetHeight;
-    c.style.left = Math.max(8, Math.min(r.width - cw - 8, x + 14)) + 'px';
-    c.style.top = Math.max(8, Math.min(r.height - ch - 8, y + 14)) + 'px';
-  } else { // keep it on screen after a width change
+  if (place) placeCard(x, y);
+  else { // keep it on screen after a width change
     const r = stage.getBoundingClientRect(), cw = c.offsetWidth;
     c.style.left = Math.max(8, Math.min(r.width - cw - 8, parseFloat(c.style.left) || 8)) + 'px';
   }
@@ -1374,6 +1371,31 @@ function renderCard(place) {
   };
 }
 function hideCard() { $('card').hidden = true; cardState = null; }
+// The card opens next to the click, or where it was dragged to last (kept until the page is closed,
+// never stored). It is dragged by its top row.
+let cardPos = null;
+function placeCard(x, y) {
+  const c = $('card'), r = stage.getBoundingClientRect(), cw = c.offsetWidth, ch = c.offsetHeight;
+  const left = cardPos ? cardPos.left : x + 14, top = cardPos ? cardPos.top : y + 14;
+  c.style.left = Math.max(8, Math.min(r.width - cw - 8, left)) + 'px';
+  c.style.top = Math.max(8, Math.min(r.height - ch - 8, top)) + 'px';
+}
+{
+  const c = $('card'); let d = null;
+  c.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !e.target.closest('.card-head') || e.target.closest('button')) return;
+    d = { x: e.clientX, y: e.clientY, left: parseFloat(c.style.left) || 0, top: parseFloat(c.style.top) || 0 };
+    c.setPointerCapture(e.pointerId); c.classList.add('dragging'); e.preventDefault();
+  });
+  c.addEventListener('pointermove', e => {
+    if (!d) return;
+    const r = stage.getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.width - c.offsetWidth - 8, d.left + e.clientX - d.x)), top = Math.max(8, Math.min(r.height - 40, d.top + e.clientY - d.y));
+    c.style.left = left + 'px'; c.style.top = top + 'px'; cardPos = { left, top };
+  });
+  const end = () => { d = null; c.classList.remove('dragging'); };
+  c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
+}
 
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select')) { if (e.key === 'Escape') e.target.blur(); return; }
@@ -1776,9 +1798,16 @@ function openMenu(x, gx, y, hit) {
   const m = $('ctx'), pos = Math.max(0, Math.floor(S.view.start + x * S.view.bpPerPx));
   const item = (act, val, on, label, kind) => `<button class="mi" role="${kind}" aria-checked="${on}" data-act="${act}" data-val="${val}"><span class="mk" aria-hidden="true">${on ? (kind === 'menuitemcheckbox' ? '✓' : '●') : ''}</span>${esc(label)}</button>`;
   const r0 = hit && hit.rec, mateOk = r0 && (r0.flag & 1) && !(r0.flag & 8) && r0.mateRef >= 0;
-  menuState = { pn: CUR, hit: mateOk ? hit : null };
+  menuState = { pn: CUR, hit: hit || null };
+  const act = (a, label, off) => `<button class="mi" role="menuitem" data-act="${a}" data-val=""${off ? ' disabled' : ''}><span class="mk" aria-hidden="true"></span>${esc(label)}</button>`;
+  let copy = '';
+  if (r0) {
+    const [cl, cr] = clipLens(r0), noSeq = !r0.lseq, mate = (r0.flag & 1) ? findMate(r0, hit.T) : null;
+    copy = act('copySeq', t('menu.copySeq'), noSeq) + act('copyLeft', t('menu.copyLeft'), noSeq || !cl) + act('copyRight', t('menu.copyRight'), noSeq || !cr) +
+      act('copyPair', t(mate || !(r0.flag & 1) ? 'menu.copyPair' : 'menu.copyPairNo'), noSeq || !mate || !mate.lseq) + '<div class="msep"></div>';
+  }
   m.innerHTML =
-    (mateOk ? `<button class="mi" role="menuitem" data-act="mateSplit" data-val=""><span class="mk" aria-hidden="true"></span>${esc(t('menu.mateSplit'))}</button><div class="msep"></div>` : '') +
+    (mateOk ? act('mateSplit', t('menu.mateSplit')) + '<div class="msep"></div>' : '') + copy +
     item('pairs', '', !!P.viewPairs, t('menu.pairs'), 'menuitemcheckbox') +
     item('clips', '', !!P.showSoftClips, t('menu.clips'), 'menuitemcheckbox') +
     `<div class="ms">${esc(t('menu.colorBy'))}</div>` +
@@ -1796,12 +1825,29 @@ function openMenu(x, gx, y, hit) {
   (m.querySelector('[aria-checked="true"]') || m.querySelector('.mi')).focus({ preventScroll: true });
 }
 function closeMenu() { $('ctx').hidden = true; }
+// Read sequences as stored in the file: on the reference's forward strand, as IGV copies them.
+function seqOf(rec, from, to) { let s = ''; for (let i = from; i < to; i++) s += String.fromCharCode(readBaseAt(rec, i)); return s; }
+function copyReadSeq(rec, T, act) {
+  const [cl, cr] = clipLens(rec);
+  let txt = '';
+  if (act === 'copySeq') txt = seqOf(rec, 0, rec.lseq);
+  else if (act === 'copyLeft') txt = seqOf(rec, 0, cl);
+  else if (act === 'copyRight') txt = seqOf(rec, rec.lseq - cr, rec.lseq);
+  else if (act === 'copyPair') {
+    const mate = findMate(rec, T); if (!mate) return;
+    const [r1, r2] = rec.flag & 64 ? [rec, mate] : [mate, rec];
+    txt = `>${r1.name}/1\n${seqOf(r1, 0, r1.lseq)}\n>${r2.name}/2\n${seqOf(r2, 0, r2.lseq)}\n`;
+  }
+  if (!txt) return;
+  navigator.clipboard.writeText(txt).then(() => toast(t('copied.seq', { n: fmtInt(act === 'copyPair' ? txt.replace(/^>.*$/gm, '').replace(/\s/g, '').length : txt.length) })), () => toast(t('copyFail')));
+}
 $('ctx').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act, val = b.dataset.val, pos = +$('ctx').dataset.pos; let reloadNeeded = false;
   if (!menuState || !S.panels.includes(menuState.pn)) { closeMenu(); return; }
   usePanel(menuState.pn);
   if (act === 'mateSplit') { const h = menuState.hit; closeMenu(); hideCard(); if (h) openMatePanel(h.rec, h.T); draw(); return; }
+  if (act.startsWith('copy')) { const h = menuState.hit; closeMenu(); if (h) copyReadSeq(h.rec, h.T, act); return; }
   if (act === 'pairs') P.viewPairs = !P.viewPairs;
   else if (act === 'clips') { P.showSoftClips = !P.showSoftClips; reloadNeeded = true; }
   else if (act === 'color') P.colorBy = val;
@@ -2004,12 +2050,10 @@ function showGeneCard(tx, pos, gx, y) {
   const B = [['kv', t('card.location'), `${name}:${fmtInt(pos + 1)}`]];
   if (part) B.push(['kv', t('gene.where'), part.exon ? t('gene.exonN', { n: part.exon, of: part.of }) + (part.coding ? '' : ' (UTR)') : t('gene.intronN', { n: part.intron, of: part.of })]);
   c.classList.remove('wide');
-  c.innerHTML = '<div class="card-head"><button class="card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' + `<div class="cols" style="--n:1"><div class="col">${linesHtml(L)}<div class="loc">${linesHtml(B, 'b')}</div></div></div>` +
+  c.innerHTML = '<div class="card-head"><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' + `<div class="cols" style="--n:1"><div class="col">${linesHtml(L)}<div class="loc">${linesHtml(B, 'b')}</div></div></div>` +
     `<div class="card-actions"><button class="btn" id="geneZoom">${esc(t('gene.zoom'))}</button><button class="btn" id="copyGene">${esc(t('card.copy'))}</button></div>`;
   c.hidden = false;
-  const r = stage.getBoundingClientRect();
-  c.style.left = Math.max(8, Math.min(r.width - c.offsetWidth - 8, gx + 14)) + 'px';
-  c.style.top = Math.max(8, Math.min(r.height - c.offsetHeight - 8, y + 14)) + 'px';
+  placeCard(gx, y);
   const pn = CUR;
   $('closeCard').onclick = () => { hideCard(); };
   $('copyGene').onclick = () => navigator.clipboard.writeText(linesText(L) + '\n' + linesText(B)).then(() => toast(t('copied')), () => toast(t('copyFail')));
