@@ -50,7 +50,7 @@ More languages are one dictionary in `src/i18n.js`.
 | Genes | **MANE track** (GRCh38): MANE Select and Plus Clinical transcripts under the reference — coding exons thick, UTRs thin, strand arrows, exon numbers when zoomed in; click a transcript for its ids, span and the exon or intron at that position. Bundled with CGV (MANE v1.2), works offline |
 | Start | GRCh38 opens by default (View → "At start open": hg38, hg19, T2T, demo or nothing); without a connection the demo opens instead |
 | F6 No hard window limit | windows load on their own up to 64 MB of compressed data, larger on request; downsampling keeps deep regions fast; isolated sequencing errors fade when zoomed out |
-| F8 Coverage with allele highlight | done, threshold adjustable |
+| F8 Coverage with allele highlight | done, threshold adjustable; click the coverage for counts at that base as in IGV: A/C/G/T/N with strands, DEL, INS, mean base quality — from every read, before downsampling |
 | F9 Smooth read height | done, 1–24 px |
 | F10 Coloring + MAPQ as a transparency gradient | right click on reads: strand, pair (orientation and insert size), tag; MAPQ works on top of any of them |
 | F11 Group and sort | groups (View): strand, first/second, pair orientation, tag; sort by (right click, at the clicked position): base, MAPQ, strand, insert size |

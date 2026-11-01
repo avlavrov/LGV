@@ -1241,6 +1241,7 @@ function onClick(x, y, gx) {
   if (inGenes(y)) { const h = geneHit(x, y); if (h) { S.selected = null; S.hl = null; showGeneCard(h, Math.floor(S.view.start + x * S.view.bpPerPx), gx, y); } else hideCard(); draw(); return; }
   const ti = trackAtY(y);
   if (ti >= 0) { const g = trackGeom(ti); if (g.hdr && y < g.y0 + g.hdr && x > W - 28 && CUR === S.panels[S.panels.length - 1]) { closeTrack(S.tracks[ti]); return; } }
+  if (ti >= 0) { const g = trackGeom(ti); if (y >= g.covTop && y < g.covTop + g.covH + 4) { S.selected = null; S.hl = null; showCoverageCard(S.tracks[ti], Math.floor(S.view.start + x * S.view.bpPerPx), gx, y); draw(); return; } }
   const h = hitTest(x, y);
   if (!h) { S.selected = null; S.hl = null; hideCard(); draw(); return; }
   S.selected = Object.assign(h, { pn: CUR }); S.hl = { name: h.rec.name, id: h.T.id }; showCard(h.rec, h.T, x, gx, y); draw();
@@ -1306,6 +1307,8 @@ function alignmentLines(rec, T) {
   return L;
 }
 // The clicked base: Location and "Base = A @ QV 14", as IGV shows them under the clicked read.
+// Does a read have a base or a deletion at a position (soft clips count when they are shown)?
+function covers(rec, pos) { if (queryAt(rec, pos)) return true; if (!P.showSoftClips) return false; const [a, b] = readExtent(rec, true); return pos >= a && pos < b; }
 function baseLines(rec, pos) {
   const L = [['kv', t('card.location'), `${S.contigs[S.view.refId].name}:${fmtInt(pos + 1)}`]];
   const [cl, cr] = clipLens(rec);
@@ -1338,7 +1341,8 @@ function renderCard(place) {
     const left = !mateRec || rec.pos <= mateRec.pos ? rec : mateRec, right = left === rec ? mateRec : rec;
     for (const [r, title] of [[left, t('card.leftAln')], [right, t('card.rightAln')]]) {
       if (!r) { cols.push({ title, lines: [['txt', (rec.flag & 8) ? t('card.mateUnmapped2') : t('card.mateNotLoaded')]], base: null }); continue; }
-      cols.push({ title, lines: alignmentLines(r, T), base: r === rec ? baseLines(rec, pos) : null });
+      // the clicked position in both reads: overlapping mates show one letter on screen, both here
+      cols.push({ title, lines: alignmentLines(r, T), base: r === rec || covers(r, pos) ? baseLines(r, pos) : null });
     }
   } else cols.push({ title: '', lines: alignmentLines(rec, T), base: baseLines(rec, pos) });
   const seg = paired ? `<div class="seg" role="group" aria-label="${esc(t('card.show'))}"><button class="btn${P.cardPair ? '' : ' on'}" data-pair="0" aria-pressed="${!P.cardPair}">${esc(t('card.showRead'))}</button><button class="btn${P.cardPair ? ' on' : ''}" data-pair="1" aria-pressed="${P.cardPair}">${esc(t('card.showPair'))}</button></div>` : '';
@@ -1351,7 +1355,7 @@ function renderCard(place) {
     `<div class="card-actions">${goMate ? `<button class="btn" id="toMate">${esc(t('card.toMate'))}</button><button class="btn" id="mateSplit">${esc(t('card.mateSplit'))}</button>` : ''}<button class="btn" id="copyRead">${esc(t('card.copy'))}</button></div>`;
   c.hidden = false;
   if (place) placeCard(x, y);
-  else { // keep it on screen after a width change
+  else if (!cardPos) { // keep it on screen after a width change (unless the user put it somewhere)
     const r = stage.getBoundingClientRect(), cw = c.offsetWidth;
     c.style.left = Math.max(8, Math.min(r.width - cw - 8, parseFloat(c.style.left) || 8)) + 'px';
   }
@@ -1371,14 +1375,57 @@ function renderCard(place) {
   };
 }
 function hideCard() { $('card').hidden = true; cardState = null; }
+// ---- Coverage at a position, as IGV shows it: counts of A, C, G, T, N by strand, deletions and
+// insertions. Counted from every read at that position (read again from the file, so downsampling
+// does not change the numbers); the load-time filters (duplicates, MAPQ ...) apply as in the view.
+async function showCoverageCard(T, pos, gx, y) {
+  const pn = CUR, refId = S.view.refId, br = T.map[refId], name = S.contigs[refId].name;
+  if (br < 0 || pos < 0 || pos >= refLen()) return;
+  const refc = S.data ? S.data.ref.at(pos) : 0;
+  const c = $('card'), head = '<div class="card-head"><h3 class="card-title">' + esc(t('cov.title')) + '</h3><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
+  const tok = {}; cardState = { pn, cov: tok };
+  c.classList.remove('wide');
+  c.innerHTML = head + `<div class="ln">${esc(name + ':' + fmtInt(pos + 1))}</div><div class="ln"><span class="spin"></span>${esc(t('loading'))}</div>`;
+  c.hidden = false; placeCard(gx, y);
+  $('closeCard').onclick = () => hideCard();
+  let res;
+  try { res = await trackFetch(T, br, pos, pos + 1, { filters: P.filters, downsample: null }); }
+  catch (e) { if (cardState && cardState.cov === tok) c.querySelector('.ln:last-child').textContent = errText(e); return; }
+  if (!cardState || cardState.cov !== tok) return; // closed or replaced meanwhile
+  const N = { 65: [0, 0], 67: [0, 0], 71: [0, 0], 84: [0, 0], 78: [0, 0] }; let del = [0, 0], ins = [0, 0], qsum = 0, qn = 0;
+  for (const r of res.reads) {
+    const s = r.flag & 16 ? 1 : 0;
+    // an insertion right after this base
+    let rp = r.pos; for (const cg of r.cigar) { const op = cg & 15, n = cg >>> 4; if (op === 1 && rp === pos + 1) { ins[s]++; break; } if (op === 0 || op === 2 || op === 3 || op === 7 || op === 8) rp += n; if (rp > pos + 1) break; }
+    const at = queryAt(r, pos); if (!at) continue;
+    if (at.del) { del[s]++; continue; }
+    if (!r.lseq) continue;
+    let b = readBaseAt(r, at.qi); if (!N[b]) b = 78;
+    N[b][s]++; const q = r.qual[at.qi]; if (q !== 255) { qsum += q; qn++; }
+  }
+  const total = Object.values(N).reduce((a, v) => a + v[0] + v[1], 0);
+  const pct = n => total ? Math.round(n / total * 100) + '%' : '0%';
+  const L = [['kv', t('cov.total'), fmtInt(total)]];
+  for (const [code, ch] of [[65, 'A'], [67, 'C'], [71, 'G'], [84, 'T'], [78, 'N']]) {
+    const [f, rv] = N[code], n = f + rv;
+    if (n || code !== 78) L.push(['kv', ch + (code === refc ? ' (' + t('cov.ref') + ')' : ''), `${fmtInt(n)}  (${pct(n)}, ${fmtInt(f)}+, ${fmtInt(rv)}−)`]);
+  }
+  L.push(['sep'], ['kv', 'DEL', `${fmtInt(del[0] + del[1])}  (${fmtInt(del[0])}+, ${fmtInt(del[1])}−)`], ['kv', 'INS', `${fmtInt(ins[0] + ins[1])}  (${fmtInt(ins[0])}+, ${fmtInt(ins[1])}−)`]);
+  if (qn) L.push(['kv', t('cov.meanQ'), (qsum / qn).toFixed(1)]);
+  L.push(['txt', t('cov.note')]);
+  c.innerHTML = head + `<div class="ln b">${esc(name + ':' + fmtInt(pos + 1))}</div>${linesHtml(L)}<div class="card-actions"><button class="btn" id="copyCov">${esc(t('card.copy'))}</button></div>`;
+  $('closeCard').onclick = () => hideCard();
+  $('copyCov').onclick = () => navigator.clipboard.writeText(name + ':' + (pos + 1) + '\n' + linesText(L)).then(() => toast(t('copied')), () => toast(t('copyFail')));
+}
 // The card opens next to the click, or where it was dragged to last (kept until the page is closed,
 // never stored). It is dragged by its top row.
 let cardPos = null;
 function placeCard(x, y) {
   const c = $('card'), r = stage.getBoundingClientRect(), cw = c.offsetWidth, ch = c.offsetHeight;
-  const left = cardPos ? cardPos.left : x + 14, top = cardPos ? cardPos.top : y + 14;
-  c.style.left = Math.max(8, Math.min(r.width - cw - 8, left)) + 'px';
-  c.style.top = Math.max(8, Math.min(r.height - ch - 8, top)) + 'px';
+  // where the user dragged it, as it is, even partly off screen
+  if (cardPos) { c.style.left = cardPos.left + 'px'; c.style.top = cardPos.top + 'px'; return; }
+  c.style.left = Math.max(8, Math.min(r.width - cw - 8, x + 14)) + 'px';
+  c.style.top = Math.max(8, Math.min(r.height - ch - 8, y + 14)) + 'px';
 }
 {
   const c = $('card'); let d = null;
@@ -1390,7 +1437,8 @@ function placeCard(x, y) {
   c.addEventListener('pointermove', e => {
     if (!d) return;
     const r = stage.getBoundingClientRect();
-    const left = Math.max(8, Math.min(r.width - c.offsetWidth - 8, d.left + e.clientX - d.x)), top = Math.max(8, Math.min(r.height - 40, d.top + e.clientY - d.y));
+    // free placement; only enough of the top row stays inside to grab it again
+    const left = Math.max(60 - c.offsetWidth, Math.min(r.width - 60, d.left + e.clientX - d.x)), top = Math.max(0, Math.min(r.height - 30, d.top + e.clientY - d.y));
     c.style.left = left + 'px'; c.style.top = top + 'px'; cardPos = { left, top };
   });
   const end = () => { d = null; c.classList.remove('dragging'); };
@@ -1830,16 +1878,18 @@ function seqOf(rec, from, to) { let s = ''; for (let i = from; i < to; i++) s +=
 function copyReadSeq(rec, T, act) {
   const [cl, cr] = clipLens(rec);
   let txt = '';
-  if (act === 'copySeq') txt = seqOf(rec, 0, rec.lseq);
-  else if (act === 'copyLeft') txt = seqOf(rec, 0, cl);
-  else if (act === 'copyRight') txt = seqOf(rec, rec.lseq - cr, rec.lseq);
+  // FASTA with the read name; /1 or /2 for paired reads, _left_clip / _right_clip for clips
+  const nm = r => r.name + (r.flag & 1 ? (r.flag & 64 ? '/1' : r.flag & 128 ? '/2' : '') : '');
+  if (act === 'copySeq') txt = `>${nm(rec)}\n${seqOf(rec, 0, rec.lseq)}\n`;
+  else if (act === 'copyLeft') txt = `>${nm(rec)}_left_clip\n${seqOf(rec, 0, cl)}\n`;
+  else if (act === 'copyRight') txt = `>${nm(rec)}_right_clip\n${seqOf(rec, rec.lseq - cr, rec.lseq)}\n`;
   else if (act === 'copyPair') {
     const mate = findMate(rec, T); if (!mate) return;
     const [r1, r2] = rec.flag & 64 ? [rec, mate] : [mate, rec];
     txt = `>${r1.name}/1\n${seqOf(r1, 0, r1.lseq)}\n>${r2.name}/2\n${seqOf(r2, 0, r2.lseq)}\n`;
   }
   if (!txt) return;
-  navigator.clipboard.writeText(txt).then(() => toast(t('copied.seq', { n: fmtInt(act === 'copyPair' ? txt.replace(/^>.*$/gm, '').replace(/\s/g, '').length : txt.length) })), () => toast(t('copyFail')));
+  navigator.clipboard.writeText(txt).then(() => toast(t('copied.seq', { n: fmtInt(txt.replace(/^>.*$/gm, '').replace(/\s/g, '').length) })), () => toast(t('copyFail')));
 }
 $('ctx').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
@@ -2042,6 +2092,7 @@ function geneHit(x, y) {
 // Details of a transcript, and where the clicked position falls in it (exon / intron number).
 function showGeneCard(tx, pos, gx, y) {
   const c = $('card'), name = S.contigs[S.view.refId].name, part = txPart(tx, pos);
+  cardState = { pn: CUR, gene: tx };
   const L = [['kv', t('gene.symbol'), tx.sym + (tx.hgnc ? ' (' + tx.hgnc + ')' : '')], ['txt', tx.name], ['sep'],
     ['kv', t('gene.set'), tx.clinical ? 'MANE Plus Clinical' : 'MANE Select'], ['kv', 'Ensembl', tx.enst], ['kv', 'RefSeq', tx.nm],
     ['kv', t('gene.loc'), `${name}:${fmtInt(tx.start + 1)}-${fmtInt(tx.end)} (${tx.strand > 0 ? '+' : '−'})`],
