@@ -176,6 +176,7 @@ function openMatePanel(rec, T) {
   if (!(rec.flag & 1) || rec.flag & 8 || rec.mateRef < 0) return;
   if (v < 0) { toast(t('sample.mateNoContig', { name: T.bam.refs[rec.mateRef].name })); return; }
   if (S.panels.length >= maxPanels()) { toast(t('split.full', { n: S.panels.length })); return; }
+  navPush();
   const span = W * S.view.bpPerPx, mc = recTags(rec).MC, mlen = typeof mc === 'string' ? cigarStrRefLen(mc) : rec.end - rec.pos;
   const center = rec.matePos + Math.max(1, mlen) / 2;
   const pn = newPanel({ refId: v, start: 0, bpPerPx: S.view.bpPerPx });
@@ -958,6 +959,11 @@ function drawCoverage(T, g) {
   ctx.fillStyle = COL.css.muted; ctx.font = '10.5px ' + MONO; ctx.textAlign = 'left';
   ctx.fillText('0–' + fmtInt(maxD) + '×', 6, top + 10);
   ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, base + 3.5); ctx.lineTo(W, base + 3.5); ctx.stroke();
+  // the position the coverage card is about
+  if (cardState && cardState.cov && cardState.T === T && cardState.pn === CUR) {
+    const x0 = (cardState.pos - S.view.start) * ppb, w = Math.max(3, ppb);
+    ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 2; ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 1, top - 1, Math.round(w) + 2, h + 4); ctx.lineWidth = 1;
+  }
 }
 
 // Track header (only with several tracks): file name, samples, close button; a line above it.
@@ -1018,6 +1024,25 @@ function drawReadsOverlay(T, g) {
       ctx.fillRect(x0 + (x1 - x0 > 3 ? 0.5 : 0), rt + 0, Math.max(1, x1 - x0 - (x1 - x0 > 3 ? 1 : 0)), 3);
     }
     ctx.globalAlpha = 1;
+  }
+  // the base the read card is about: in the clicked read, and in its mate when the card shows both
+  if (cardState && cardState.rec && cardState.T === T && cardState.pn === CUR) {
+    const cs = cardState, vs = S.view.start, x0 = (cs.pos - vs) * ppb, w = Math.max(3, ppb);
+    if (cs.pos >= vs - 1 && cs.pos <= viewEnd() + 1) {
+      ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 2;
+      sh.groups.forEach((g, gi) => {
+        const firstRow = Math.max(0, Math.floor((scroll - gi * gg) / rh) - g.start - 1);
+        const lastRow = Math.min(g.rows.length - 1, Math.ceil((scroll + Hh - rt - gi * gg) / rh) - g.start + 1);
+        for (let ri = firstRow; ri <= lastRow; ri++) {
+          const y = rt + gg + (g.start + ri) * rh + gi * gg - scroll;
+          for (const r of g.rows[ri].flatMap(readsOf)) {
+            if (r.name !== cs.rec.name || !(r === cs.rec || (P.cardPair && covers(r, cs.pos) && !(r.flag & 0x900)))) continue;
+            ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 1, y - 2, Math.round(w) + 2, Math.max(2, rh - (rh >= 5 ? 1 : 0)) + 4);
+          }
+        }
+      });
+      ctx.lineWidth = 1;
+    }
   }
   // the selected read and its mate (and other alignments of the same read), in every panel
   if (S.hl && S.hl.id === T.id) {
@@ -1143,7 +1168,7 @@ function setActive(pn) { if (S.active !== pn) { S.active = pn; syncLocus(); draw
 let ideoDrag = false;
 stage.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !S.contigs || !onCanvas(e)) return;
-  if (e.offsetY < ideoH()) { stage.setPointerCapture(e.pointerId); ideoDrag = true; ideoGo(e.offsetX); return; } // the chromosome map
+  if (e.offsetY < ideoH()) { stage.setPointerCapture(e.pointerId); ideoDrag = true; navPush(); ideoGo(e.offsetX); return; } // the chromosome map
   const L = local(e), pn = L.pn;
   setActive(pn);
   if (L.y < panelHdr()) { if (L.x > W - 22) closePanel(pn); return; } // a panel's header: × closes it
@@ -1348,6 +1373,7 @@ function renderCard(place) {
   const seg = paired ? `<div class="seg" role="group" aria-label="${esc(t('card.show'))}"><button class="btn${P.cardPair ? '' : ' on'}" data-pair="0" aria-pressed="${!P.cardPair}">${esc(t('card.showRead'))}</button><button class="btn${P.cardPair ? ' on' : ''}" data-pair="1" aria-pressed="${P.cardPair}">${esc(t('card.showPair'))}</button></div>` : '';
   const goMate = paired && rec.mateRef >= 0 && !(rec.flag & 8);
   c.classList.toggle('wide', cols.length > 1);
+  c.classList.remove('narrow');
   // top row: Read / Read and mate on the left, × on the right
   const head = '<div class="card-head">' + seg + '<button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
   c.innerHTML = head + `<div class="cols" style="--n:${cols.length}">` + cols.map(col =>
@@ -1371,7 +1397,7 @@ function renderCard(place) {
     usePanel(cardState.pn); hideCard(); S.selected = null;
     const v = T.back[rec.mateRef];
     if (v < 0) { toast(t('sample.mateNoContig', { name: T.bam.refs[rec.mateRef].name })); draw(); return; }
-    goto(v, rec.matePos - 150, rec.matePos + 300);
+    navPush(); goto(v, rec.matePos - 150, rec.matePos + 300);
   };
 }
 function hideCard() { $('card').hidden = true; cardState = null; }
@@ -1381,18 +1407,22 @@ function hideCard() { $('card').hidden = true; cardState = null; }
 async function showCoverageCard(T, pos, gx, y) {
   const pn = CUR, refId = S.view.refId, br = T.map[refId], name = S.contigs[refId].name;
   if (br < 0 || pos < 0 || pos >= refLen()) return;
-  const refc = S.data ? S.data.ref.at(pos) : 0;
-  const c = $('card'), head = '<div class="card-head"><h3 class="card-title">' + esc(t('cov.title')) + '</h3><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
-  const tok = {}; cardState = { pn, cov: tok };
-  c.classList.remove('wide');
-  c.innerHTML = head + `<div class="ln">${esc(name + ':' + fmtInt(pos + 1))}</div><div class="ln"><span class="spin"></span>${esc(t('loading'))}</div>`;
-  c.hidden = false; placeCard(gx, y);
-  $('closeCard').onclick = () => hideCard();
+  const refc = S.data ? S.data.ref.at(pos) : 0, where = name + ':' + fmtInt(pos + 1);
+  const c = $('card'), tok = {};
+  // one top row: the position, Copy, ×
+  const head = copy => '<div class="card-head"><span class="card-title">' + esc(where) + '</span>' + (copy ? '<button class="btn card-btn" id="copyCov">' + esc(t('card.copy')) + '</button>' : '') +
+    '<button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
+  cardState = { pn, cov: tok, T, pos };
+  c.classList.remove('wide'); c.classList.add('narrow');
+  c.innerHTML = head(false) + `<div class="ln"><span class="spin"></span>${esc(t('loading'))}</div>`;
+  c.hidden = false; placeCard(gx, y); draw();
+  $('closeCard').onclick = () => { hideCard(); draw(); };
   let res;
   try { res = await trackFetch(T, br, pos, pos + 1, { filters: P.filters, downsample: null }); }
   catch (e) { if (cardState && cardState.cov === tok) c.querySelector('.ln:last-child').textContent = errText(e); return; }
   if (!cardState || cardState.cov !== tok) return; // closed or replaced meanwhile
-  const N = { 65: [0, 0], 67: [0, 0], 71: [0, 0], 84: [0, 0], 78: [0, 0] }; let del = [0, 0], ins = [0, 0], qsum = 0, qn = 0;
+  // per base: [forward, reverse, quality sum, quality count]
+  const N = { 65: [0, 0, 0, 0], 67: [0, 0, 0, 0], 71: [0, 0, 0, 0], 84: [0, 0, 0, 0], 78: [0, 0, 0, 0] }, del = [0, 0], ins = [0, 0];
   for (const r of res.reads) {
     const s = r.flag & 16 ? 1 : 0;
     // an insertion right after this base
@@ -1401,20 +1431,18 @@ async function showCoverageCard(T, pos, gx, y) {
     if (at.del) { del[s]++; continue; }
     if (!r.lseq) continue;
     let b = readBaseAt(r, at.qi); if (!N[b]) b = 78;
-    N[b][s]++; const q = r.qual[at.qi]; if (q !== 255) { qsum += q; qn++; }
+    N[b][s]++; const q = r.qual[at.qi]; if (q !== 255) { N[b][2] += q; N[b][3]++; }
   }
   const total = Object.values(N).reduce((a, v) => a + v[0] + v[1], 0);
   const pct = n => total ? Math.round(n / total * 100) + '%' : '0%';
   const L = [['kv', t('cov.total'), fmtInt(total)]];
   for (const [code, ch] of [[65, 'A'], [67, 'C'], [71, 'G'], [84, 'T'], [78, 'N']]) {
-    const [f, rv] = N[code], n = f + rv;
-    if (n || code !== 78) L.push(['kv', ch + (code === refc ? ' (' + t('cov.ref') + ')' : ''), `${fmtInt(n)}  (${pct(n)}, ${fmtInt(f)}+, ${fmtInt(rv)}−)`]);
+    const [f, rv, qs, qn] = N[code], n = f + rv;
+    if (n || code !== 78) L.push(['kv', ch + (code === refc ? ' (' + t('cov.ref') + ')' : ''), `${fmtInt(n)} (${pct(n)}, ${fmtInt(f)}+, ${fmtInt(rv)}−)` + (qn ? ` mQV ${Math.round(qs / qn)}` : '')]);
   }
-  L.push(['sep'], ['kv', 'DEL', `${fmtInt(del[0] + del[1])}  (${fmtInt(del[0])}+, ${fmtInt(del[1])}−)`], ['kv', 'INS', `${fmtInt(ins[0] + ins[1])}  (${fmtInt(ins[0])}+, ${fmtInt(ins[1])}−)`]);
-  if (qn) L.push(['kv', t('cov.meanQ'), (qsum / qn).toFixed(1)]);
-  L.push(['txt', t('cov.note')]);
-  c.innerHTML = head + `<div class="ln b">${esc(name + ':' + fmtInt(pos + 1))}</div>${linesHtml(L)}<div class="card-actions"><button class="btn" id="copyCov">${esc(t('card.copy'))}</button></div>`;
-  $('closeCard').onclick = () => hideCard();
+  L.push(['kv', 'DEL', `${fmtInt(del[0] + del[1])} (${fmtInt(del[0])}+, ${fmtInt(del[1])}−)`], ['kv', 'INS', `${fmtInt(ins[0] + ins[1])} (${fmtInt(ins[0])}+, ${fmtInt(ins[1])}−)`]);
+  c.innerHTML = head(true) + linesHtml(L);
+  $('closeCard').onclick = () => { hideCard(); draw(); };
   $('copyCov').onclick = () => navigator.clipboard.writeText(name + ':' + (pos + 1) + '\n' + linesText(L)).then(() => toast(t('copied')), () => toast(t('copyFail')));
 }
 // The card opens next to the click, or where it was dragged to last (kept until the page is closed,
@@ -1454,8 +1482,8 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'PageDown' || e.key === 'PageUp') vscrollBy((e.key === 'PageDown' ? 1 : -1) * (H - covTop()) * 0.9);
   else if (e.key === 'ArrowUp') { for (const T of S.tracks) T.scroll -= 60; clampScroll(); draw(); }
   else if (e.key === 'ArrowDown') { for (const T of S.tracks) T.scroll += 60; clampScroll(); draw(); }
-  else if (e.key === '+' || e.key === '=') zoomAt(W / 2, 0.5);
-  else if (e.key === '-' || e.key === '_') zoomAt(W / 2, 2);
+  else if (e.key === '+' || e.key === '=') zoomAll(0.5);
+  else if (e.key === '-' || e.key === '_') zoomAll(2);
   else if (e.key === 's' || e.key === 'ы') sortHere(); // 'ы' / 'р': same keys on a Russian layout
   else if (e.key === 'h' || e.key === 'р') { P.hideToolbar = !P.hideToolbar; applyChrome(); saveProfile(); }
   else if (e.key === 'Escape') { hideCard(); closePanels(); closeMenu(); $('toast').hidden = true; S.selected = null; S.hl = null; for (const p of S.panels) p.rubber = null; draw(); }
@@ -1808,7 +1836,7 @@ async function openReference(ref, opts) {
       toast(note, note.length > 90);
     }
     // a new genome means a new coordinate system: the old view no longer applies
-    S.view.refId = 0; S.view.start = 0; S.viewSet = false;
+    S.view.refId = 0; S.view.start = 0; S.viewSet = false; NAV.back = []; NAV.fwd = []; updateNavBtns();
     if (!opts.noGoto) { goto(0, 0, Math.min(S.contigs[0].len, 1000)); S.viewSet = true; }
     return true;
   } catch (e) { toast(t('ref.failed', { msg: errText(e) })); return false; }
@@ -1955,11 +1983,28 @@ function goLocus() {
   if (!l) { toast(t('locus.bad')); return; }
   if (l.error) { toast(l.error); return; }
   if (l.length > maxPanels()) toast(t('split.full', { n: maxPanels() }));
-  el.blur(); setPanels(l);
+  el.blur(); navPush(); setPanels(l);
 }
+// ---- Back and forward, like a browser: the places jumped to (typed loci and genes, examples, go to
+// mate, mate in split screen, whole gene, chromosome map). Panning and zooming are not steps.
+const NAV = { back: [], fwd: [] };
+function navState() { return S.panels.map(pn => ({ id: pn.view.refId, s: Math.round(pn.view.start), e: Math.round(pn.view.start + pn.w * pn.view.bpPerPx) })); }
+function navPush() { if (!S.contigs) return; NAV.back.push(navState()); if (NAV.back.length > 200) NAV.back.shift(); NAV.fwd = []; updateNavBtns(); }
+function navGo(dir) {
+  const from = dir < 0 ? NAV.back : NAV.fwd, to = dir < 0 ? NAV.fwd : NAV.back;
+  if (!from.length || !S.contigs) return;
+  const st = from.pop().filter(x => x.id < S.contigs.length); if (!st.length) { updateNavBtns(); return; }
+  to.push(navState()); hideCard(); setPanels(st); updateNavBtns();
+}
+function updateNavBtns() { $('navBack').disabled = !NAV.back.length; $('navFwd').disabled = !NAV.fwd.length; }
+// Zoom buttons and keys act on every panel at once, each around its own center.
+function zoomAll(f) { if (!S.contigs) return; forEachPanel(() => zoomAt(W / 2, f)); usePanel(S.active); syncLocus(); }
+$('zoomIn').onclick = () => zoomAll(0.5); $('zoomOut').onclick = () => zoomAll(2);
+$('navBack').onclick = () => navGo(-1); $('navFwd').onclick = () => navGo(1);
+updateNavBtns();
 $('locus').addEventListener('keydown', e => { if (e.key === 'Enter') goLocus(); });
 $('goBtn').onclick = goLocus;
-$('examples').onchange = e => { const v = e.target.value; e.target.value = ''; if (!v || !S.contigs) return; const l = parseLocus(v); if (l && !l.error) setPanels([l]); };
+$('examples').onchange = e => { const v = e.target.value; e.target.value = ''; if (!v || !S.contigs) return; const l = parseLocus(v); if (l && !l.error) { navPush(); setPanels([l]); } };
 
 // profile controls: id → [profile path, type, what to recompute]
 const CONTROLS = [
@@ -2092,6 +2137,7 @@ function geneHit(x, y) {
 // Details of a transcript, and where the clicked position falls in it (exon / intron number).
 function showGeneCard(tx, pos, gx, y) {
   const c = $('card'), name = S.contigs[S.view.refId].name, part = txPart(tx, pos);
+  c.classList.remove('narrow');
   cardState = { pn: CUR, gene: tx };
   const L = [['kv', t('gene.symbol'), tx.sym + (tx.hgnc ? ' (' + tx.hgnc + ')' : '')], ['txt', tx.name], ['sep'],
     ['kv', t('gene.set'), tx.clinical ? 'MANE Plus Clinical' : 'MANE Select'], ['kv', 'Ensembl', tx.enst], ['kv', 'RefSeq', tx.nm],
@@ -2108,7 +2154,7 @@ function showGeneCard(tx, pos, gx, y) {
   const pn = CUR;
   $('closeCard').onclick = () => { hideCard(); };
   $('copyGene').onclick = () => navigator.clipboard.writeText(linesText(L) + '\n' + linesText(B)).then(() => toast(t('copied')), () => toast(t('copyFail')));
-  $('geneZoom').onclick = () => { if (!S.panels.includes(pn)) return; usePanel(pn); hideCard(); const pad = Math.max(50, Math.round((tx.end - tx.start) * 0.05)); goto(contigId(tx.chr), tx.start - pad, tx.end + pad); };
+  $('geneZoom').onclick = () => { if (!S.panels.includes(pn)) return; usePanel(pn); hideCard(); navPush(); const pad = Math.max(50, Math.round((tx.end - tx.start) * 0.05)); goto(contigId(tx.chr), tx.start - pad, tx.end + pad); };
 }
 // Gene names offered while typing in the locus field (for the word being typed).
 function updateGeneSuggest() {

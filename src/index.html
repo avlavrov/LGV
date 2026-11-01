@@ -84,6 +84,7 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .ms { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 5px 10px 2px 26px; border-top: 1px solid var(--line); margin-top: 3px; }
 .mt { display: flex; align-items: center; gap: 8px; padding: 2px 10px 4px 26px; font-size: 12px; color: var(--muted); }
 .mt input { width: 46px; height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); font-family: var(--mono); }
+.card.narrow { width: auto; min-width: 220px; }
 .card.wide { width: min(760px, calc(100% - 16px)); }
 .card .cols { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 0 20px; }
 .card .col h3 { font-size: 12.5px; margin: 2px 0 3px; font-weight: 700; }
@@ -95,7 +96,11 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .card .seg { display: inline-flex; }
 .card-head { cursor: move; }
 .card.dragging { user-select: none; -webkit-user-select: none; }
-.card .card-title { font-size: 12.5px; margin: 4px 0 0; font-weight: 700; }
+.card .card-title { font-size: 12.5px; font-weight: 700; align-self: center; margin-right: auto; }
+.card .card-btn { height: 24px; font-size: 12px; }
+.navs { display: inline-flex; gap: 2px; flex: none; }
+.btn.icon { width: 28px; padding: 0; font-size: 15px; line-height: 1; }
+.btn:disabled { opacity: .4; cursor: default; }
 .card .card-x { margin-left: auto; height: 24px; width: 28px; padding: 0; font-size: 15px; line-height: 1; flex: none; }
 .card .seg .btn { height: 24px; font-size: 12px; border-radius: 0; }
 .card .seg .btn:first-child { border-radius: 6px 0 0 6px; } .card .seg .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
@@ -148,6 +153,7 @@ body.bare .side { top: 0; }
     <input id="locus" type="text" list="geneList" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
     <datalist id="geneList"></datalist>
     <button class="btn" id="goBtn" data-i18n="btn.go">Go</button>
+    <span class="navs"><button class="btn icon" id="navBack" data-i18n-title="nav.back" title="Back">←</button><button class="btn icon" id="navFwd" data-i18n-title="nav.fwd" title="Forward">→</button><button class="btn icon" id="zoomOut" data-i18n-title="nav.zoomOut" title="Zoom out (all panels)">−</button><button class="btn icon" id="zoomIn" data-i18n-title="nav.zoomIn" title="Zoom in (all panels)">+</button></span>
     <span id="span"></span>
   </div>
   <select id="examples" class="btn" data-i18n-aria="examples" aria-label="Examples" hidden>

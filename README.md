@@ -3,12 +3,15 @@
 A fast, light and secure viewer for read alignments (BAM) in human genetics.
 It runs in the browser with no server and no third-party dependencies.
 
-**Status:** stage 0, technical prototype.
+**Status:** working prototype: BAM and CRAM, GRCh38 genes, split screen.
+
+**User guide:** [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (Russian: [docs/USER_GUIDE.ru.md](docs/USER_GUIDE.ru.md)).
+Project rules: [docs/PROJECT_RULES.md](docs/PROJECT_RULES.md). Plans: [docs/TODO.md](docs/TODO.md).
 
 ## Run
 
-Open `dist/cgv.html` in Chrome, Edge, Firefox or Safari. It starts on synthetic demo
-data. To view your own data, press **Open**:
+Open `dist/cgv.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38 reference
+(synthetic demo data when offline). To view your own data, press **Open**:
 
 - **From disk**: choose one or more `.bam` files with their indexes (you can add `.fa` +
   `.fai`), choose a whole folder, or drop files or a folder onto the window. Each `.bam` is
@@ -55,6 +58,7 @@ More languages are one dictionary in `src/i18n.js`.
 | F10 Coloring + MAPQ as a transparency gradient | right click on reads: strand, pair (orientation and insert size), tag; MAPQ works on top of any of them |
 | F11 Group and sort | groups (View): strand, first/second, pair orientation, tag; sort by (right click, at the clicked position): base, MAPQ, strand, insert size |
 | F12 Filters | MAPQ, duplicates, secondary, supplementary, QC fail; downsampling |
+| Navigation | ← → back / forward between places jumped to; − + zoom all panels at once |
 | F13 Mate | view as pairs (right click), read details + go to mate; **split screen** as in IGV: right click on a read → "View mate region in split screen" (or the button in the read details) opens a panel centered on the mate, the read and its mate outlined in every panel; several loci typed in the locus field separated by spaces open one panel each; each panel has its own ruler, scroll and zoom, × in its header closes it; at least 6 panels, more as the width allows (60 px each) |
 | F14 Read details | IGV-style popup: read, mapping, clipping, mate and tags, then Location and `Base = A @ QV 14` for the clicked base; one read or read + mate side by side; copy; dragged by its top row, then opens where it was left (until the page is closed). Right click on a read: copy its sequence, left or right soft clip, or the pair as FASTA |
 | F18 Display profile as JSON | kept in the browser, copied and applied as JSON |
