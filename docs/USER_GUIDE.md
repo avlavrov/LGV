@@ -51,10 +51,15 @@ From top to bottom:
 - **Ruler** and **reference sequence**: coordinates are 1-based, as in IGV. The reference shows as
   colored blocks, and as letters when zoomed in far enough.
 - **Gene track**: MANE transcripts (section 7).
-- **Samples**: each with a header (file name and sample, × closes it — shown when there are
-  several), its coverage and its reads.
+- **Samples**: each with its coverage and its reads. With several samples, a small label at the top
+  of each sample's reads names it (file and sample; it may cover a row or two), with × at the right
+  to close it.
 
 The interface is kept compact on purpose: as much of the screen as possible goes to data.
+Explanations are kept out of the way, as **tooltips**: rest the pointer on a button, a setting, a
+line of a card, the chromosome map, the ruler, the gene track or the coverage, and a short
+explanation appears after a moment (the browser's own tooltip — it does not pop up while the
+pointer moves, and there are none over the reads).
 
 ## 3. Opening data
 
@@ -181,11 +186,20 @@ bar shows colored parts by base.
   ```
 
   Each base: number of reads, share of the total, reads on the forward (+) and reverse (−) strand,
-  and **mQV** — the mean base quality of that base. **Total count** is A + C + G + T + N (deletions
+  and **mQV**. **Total count** is A + C + G + T + N (deletions
   are counted separately). **DEL**: reads with a deletion at this position. **INS**: reads with an
   insertion right after this base. The counts come from **all reads at that position**, read again
   from the file, so downsampling does not change them; the filters from **View** (duplicates, MAPQ,
   secondary, QC-failed) do apply, as in the view. The counted column is outlined.
+
+  **mQV is CGV's own measure, not a standard one: IGV does not show it.** It is the mean of the
+  base qualities (Phred QV, as stored in the file) of that base at this position, over the reads
+  counted for it: `mQV = (QV₁ + … + QVₙ) / n`, rounded. Reads without stored qualities are left out
+  of the mean (if none has them, mQV is not shown). It helps to tell a real allele, usually read with
+  qualities like the reference base, from a cluster of sequencing errors with low qualities. It is
+  an arithmetic mean of Phred values, not of error probabilities, so a few very low-quality bases
+  pull it down less than they would an error-rate average. Hovering a line of the card shows these
+  explanations briefly.
 
 ## 9. Reads: how they are drawn
 
@@ -229,7 +243,7 @@ with its quality, e.g. `Base = C @ QV 37 (soft-clipped)`.
 - **Read / Read and mate** at the top switches between one read and both mates side by side (the
   mate is shown when it is loaded in any panel). With both shown, each mate that covers the clicked
   position has its own Location / Base — mates that overlap show only one letter on screen.
-- The base the card is about is **outlined** in the read (and in the mate).
+- The base the card is about is **outlined** with a thin line in the read (and in the mate).
 - **Go to mate** moves the view to the mate; **Mate in split screen** opens it in a new panel;
   **Copy** copies the text.
 - **×** at the top right closes the card (also Escape).
@@ -258,7 +272,7 @@ coverage, reads and scroll. When they do not fit, each keeps at least its minimu
 ruler and gene track:
 
 - the wheel over a sample's reads scrolls its rows; past their end it scrolls the whole stack;
-- the wheel or a vertical drag over coverage or a header scrolls the stack;
+- the wheel or a vertical drag over coverage scrolls the stack;
 - the scrollbar on the right; PageUp / PageDown.
 
 ## 13. View settings

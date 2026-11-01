@@ -150,9 +150,9 @@ body.bare .side { top: 0; }
 <header class="bar">
   <span class="mark" title="Convenient, custom, genomic viewer">CGV</span>
   <div class="locus">
-    <input id="locus" type="text" list="geneList" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
+    <input id="locus" data-i18n-title="tip.locus" type="text" list="geneList" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
     <datalist id="geneList"></datalist>
-    <button class="btn" id="goBtn" data-i18n="btn.go">Go</button>
+    <button class="btn" id="goBtn" data-i18n-title="tip.go" data-i18n="btn.go">Go</button>
     <span class="navs"><button class="btn icon" id="navBack" data-i18n-title="nav.back" title="Back">←</button><button class="btn icon" id="navFwd" data-i18n-title="nav.fwd" title="Forward">→</button><button class="btn icon" id="zoomOut" data-i18n-title="nav.zoomOut" title="Zoom out (all panels)">−</button><button class="btn icon" id="zoomIn" data-i18n-title="nav.zoomIn" title="Zoom in (all panels)">+</button></span>
     <span id="span"></span>
   </div>
@@ -169,8 +169,8 @@ body.bare .side { top: 0; }
   </select>
   <span class="file" id="fileName"></span>
   <span class="status" id="status"></span>
-  <button class="btn" id="openBtn" aria-expanded="false" aria-controls="openPanel" data-i18n="btn.open">Open</button>
-  <button class="btn" id="viewBtn" aria-expanded="false" aria-controls="panel" data-i18n="btn.view">View</button>
+  <button class="btn" id="openBtn" data-i18n-title="tip.open" aria-expanded="false" aria-controls="openPanel" data-i18n="btn.open">Open</button>
+  <button class="btn" id="viewBtn" data-i18n-title="tip.view" aria-expanded="false" aria-controls="panel" data-i18n="btn.view">View</button>
 </header>
 
 <main id="stage" data-i18n-drop="drop" data-drop-text="Drop .bam / .cram files with their indexes">
@@ -227,8 +227,8 @@ body.bare .side { top: 0; }
       <h2 data-i18n="view.reads">Reads</h2>
       <div class="field"><label for="readHeight" data-i18n="view.readHeight">Read height</label><output id="readHeightOut"></output><input id="readHeight" type="range" min="1" max="24" step="0.5"></div>
       <p class="hint" data-i18n="view.menuHint"></p>
-      <div class="check"><input id="bqShade" type="checkbox"><label for="bqShade" data-i18n="view.bqShade"></label></div>
-      <div class="check"><input id="softClips" type="checkbox"><label for="softClips" data-i18n="view.softClips"></label></div>
+      <div class="check"><input id="bqShade" type="checkbox"><label for="bqShade" data-i18n-title="tip.bqShade" data-i18n="view.bqShade"></label></div>
+      <div class="check"><input id="softClips" type="checkbox"><label for="softClips" data-i18n-title="tip.softClips" data-i18n="view.softClips"></label></div>
     </section>
     <section>
       <h2 data-i18n="view.mq">MAPQ transparency</h2>
@@ -236,7 +236,7 @@ body.bare .side { top: 0; }
         <div class="field"><label for="mqLow" data-i18n="view.mqLow">From MQ</label><input id="mqLow" type="number" min="0" max="255" step="1"></div>
         <div class="field"><label for="mqHigh" data-i18n="view.mqHigh">To MQ</label><input id="mqHigh" type="number" min="0" max="255" step="1"></div>
       </div>
-      <div class="field"><label for="mqMinAlpha" data-i18n="view.mqMinAlpha"></label><output id="mqMinAlphaOut"></output><input id="mqMinAlpha" type="range" min="0.02" max="1" step="0.01"></div>
+      <div class="field"><label for="mqMinAlpha" data-i18n-title="tip.mqMinAlpha" data-i18n="view.mqMinAlpha"></label><output id="mqMinAlphaOut"></output><input id="mqMinAlpha" type="range" min="0.02" max="1" step="0.01"></div>
       <div class="legend" id="mqLegend"></div>
       <div class="legend-labels"><span id="mqLegendLo"></span><span id="mqLegendHi"></span></div>
       <p class="hint" data-i18n="view.mqHint"></p>
@@ -249,30 +249,30 @@ body.bare .side { top: 0; }
     </section>
     <section>
       <h2 data-i18n="view.filters">Filters</h2>
-      <div class="field"><label for="minMapq" data-i18n="view.minMapq">Minimum MAPQ</label><input id="minMapq" type="number" min="0" max="255" step="1"></div>
+      <div class="field"><label for="minMapq" data-i18n-title="tip.minMapq" data-i18n="view.minMapq">Minimum MAPQ</label><input id="minMapq" type="number" min="0" max="255" step="1"></div>
       <div class="check"><input id="hideDup" type="checkbox"><label for="hideDup" data-i18n="view.hideDup"></label></div>
       <div class="check"><input id="hideSec" type="checkbox"><label for="hideSec" data-i18n="view.hideSec"></label></div>
       <div class="check"><input id="hideSupp" type="checkbox"><label for="hideSupp" data-i18n="view.hideSupp"></label></div>
       <div class="check"><input id="hideQc" type="checkbox"><label for="hideQc" data-i18n="view.hideQc"></label></div>
-      <div class="check"><input id="dsOn" type="checkbox"><label for="dsOn" data-i18n="view.downsample"></label></div>
+      <div class="check"><input id="dsOn" type="checkbox"><label for="dsOn" data-i18n-title="tip.downsample" data-i18n="view.downsample"></label></div>
       <div class="pair">
-        <div class="field"><label for="dsMax" data-i18n="view.dsMax">Reads per window</label><input id="dsMax" type="number" min="1" max="100000" step="1"></div>
+        <div class="field"><label for="dsMax" data-i18n-title="tip.dsMax" data-i18n="view.dsMax">Reads per window</label><input id="dsMax" type="number" min="1" max="100000" step="1"></div>
         <div class="field"><label for="dsWin" data-i18n="view.dsWin">Window, bp</label><input id="dsWin" type="number" min="1" max="100000" step="1"></div>
       </div>
       <p class="hint" data-i18n="view.dsHint"></p>
     </section>
     <section>
       <h2 data-i18n="view.coverage">Coverage</h2>
-      <div class="field"><label for="trackMinH" data-i18n="view.trackMinH">Minimum sample height</label><output id="trackMinHOut"></output><input id="trackMinH" type="range" min="80" max="1000" step="10"></div>
-      <div class="field"><label for="covHeight" data-i18n="view.covHeight">Track height</label><output id="covHeightOut"></output><input id="covHeight" type="range" min="20" max="200" step="2"></div>
-      <div class="field"><label for="alleleThr" data-i18n="view.alleleThr">Highlight alleles from</label><output id="alleleThrOut"></output><input id="alleleThr" type="range" min="0.02" max="0.5" step="0.01"></div>
+      <div class="field"><label for="trackMinH" data-i18n-title="tip.trackMinH" data-i18n="view.trackMinH">Minimum sample height</label><output id="trackMinHOut"></output><input id="trackMinH" type="range" min="80" max="1000" step="10"></div>
+      <div class="field"><label for="covHeight" data-i18n-title="tip.covHeight" data-i18n="view.covHeight">Track height</label><output id="covHeightOut"></output><input id="covHeight" type="range" min="20" max="200" step="2"></div>
+      <div class="field"><label for="alleleThr" data-i18n-title="tip.alleleThr" data-i18n="view.alleleThr">Highlight alleles from</label><output id="alleleThrOut"></output><input id="alleleThr" type="range" min="0.02" max="0.5" step="0.01"></div>
     </section>
     <section>
       <h2 data-i18n="view.screen">Screen</h2>
       <div class="field"><label for="language" data-i18n="view.language">Language</label><select id="language"></select></div>
       <div class="check"><input id="hideToolbar" type="checkbox"><label for="hideToolbar" data-i18n="view.hideToolbar"></label></div>
-      <div class="check"><input id="showGenes" type="checkbox"><label for="showGenes" data-i18n="view.showGenes"></label></div>
-      <div class="field"><label for="startRef" data-i18n="view.startRef">At start open</label>
+      <div class="check"><input id="showGenes" type="checkbox"><label for="showGenes" data-i18n-title="tip.showGenes" data-i18n="view.showGenes"></label></div>
+      <div class="field"><label for="startRef" data-i18n-title="tip.startRef" data-i18n="view.startRef">At start open</label>
         <select id="startRef"><option value="hg38">GRCh38 / hg38</option><option value="hg19">GRCh37 / hg19</option><option value="chm13">T2T-CHM13 v2.0</option><option value="demo" data-i18n="start.demo"></option><option value="none" data-i18n="start.none"></option></select></div>
     </section>
     <section>

@@ -150,9 +150,9 @@ body.bare .side { top: 0; }
 <header class="bar">
   <span class="mark" title="Convenient, custom, genomic viewer">CGV</span>
   <div class="locus">
-    <input id="locus" type="text" list="geneList" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
+    <input id="locus" data-i18n-title="tip.locus" type="text" list="geneList" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
     <datalist id="geneList"></datalist>
-    <button class="btn" id="goBtn" data-i18n="btn.go">Go</button>
+    <button class="btn" id="goBtn" data-i18n-title="tip.go" data-i18n="btn.go">Go</button>
     <span class="navs"><button class="btn icon" id="navBack" data-i18n-title="nav.back" title="Back">←</button><button class="btn icon" id="navFwd" data-i18n-title="nav.fwd" title="Forward">→</button><button class="btn icon" id="zoomOut" data-i18n-title="nav.zoomOut" title="Zoom out (all panels)">−</button><button class="btn icon" id="zoomIn" data-i18n-title="nav.zoomIn" title="Zoom in (all panels)">+</button></span>
     <span id="span"></span>
   </div>
@@ -169,8 +169,8 @@ body.bare .side { top: 0; }
   </select>
   <span class="file" id="fileName"></span>
   <span class="status" id="status"></span>
-  <button class="btn" id="openBtn" aria-expanded="false" aria-controls="openPanel" data-i18n="btn.open">Open</button>
-  <button class="btn" id="viewBtn" aria-expanded="false" aria-controls="panel" data-i18n="btn.view">View</button>
+  <button class="btn" id="openBtn" data-i18n-title="tip.open" aria-expanded="false" aria-controls="openPanel" data-i18n="btn.open">Open</button>
+  <button class="btn" id="viewBtn" data-i18n-title="tip.view" aria-expanded="false" aria-controls="panel" data-i18n="btn.view">View</button>
 </header>
 
 <main id="stage" data-i18n-drop="drop" data-drop-text="Drop .bam / .cram files with their indexes">
@@ -227,8 +227,8 @@ body.bare .side { top: 0; }
       <h2 data-i18n="view.reads">Reads</h2>
       <div class="field"><label for="readHeight" data-i18n="view.readHeight">Read height</label><output id="readHeightOut"></output><input id="readHeight" type="range" min="1" max="24" step="0.5"></div>
       <p class="hint" data-i18n="view.menuHint"></p>
-      <div class="check"><input id="bqShade" type="checkbox"><label for="bqShade" data-i18n="view.bqShade"></label></div>
-      <div class="check"><input id="softClips" type="checkbox"><label for="softClips" data-i18n="view.softClips"></label></div>
+      <div class="check"><input id="bqShade" type="checkbox"><label for="bqShade" data-i18n-title="tip.bqShade" data-i18n="view.bqShade"></label></div>
+      <div class="check"><input id="softClips" type="checkbox"><label for="softClips" data-i18n-title="tip.softClips" data-i18n="view.softClips"></label></div>
     </section>
     <section>
       <h2 data-i18n="view.mq">MAPQ transparency</h2>
@@ -236,7 +236,7 @@ body.bare .side { top: 0; }
         <div class="field"><label for="mqLow" data-i18n="view.mqLow">From MQ</label><input id="mqLow" type="number" min="0" max="255" step="1"></div>
         <div class="field"><label for="mqHigh" data-i18n="view.mqHigh">To MQ</label><input id="mqHigh" type="number" min="0" max="255" step="1"></div>
       </div>
-      <div class="field"><label for="mqMinAlpha" data-i18n="view.mqMinAlpha"></label><output id="mqMinAlphaOut"></output><input id="mqMinAlpha" type="range" min="0.02" max="1" step="0.01"></div>
+      <div class="field"><label for="mqMinAlpha" data-i18n-title="tip.mqMinAlpha" data-i18n="view.mqMinAlpha"></label><output id="mqMinAlphaOut"></output><input id="mqMinAlpha" type="range" min="0.02" max="1" step="0.01"></div>
       <div class="legend" id="mqLegend"></div>
       <div class="legend-labels"><span id="mqLegendLo"></span><span id="mqLegendHi"></span></div>
       <p class="hint" data-i18n="view.mqHint"></p>
@@ -249,30 +249,30 @@ body.bare .side { top: 0; }
     </section>
     <section>
       <h2 data-i18n="view.filters">Filters</h2>
-      <div class="field"><label for="minMapq" data-i18n="view.minMapq">Minimum MAPQ</label><input id="minMapq" type="number" min="0" max="255" step="1"></div>
+      <div class="field"><label for="minMapq" data-i18n-title="tip.minMapq" data-i18n="view.minMapq">Minimum MAPQ</label><input id="minMapq" type="number" min="0" max="255" step="1"></div>
       <div class="check"><input id="hideDup" type="checkbox"><label for="hideDup" data-i18n="view.hideDup"></label></div>
       <div class="check"><input id="hideSec" type="checkbox"><label for="hideSec" data-i18n="view.hideSec"></label></div>
       <div class="check"><input id="hideSupp" type="checkbox"><label for="hideSupp" data-i18n="view.hideSupp"></label></div>
       <div class="check"><input id="hideQc" type="checkbox"><label for="hideQc" data-i18n="view.hideQc"></label></div>
-      <div class="check"><input id="dsOn" type="checkbox"><label for="dsOn" data-i18n="view.downsample"></label></div>
+      <div class="check"><input id="dsOn" type="checkbox"><label for="dsOn" data-i18n-title="tip.downsample" data-i18n="view.downsample"></label></div>
       <div class="pair">
-        <div class="field"><label for="dsMax" data-i18n="view.dsMax">Reads per window</label><input id="dsMax" type="number" min="1" max="100000" step="1"></div>
+        <div class="field"><label for="dsMax" data-i18n-title="tip.dsMax" data-i18n="view.dsMax">Reads per window</label><input id="dsMax" type="number" min="1" max="100000" step="1"></div>
         <div class="field"><label for="dsWin" data-i18n="view.dsWin">Window, bp</label><input id="dsWin" type="number" min="1" max="100000" step="1"></div>
       </div>
       <p class="hint" data-i18n="view.dsHint"></p>
     </section>
     <section>
       <h2 data-i18n="view.coverage">Coverage</h2>
-      <div class="field"><label for="trackMinH" data-i18n="view.trackMinH">Minimum sample height</label><output id="trackMinHOut"></output><input id="trackMinH" type="range" min="80" max="1000" step="10"></div>
-      <div class="field"><label for="covHeight" data-i18n="view.covHeight">Track height</label><output id="covHeightOut"></output><input id="covHeight" type="range" min="20" max="200" step="2"></div>
-      <div class="field"><label for="alleleThr" data-i18n="view.alleleThr">Highlight alleles from</label><output id="alleleThrOut"></output><input id="alleleThr" type="range" min="0.02" max="0.5" step="0.01"></div>
+      <div class="field"><label for="trackMinH" data-i18n-title="tip.trackMinH" data-i18n="view.trackMinH">Minimum sample height</label><output id="trackMinHOut"></output><input id="trackMinH" type="range" min="80" max="1000" step="10"></div>
+      <div class="field"><label for="covHeight" data-i18n-title="tip.covHeight" data-i18n="view.covHeight">Track height</label><output id="covHeightOut"></output><input id="covHeight" type="range" min="20" max="200" step="2"></div>
+      <div class="field"><label for="alleleThr" data-i18n-title="tip.alleleThr" data-i18n="view.alleleThr">Highlight alleles from</label><output id="alleleThrOut"></output><input id="alleleThr" type="range" min="0.02" max="0.5" step="0.01"></div>
     </section>
     <section>
       <h2 data-i18n="view.screen">Screen</h2>
       <div class="field"><label for="language" data-i18n="view.language">Language</label><select id="language"></select></div>
       <div class="check"><input id="hideToolbar" type="checkbox"><label for="hideToolbar" data-i18n="view.hideToolbar"></label></div>
-      <div class="check"><input id="showGenes" type="checkbox"><label for="showGenes" data-i18n="view.showGenes"></label></div>
-      <div class="field"><label for="startRef" data-i18n="view.startRef">At start open</label>
+      <div class="check"><input id="showGenes" type="checkbox"><label for="showGenes" data-i18n-title="tip.showGenes" data-i18n="view.showGenes"></label></div>
+      <div class="field"><label for="startRef" data-i18n-title="tip.startRef" data-i18n="view.startRef">At start open</label>
         <select id="startRef"><option value="hg38">GRCh38 / hg38</option><option value="hg19">GRCh37 / hg19</option><option value="chm13">T2T-CHM13 v2.0</option><option value="demo" data-i18n="start.demo"></option><option value="none" data-i18n="start.none"></option></select></div>
     </section>
     <section>
@@ -397,7 +397,7 @@ const STRINGS = {
     'copied': 'Copied', 'copyFail': 'Could not copy — select the text manually',
     'profile.copied': 'Profile copied', 'profile.applied': 'Profile applied', 'profile.reset': 'Profile reset', 'profile.bad': 'The profile has a JSON error: {msg}',
     'card.name': 'Name', 'card.pos': 'Position', 'card.flag': 'Flag', 'card.len': 'Length', 'card.mate': 'Mate', 'card.mateUnmapped': 'unmapped', 'card.tlen': 'Insert (TLEN)',
-    'card.toMate': 'Go to mate', 'nav.back': 'Back to the previous place', 'nav.fwd': 'Forward', 'nav.zoomIn': 'Zoom in (all panels)', 'nav.zoomOut': 'Zoom out (all panels)', 'cov.title': 'Coverage', 'cov.total': 'Total count', 'cov.ref': 'reference', 'cov.meanQ': 'Mean base quality', 'cov.note': 'All reads at this position, before downsampling; filters from View apply. INS: insertions right after this base.', 'menu.copySeq': 'Copy read sequence', 'menu.copyLeft': 'Copy left soft-clipped sequence', 'menu.copyRight': 'Copy right soft-clipped sequence', 'menu.copyPair': 'Copy read pair (FASTA)', 'menu.copyPairNo': 'Copy read pair (mate not loaded)', 'copied.seq': 'Copied: {n} bases', 'card.mateSplit': 'Mate in split screen', 'menu.mateSplit': 'View mate region in split screen', 'split.full': 'No room for more panels ({n}). Close one with × in its header', 'card.copy': 'Copy',
+    'card.toMate': 'Go to mate', 'tip.go': "Go to the locus or gene (Enter)", 'tip.open': "Open BAM / CRAM files, links or a reference", 'tip.view': "Display settings", 'tip.locus': "chr7:117,559,500-117,560,000, a position, a gene (CFTR) or a MANE transcript; several separated by spaces open side by side", 'tip.ideo': "Chromosome map: click or drag to move the active panel there", 'tip.ruler': "Drag to zoom to a region; click to center the view there", 'tip.genes': "MANE transcripts: click one for its details", 'tip.cov': "Click for base counts at this position (all reads, before downsampling)", 'tip.closeSample': "Close this sample", 'tip.showRead': "Details of the clicked read only", 'tip.showPair': "The read and its mate side by side", 'tip.toMate': "Move the view to the mate", 'tip.mateSplit': "Open the mate in a new panel next to this one", 'tip.copyCard': "Copy the text of this card", 'tip.mqvLine': "Reads with this base (share of all; + forward, − reverse strand). mQV: mean base quality (Phred) of this base in these reads — CGV’s own measure, IGV does not show it", 'tip.baseLine': "Reads with this base (share of all; + forward, − reverse strand)", 'tip.total': "A + C + G + T + N; deletions are counted separately", 'tip.del': "Reads with a deletion at this position", 'tip.ins': "Reads with an insertion right after this base", 'tip.bqShade': "Mismatches of bases below Q20 are paler: 20% below Q5, full at Q20", 'tip.softClips': "Show the clipped ends of reads in the read’s color; clipped mismatches are colored", 'tip.mqMinAlpha': "How visible reads with MAPQ at or below \"From MQ\" are", 'tip.minMapq': "Reads below this mapping quality are not read at all (coverage too)", 'tip.downsample': "As in IGV: keep at most N reads starting in each window; coverage still counts every read", 'tip.dsMax': "Reads kept per window", 'tip.trackMinH': "With many samples each keeps this height and the view scrolls", 'tip.covHeight': "Height of each coverage track", 'tip.alleleThr': "Coverage bars are split by base where non-reference bases reach this share of reads", 'tip.showGenes': "MANE Select and Plus Clinical transcripts on GRCh38, built into CGV", 'tip.startRef': "Reference (or demo) opened when CGV starts", 'nav.back': 'Back to the previous place', 'nav.fwd': 'Forward', 'nav.zoomIn': 'Zoom in (all panels)', 'nav.zoomOut': 'Zoom out (all panels)', 'cov.title': 'Coverage', 'cov.total': 'Total count', 'cov.ref': 'reference', 'cov.meanQ': 'Mean base quality', 'cov.note': 'All reads at this position, before downsampling; filters from View apply. INS: insertions right after this base.', 'menu.copySeq': 'Copy read sequence', 'menu.copyLeft': 'Copy left soft-clipped sequence', 'menu.copyRight': 'Copy right soft-clipped sequence', 'menu.copyPair': 'Copy read pair (FASTA)', 'menu.copyPairNo': 'Copy read pair (mate not loaded)', 'copied.seq': 'Copied: {n} bases', 'card.mateSplit': 'Mate in split screen', 'menu.mateSplit': 'View mate region in split screen', 'split.full': 'No room for more panels ({n}). Close one with × in its header', 'card.copy': 'Copy',
     'card.clicked': 'Base', 'card.bq': 'Base quality', 'card.ref': 'ref', 'card.del': 'deletion',
     'flag.1': 'paired', 'flag.2': 'proper pair', 'flag.4': 'unmapped', 'flag.8': 'mate unmapped', 'flag.16': 'reverse strand', 'flag.32': 'mate reverse',
     'flag.64': 'first in pair', 'flag.128': 'second in pair', 'flag.256': 'secondary', 'flag.512': 'QC fail', 'flag.1024': 'duplicate', 'flag.2048': 'supplementary',
@@ -513,7 +513,7 @@ const STRINGS = {
     'copied': 'Скопировано', 'copyFail': 'Не удалось скопировать — выделите текст вручную',
     'profile.copied': 'Профиль скопирован', 'profile.applied': 'Профиль применён', 'profile.reset': 'Профиль сброшен', 'profile.bad': 'В профиле ошибка JSON: {msg}',
     'card.name': 'Имя', 'card.pos': 'Позиция', 'card.flag': 'Флаг', 'card.len': 'Длина', 'card.mate': 'Мейт', 'card.mateUnmapped': 'не выровнен', 'card.tlen': 'Вставка (TLEN)',
-    'card.toMate': 'К мейту', 'nav.back': 'Назад к предыдущему месту', 'nav.fwd': 'Вперёд', 'nav.zoomIn': 'Приблизить (все окна)', 'nav.zoomOut': 'Отдалить (все окна)', 'cov.title': 'Покрытие', 'cov.total': 'Всего', 'cov.ref': 'референс', 'cov.meanQ': 'Среднее качество основания', 'cov.note': 'Все риды в этой позиции, без даунсэмплинга; фильтры из «Вид» действуют. INS — инсерции сразу после этого основания.', 'menu.copySeq': 'Копировать последовательность рида', 'menu.copyLeft': 'Копировать левый soft clip', 'menu.copyRight': 'Копировать правый soft clip', 'menu.copyPair': 'Копировать пару ридов (FASTA)', 'menu.copyPairNo': 'Копировать пару ридов (мейт не загружен)', 'copied.seq': 'Скопировано оснований: {n}', 'card.mateSplit': 'Мейт в соседнем окне', 'menu.mateSplit': 'Показать регион мейта в соседнем окне', 'split.full': 'Больше окон не помещается ({n}). Закройте одно крестиком в его заголовке', 'card.copy': 'Копировать',
+    'card.toMate': 'К мейту', 'tip.go': "Перейти к локусу или гену (Enter)", 'tip.open': "Открыть BAM / CRAM, ссылки или референс", 'tip.view': "Настройки отображения", 'tip.locus': "chr7:117,559,500-117,560,000, позиция, ген (CFTR) или транскрипт MANE; несколько через пробел — окна рядом", 'tip.ideo': "Карта хромосомы: клик или перетаскивание переносит туда активное окно", 'tip.ruler': "Протяните, чтобы приблизить участок; клик центрирует", 'tip.genes': "Транскрипты MANE: клик — карточка транскрипта", 'tip.cov': "Клик — счёт оснований в позиции (все риды, без даунсэмплинга)", 'tip.closeSample': "Закрыть этот образец", 'tip.showRead': "Карточка только кликнутого рида", 'tip.showPair': "Рид и его мейт рядом", 'tip.toMate': "Перейти к мейту", 'tip.mateSplit': "Открыть мейта в новом окне рядом", 'tip.copyCard': "Скопировать текст карточки", 'tip.mqvLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь). mQV — среднее качество (Phred) этого основания в этих ридах; это показатель CGV, в IGV его нет", 'tip.baseLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь)", 'tip.total': "A + C + G + T + N; делеции считаются отдельно", 'tip.del': "Риды с делецией в этой позиции", 'tip.ins': "Риды с инсерцией сразу после этого основания", 'tip.bqShade': "Несовпадения с качеством ниже Q20 бледнее: 20% ниже Q5, полностью с Q20", 'tip.softClips': "Показывать клипированные концы ридов цветом рида; несовпадения в клипах раскрашены", 'tip.mqMinAlpha': "Насколько видны риды с MAPQ не выше «От MQ»", 'tip.minMapq': "Риды с качеством картирования ниже не читаются вовсе (и в покрытии тоже)", 'tip.downsample': "Как в IGV: не больше N ридов, начинающихся в каждом окне; покрытие считает все риды", 'tip.dsMax': "Сколько ридов оставлять на окно", 'tip.trackMinH': "Если образцов много, каждый сохраняет эту высоту, а экран прокручивается", 'tip.covHeight': "Высота дорожки покрытия", 'tip.alleleThr': "Столбик покрытия делится по основаниям, если не-референсные основания набирают эту долю ридов", 'tip.showGenes': "Транскрипты MANE Select и Plus Clinical на GRCh38, встроены в CGV", 'tip.startRef': "Референс (или демо), который открывается при запуске CGV", 'nav.back': 'Назад к предыдущему месту', 'nav.fwd': 'Вперёд', 'nav.zoomIn': 'Приблизить (все окна)', 'nav.zoomOut': 'Отдалить (все окна)', 'cov.title': 'Покрытие', 'cov.total': 'Всего', 'cov.ref': 'референс', 'cov.meanQ': 'Среднее качество основания', 'cov.note': 'Все риды в этой позиции, без даунсэмплинга; фильтры из «Вид» действуют. INS — инсерции сразу после этого основания.', 'menu.copySeq': 'Копировать последовательность рида', 'menu.copyLeft': 'Копировать левый soft clip', 'menu.copyRight': 'Копировать правый soft clip', 'menu.copyPair': 'Копировать пару ридов (FASTA)', 'menu.copyPairNo': 'Копировать пару ридов (мейт не загружен)', 'copied.seq': 'Скопировано оснований: {n}', 'card.mateSplit': 'Мейт в соседнем окне', 'menu.mateSplit': 'Показать регион мейта в соседнем окне', 'split.full': 'Больше окон не помещается ({n}). Закройте одно крестиком в его заголовке', 'card.copy': 'Копировать',
     'card.clicked': 'Основание', 'card.bq': 'Качество основания', 'card.ref': 'реф.', 'card.del': 'делеция',
     'flag.1': 'парный', 'flag.2': 'правильная пара', 'flag.4': 'не выровнен', 'flag.8': 'мейт не выровнен', 'flag.16': 'обратная цепь', 'flag.32': 'мейт на обратной',
     'flag.64': 'первый в паре', 'flag.128': 'второй в паре', 'flag.256': 'вторичное', 'flag.512': 'не прошёл QC', 'flag.1024': 'дубликат', 'flag.2048': 'дополнительное',
@@ -555,7 +555,8 @@ function applyI18n(root) {
   for (const el of (root || document).querySelectorAll('[data-i18n-ph]')) el.placeholder = t(el.dataset.i18nPh);
   for (const el of (root || document).querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));
   for (const el of (root || document).querySelectorAll('[data-i18n-drop]')) el.dataset.dropText = t(el.dataset.i18nDrop);
-  for (const el of (root || document).querySelectorAll('[data-i18n-title]')) { el.title = t(el.dataset.i18nTitle); el.setAttribute('aria-label', el.title); }
+  // a tooltip; it also names icon-only buttons (← → − +) for screen readers
+  for (const el of (root || document).querySelectorAll('[data-i18n-title]')) { el.title = t(el.dataset.i18nTitle); if (el.textContent.trim().length <= 1 && el.tagName === 'BUTTON') el.setAttribute('aria-label', el.title); }
 }
 
 </script>
@@ -4677,10 +4678,10 @@ const stage = $('stage'), glCanvas = $('gl'), ov = $('ov'), ctx = ov.getContext(
 let W = 0, H = 0, DPR = 1, FULL_W = 0; // W: width of the current panel; FULL_W: of the whole view
 
 // track geometry (CSS px)
-const RULER_H = 26, REF_H = 14, TRACK_HDR = 18;
+const RULER_H = 26, REF_H = 14;
 function covTop() { return panelHdr() + RULER_H + REF_H + geneH() + 4; } // where the tracks begin
 // ---- gene track (MANE, GRCh38): a fixed band under the reference sequence ----
-const GENE_ROW = 21, GENE_H = 2 * GENE_ROW + 4;
+const GENE_ROW = 16, GENE_H = 2 * GENE_ROW + 2;
 // The bundled genes are GRCh38: shown only when the coordinates are GRCh38 (chr1 of its length).
 function genesActive() {
   if (!GENES.ready || !S.contigs) return false;
@@ -4701,10 +4702,12 @@ function clampVScroll() { S.vscroll = Math.max(0, Math.min(tracksHeight() - (H -
 function vscrollBy(d) { const v = S.vscroll || 0; S.vscroll = v + d; clampVScroll(); if (S.vscroll !== v) draw(); return S.vscroll - v; }
 function trackGeom(i) {
   const N = Math.max(1, S.tracks.length), top = covTop(), slot = trackSlot(), y0 = top + i * slot - (S.vscroll || 0);
-  const hdr = N > 1 ? TRACK_HDR : 0;
-  const covH = N > 1 ? Math.max(14, Math.min(P.coverage.height, Math.round((slot - hdr) * 0.3))) : P.coverage.height;
-  const ct = y0 + hdr, rt = ct + covH + 6;
-  return { y0, hdr, covTop: ct, covH, readsTop: rt, bottom: Math.max(rt, y0 + slot - (i < N - 1 ? 4 : 0)), end: y0 + slot };
+  // with several samples each is named in a small label at the top of its reads (it may cover a row
+  // or two); there is no separate header row
+  const lbl = N > 1, top0 = y0 + (i > 0 ? 3 : 0);
+  const covH = N > 1 ? Math.max(14, Math.min(P.coverage.height, Math.round(slot * 0.3))) : P.coverage.height;
+  const ct = top0, rt = ct + covH + 6;
+  return { y0, lbl, covTop: ct, covH, readsTop: rt, bottom: Math.max(rt, y0 + slot - (i < N - 1 ? 4 : 0)), end: y0 + slot };
 }
 function trackAtY(y) { for (let i = 0; i < S.tracks.length; i++) { const g = trackGeom(i); if (y >= g.y0 && y < g.end) return i; } return -1; }
 
@@ -5323,7 +5326,7 @@ function renderPanel(pn, tp) {
   ctx.save(); ctx.beginPath(); ctx.rect(0, covTop(), pn.w, H - covTop()); ctx.clip();
   const inSight = i => { const g = trackGeom(i); return g.end > covTop() && g.y0 < H; };
   part('coverage', () => S.tracks.forEach((T, i) => { if (inSight(i)) drawCoverage(T, trackGeom(i)); }));
-  part('labels', () => S.tracks.forEach((T, i) => { if (!inSight(i)) return; const g = trackGeom(i); drawTrackHeader(T, i, g); drawReadsOverlay(T, g); }));
+  part('labels', () => S.tracks.forEach((T, i) => { if (!inSight(i)) return; const g = trackGeom(i); drawReadsOverlay(T, g); drawTrackHeader(T, i, g); }));
   ctx.restore();
   ctx.restore();
 }
@@ -5446,27 +5449,34 @@ function drawCoverage(T, g) {
   // the position the coverage card is about
   if (cardState && cardState.cov && cardState.T === T && cardState.pn === CUR) {
     const x0 = (cardState.pos - S.view.start) * ppb, w = Math.max(3, ppb);
-    ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 2; ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 1, top - 1, Math.round(w) + 2, h + 4); ctx.lineWidth = 1;
+    ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 0.5, Math.round(top) - 0.5, Math.round(w) + 1, h + 4);
   }
 }
 
 // Track header (only with several tracks): file name, samples, close button; a line above it.
+const LABEL_H = 15;
 function drawTrackHeader(T, i, g) {
-  if (!g.hdr) return;
+  if (!g.lbl) return;
   ctx.save();
-  if (i > 0) { ctx.strokeStyle = COL.css.fg; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, Math.round(g.y0) - 1.5); ctx.lineTo(W, Math.round(g.y0) - 1.5); ctx.stroke(); ctx.globalAlpha = 1; }
-  ctx.font = '600 11px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL.css.fg;
-  const y = g.y0 + g.hdr / 2 + 1;
+  if (i > 0) { ctx.strokeStyle = COL.css.fg; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, Math.round(g.y0) + 0.5); ctx.lineTo(W, Math.round(g.y0) + 0.5); ctx.stroke(); ctx.globalAlpha = 1; }
+  ctx.beginPath(); ctx.rect(0, g.readsTop, W, g.bottom - g.readsTop); ctx.clip();
+  ctx.font = '600 10.5px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const y = g.readsTop + LABEL_H / 2, last = CUR === S.panels[S.panels.length - 1];
   let label = T.name + (T.bam.samples.length ? '  ·  ' + T.bam.samples.join(', ') : '');
-  const maxW = W - 48;
+  const maxW = W - (last ? 44 : 16);
   while (label.length > 4 && ctx.measureText(label).width > maxW) label = label.slice(0, -2);
-  ctx.fillText(label, 8, y);
-  if (CUR === S.panels[S.panels.length - 1]) { ctx.fillStyle = COL.css.muted; ctx.font = '13px ' + SANS; ctx.textAlign = 'center'; ctx.fillText('×', W - 14, y); }
+  const lw = ctx.measureText(label).width;
+  ctx.fillStyle = COL.css.panel; ctx.globalAlpha = 0.88; ctx.fillRect(2, g.readsTop + 1, lw + 10, LABEL_H - 1); ctx.globalAlpha = 1;
+  ctx.fillStyle = COL.css.fg; ctx.fillText(label, 7, y + 0.5);
+  if (last) { // × closes the sample
+    ctx.fillStyle = COL.css.panel; ctx.globalAlpha = 0.88; ctx.fillRect(W - 22, g.readsTop + 1, 18, LABEL_H - 1); ctx.globalAlpha = 1;
+    ctx.fillStyle = COL.css.muted; ctx.font = '13px ' + SANS; ctx.textAlign = 'center'; ctx.fillText('×', W - 13, y + 0.5);
+  }
   ctx.restore();
 }
 function drawReadsOverlay(T, g) {
   const sh = T.shown, rt = g.readsTop;
-  if (T.msg) { ctx.save(); ctx.font = '12px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = T.msg.error ? COL.css.accent : COL.css.muted; ctx.fillText(T.msg.text, 8, rt + 6); ctx.restore(); }
+  if (T.msg) { ctx.save(); ctx.font = '12px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = T.msg.error ? COL.css.accent : COL.css.muted; ctx.fillText(T.msg.text, 8, rt + (g.lbl ? LABEL_H + 6 : 6)); ctx.restore(); }
   if (!sh) return;
   ctx.save(); ctx.beginPath(); ctx.rect(0, rt, W, g.bottom - rt); ctx.clip();
   const rh = P.readHeight, gg = groupGap(), bpp = S.view.bpPerPx, ppb = 1 / bpp, d = T.data, scroll = T.scroll, Hh = g.bottom;
@@ -5513,7 +5523,7 @@ function drawReadsOverlay(T, g) {
   if (cardState && cardState.rec && cardState.T === T && cardState.pn === CUR) {
     const cs = cardState, vs = S.view.start, x0 = (cs.pos - vs) * ppb, w = Math.max(3, ppb);
     if (cs.pos >= vs - 1 && cs.pos <= viewEnd() + 1) {
-      ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 2;
+      ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 1;
       sh.groups.forEach((g, gi) => {
         const firstRow = Math.max(0, Math.floor((scroll - gi * gg) / rh) - g.start - 1);
         const lastRow = Math.min(g.rows.length - 1, Math.ceil((scroll + Hh - rt - gi * gg) / rh) - g.start + 1);
@@ -5521,7 +5531,7 @@ function drawReadsOverlay(T, g) {
           const y = rt + gg + (g.start + ri) * rh + gi * gg - scroll;
           for (const r of g.rows[ri].flatMap(readsOf)) {
             if (r.name !== cs.rec.name || !(r === cs.rec || (P.cardPair && covers(r, cs.pos) && !(r.flag & 0x900)))) continue;
-            ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 1, y - 2, Math.round(w) + 2, Math.max(2, rh - (rh >= 5 ? 1 : 0)) + 4);
+            ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 0.5, Math.round(y) - 1.5, Math.round(w) + 1, Math.max(2, rh - (rh >= 5 ? 1 : 0)) + 2);
           }
         }
       });
@@ -5649,6 +5659,20 @@ const inRuler = y => y >= panelHdr() && y < geneTop();
 const inGenes = y => geneH() > 0 && y >= geneTop() && y < geneTop() + GENE_H;
 const clampX = x => Math.max(0, Math.min(W, x));
 function setActive(pn) { if (S.active !== pn) { S.active = pn; syncLocus(); draw(); } }
+// Hints for the parts of the canvas that do something on click: the browser's own tooltip, which
+// shows only after the pointer rests for a moment, never while moving; none over the reads.
+function zoneOf(L) {
+  if (L.y < panelHdr()) return '';
+  if (inRuler(L.y)) return 'tip.ruler';
+  if (inGenes(L.y)) return 'tip.genes';
+  const ti = trackAtY(L.y); if (ti < 0) return '';
+  const g = trackGeom(ti);
+  if (L.y >= g.covTop && L.y < g.covTop + g.covH + 4) return 'tip.cov';
+  if (g.lbl && L.y >= g.readsTop && L.y < g.readsTop + LABEL_H && L.x > W - 24 && CUR === S.panels[S.panels.length - 1]) return 'tip.closeSample';
+  return '';
+}
+let zoneKey = '';
+function zoneTip(k) { if (k === zoneKey) return; zoneKey = k; ov.title = k ? t(k) : ''; }
 let ideoDrag = false;
 stage.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !S.contigs || !onCanvas(e)) return;
@@ -5670,7 +5694,7 @@ stage.addEventListener('pointermove', e => {
     if (Math.abs(S.rubber.x1 - S.rubber.x0) > 3) S.rubber.moved = true;
     draw(); return;
   }
-  if (!drag) { if (!S.contigs || !onCanvas(e)) { stage.style.cursor = ''; return; } if (e.offsetY < ideoH()) { stage.style.cursor = 'pointer'; return; } const L = local(e); stage.style.cursor = inRuler(L.y) ? 'crosshair' : L.y < panelHdr() && L.x > W - 22 ? 'pointer' : ''; return; }
+  if (!drag) { if (!S.contigs || !onCanvas(e)) { stage.style.cursor = ''; return; } if (e.offsetY < ideoH()) { stage.style.cursor = 'pointer'; zoneTip('tip.ideo'); return; } const L = local(e); stage.style.cursor = inRuler(L.y) ? 'crosshair' : L.y < panelHdr() && L.x > W - 22 ? 'pointer' : ''; zoneTip(zoneOf(L)); return; }
   if (!S.panels.includes(drag.pn)) { drag = null; return; }
   usePanel(drag.pn);
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -5749,7 +5773,7 @@ function hitTest(x, y) {
 function onClick(x, y, gx) {
   if (inGenes(y)) { const h = geneHit(x, y); if (h) { S.selected = null; S.hl = null; showGeneCard(h, Math.floor(S.view.start + x * S.view.bpPerPx), gx, y); } else hideCard(); draw(); return; }
   const ti = trackAtY(y);
-  if (ti >= 0) { const g = trackGeom(ti); if (g.hdr && y < g.y0 + g.hdr && x > W - 28 && CUR === S.panels[S.panels.length - 1]) { closeTrack(S.tracks[ti]); return; } }
+  if (ti >= 0) { const g = trackGeom(ti); if (g.lbl && y >= g.readsTop && y < g.readsTop + LABEL_H && x > W - 24 && CUR === S.panels[S.panels.length - 1]) { closeTrack(S.tracks[ti]); return; } }
   if (ti >= 0) { const g = trackGeom(ti); if (y >= g.covTop && y < g.covTop + g.covH + 4) { S.selected = null; S.hl = null; showCoverageCard(S.tracks[ti], Math.floor(S.view.start + x * S.view.bpPerPx), gx, y); draw(); return; } }
   const h = hitTest(x, y);
   if (!h) { S.selected = null; S.hl = null; hideCard(); draw(); return; }
@@ -5869,6 +5893,7 @@ function renderCard(place) {
     const r = stage.getBoundingClientRect(), cw = c.offsetWidth;
     c.style.left = Math.max(8, Math.min(r.width - cw - 8, parseFloat(c.style.left) || 8)) + 'px';
   }
+  tips(c, { '[data-pair="0"]': 'tip.showRead', '[data-pair="1"]': 'tip.showPair', '#toMate': 'tip.toMate', '#mateSplit': 'tip.mateSplit', '#copyRead': 'tip.copyCard' });
   c.querySelectorAll('[data-pair]').forEach(b => b.onclick = () => { P.cardPair = b.dataset.pair === '1'; saveProfile(); renderCard(false); });
   $('closeCard').onclick = () => { S.selected = null; hideCard(); draw(); };
   $('copyRead').onclick = () => {
@@ -5884,6 +5909,7 @@ function renderCard(place) {
     navPush(); goto(v, rec.matePos - 150, rec.matePos + 300);
   };
 }
+function tips(root, map) { for (const [sel, k] of Object.entries(map)) { const el = root.querySelector(sel); if (el) el.title = t(k); } }
 function hideCard() { $('card').hidden = true; cardState = null; }
 // ---- Coverage at a position, as IGV shows it: counts of A, C, G, T, N by strand, deletions and
 // insertions. Counted from every read at that position (read again from the file, so downsampling
@@ -5926,6 +5952,9 @@ async function showCoverageCard(T, pos, gx, y) {
   }
   L.push(['kv', 'DEL', `${fmtInt(del[0] + del[1])} (${fmtInt(del[0])}+, ${fmtInt(del[1])}−)`], ['kv', 'INS', `${fmtInt(ins[0] + ins[1])} (${fmtInt(ins[0])}+, ${fmtInt(ins[1])}−)`]);
   c.innerHTML = head(true) + linesHtml(L);
+  // what the numbers mean, on the lines themselves (mQV is CGV's own, not IGV's)
+  for (const el of c.querySelectorAll('.ln')) { const k = el.textContent; el.title = t(/mQV/.test(k) ? 'tip.mqvLine' : /^DEL/.test(k) ? 'tip.del' : /^INS/.test(k) ? 'tip.ins' : /^Total|^Всего/.test(k) ? 'tip.total' : 'tip.baseLine'); }
+  tips(c, { '#copyCov': 'tip.copyCard' });
   $('closeCard').onclick = () => { hideCard(); draw(); };
   $('copyCov').onclick = () => navigator.clipboard.writeText(name + ':' + (pos + 1) + '\n' + linesText(L)).then(() => toast(t('copied')), () => toast(t('copyFail')));
 }
@@ -6578,7 +6607,7 @@ function drawGenes(pn) {
   const y0 = geneTop(), vs = S.view.start, ve = viewEnd(), bpp = S.view.bpPerPx;
   const txs = genesIn(S.contigs[S.view.refId].name, Math.floor(vs), Math.ceil(ve));
   ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, GENE_H); ctx.clip();
-  ctx.font = '600 10.5px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.font = '600 9.5px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   const ends = [-Infinity, -Infinity], px = p => (p - vs) / bpp;
   for (const tx of txs) {
     const x0 = px(tx.start), x1 = px(tx.end), a = Math.max(x0, 0), b = Math.min(x1, W);
@@ -6588,27 +6617,27 @@ function drawGenes(pn) {
     let row = ends.findIndex(e => e + 6 <= e0), withLabel = true;
     if (row < 0) { row = ends[0] <= ends[1] ? 0 : 1; withLabel = false; }
     ends[row] = Math.max(ends[row], withLabel ? e1 : b);
-    const top = y0 + row * GENE_ROW, mid = top + 6.5, col = tx.clinical ? COL.css.geneClin : COL.css.gene;
+    const top = y0 + row * GENE_ROW, mid = top + 5, col = tx.clinical ? COL.css.geneClin : COL.css.gene;
     ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(a, mid + 0.5); ctx.lineTo(b, mid + 0.5); ctx.stroke();
     if (b - a > 30) { // strand arrows on the line
       ctx.beginPath();
-      for (let x = a + 10; x < b - 6; x += 22) { const d = tx.strand > 0 ? 2.5 : -2.5; ctx.moveTo(x - d, mid - 2); ctx.lineTo(x + d, mid + 0.5); ctx.lineTo(x - d, mid + 3); }
+      for (let x = a + 10; x < b - 6; x += 22) { const d = tx.strand > 0 ? 2 : -2; ctx.moveTo(x - d, mid - 1.5); ctx.lineTo(x + d, mid + 0.5); ctx.lineTo(x - d, mid + 2.5); }
       ctx.stroke();
     }
     for (let i = 0; i < tx.exons.length; i += 2) {
       const s = tx.exons[i], e = tx.exons[i + 1]; if (e < vs || s > ve) continue;
       const ex0 = px(s), ex1 = px(e);
-      ctx.fillRect(ex0, mid - 3, Math.max(1, ex1 - ex0), 7); // UTR height
+      ctx.fillRect(ex0, mid - 2, Math.max(1, ex1 - ex0), 5); // UTR height
       const c0 = Math.max(s, tx.cdsStart), c1 = Math.min(e, tx.cdsEnd);
-      if (c1 > c0) ctx.fillRect(px(c0), mid - 5.5, Math.max(1, px(c1) - px(c0)), 12);
+      if (c1 > c0) ctx.fillRect(px(c0), mid - 4, Math.max(1, px(c1) - px(c0)), 9);
       // exon number (in the transcript's direction) inside the exon when there is room
       if (ex1 - ex0 >= 26) {
         const n = tx.strand > 0 ? i / 2 + 1 : tx.exons.length / 2 - i / 2, xa = Math.max(ex0, 0), xb = Math.min(ex1, W);
-        if (xb - xa >= 26) { ctx.save(); ctx.font = '600 9px ' + SANS; ctx.fillStyle = COL.css.panel; ctx.textBaseline = 'middle'; ctx.fillText(t('gene.exShort', { n }), (xa + xb) / 2, mid + 0.5); ctx.restore(); }
+        if (xb - xa >= 26) { ctx.save(); ctx.font = '600 8px ' + SANS; ctx.fillStyle = COL.css.panel; ctx.textBaseline = 'middle'; ctx.fillText(t('gene.exShort', { n }), (xa + xb) / 2, mid + 0.5); ctx.restore(); }
       }
     }
-    if (withLabel) ctx.fillText(label, cx, top + GENE_ROW - 1);
+    if (withLabel) ctx.fillText(label, cx, top + GENE_ROW - 0.5);
     pn.geneHits.push({ tx, row, x0: Math.min(a, withLabel ? e0 : a), x1: Math.max(b, withLabel ? e1 : b) });
   }
   ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, y0 + GENE_H - 1.5); ctx.lineTo(W, y0 + GENE_H - 1.5); ctx.stroke();

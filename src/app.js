@@ -193,10 +193,10 @@ const stage = $('stage'), glCanvas = $('gl'), ov = $('ov'), ctx = ov.getContext(
 let W = 0, H = 0, DPR = 1, FULL_W = 0; // W: width of the current panel; FULL_W: of the whole view
 
 // track geometry (CSS px)
-const RULER_H = 26, REF_H = 14, TRACK_HDR = 18;
+const RULER_H = 26, REF_H = 14;
 function covTop() { return panelHdr() + RULER_H + REF_H + geneH() + 4; } // where the tracks begin
 // ---- gene track (MANE, GRCh38): a fixed band under the reference sequence ----
-const GENE_ROW = 21, GENE_H = 2 * GENE_ROW + 4;
+const GENE_ROW = 16, GENE_H = 2 * GENE_ROW + 2;
 // The bundled genes are GRCh38: shown only when the coordinates are GRCh38 (chr1 of its length).
 function genesActive() {
   if (!GENES.ready || !S.contigs) return false;
@@ -217,10 +217,12 @@ function clampVScroll() { S.vscroll = Math.max(0, Math.min(tracksHeight() - (H -
 function vscrollBy(d) { const v = S.vscroll || 0; S.vscroll = v + d; clampVScroll(); if (S.vscroll !== v) draw(); return S.vscroll - v; }
 function trackGeom(i) {
   const N = Math.max(1, S.tracks.length), top = covTop(), slot = trackSlot(), y0 = top + i * slot - (S.vscroll || 0);
-  const hdr = N > 1 ? TRACK_HDR : 0;
-  const covH = N > 1 ? Math.max(14, Math.min(P.coverage.height, Math.round((slot - hdr) * 0.3))) : P.coverage.height;
-  const ct = y0 + hdr, rt = ct + covH + 6;
-  return { y0, hdr, covTop: ct, covH, readsTop: rt, bottom: Math.max(rt, y0 + slot - (i < N - 1 ? 4 : 0)), end: y0 + slot };
+  // with several samples each is named in a small label at the top of its reads (it may cover a row
+  // or two); there is no separate header row
+  const lbl = N > 1, top0 = y0 + (i > 0 ? 3 : 0);
+  const covH = N > 1 ? Math.max(14, Math.min(P.coverage.height, Math.round(slot * 0.3))) : P.coverage.height;
+  const ct = top0, rt = ct + covH + 6;
+  return { y0, lbl, covTop: ct, covH, readsTop: rt, bottom: Math.max(rt, y0 + slot - (i < N - 1 ? 4 : 0)), end: y0 + slot };
 }
 function trackAtY(y) { for (let i = 0; i < S.tracks.length; i++) { const g = trackGeom(i); if (y >= g.y0 && y < g.end) return i; } return -1; }
 
@@ -839,7 +841,7 @@ function renderPanel(pn, tp) {
   ctx.save(); ctx.beginPath(); ctx.rect(0, covTop(), pn.w, H - covTop()); ctx.clip();
   const inSight = i => { const g = trackGeom(i); return g.end > covTop() && g.y0 < H; };
   part('coverage', () => S.tracks.forEach((T, i) => { if (inSight(i)) drawCoverage(T, trackGeom(i)); }));
-  part('labels', () => S.tracks.forEach((T, i) => { if (!inSight(i)) return; const g = trackGeom(i); drawTrackHeader(T, i, g); drawReadsOverlay(T, g); }));
+  part('labels', () => S.tracks.forEach((T, i) => { if (!inSight(i)) return; const g = trackGeom(i); drawReadsOverlay(T, g); drawTrackHeader(T, i, g); }));
   ctx.restore();
   ctx.restore();
 }
@@ -962,27 +964,34 @@ function drawCoverage(T, g) {
   // the position the coverage card is about
   if (cardState && cardState.cov && cardState.T === T && cardState.pn === CUR) {
     const x0 = (cardState.pos - S.view.start) * ppb, w = Math.max(3, ppb);
-    ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 2; ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 1, top - 1, Math.round(w) + 2, h + 4); ctx.lineWidth = 1;
+    ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 0.5, Math.round(top) - 0.5, Math.round(w) + 1, h + 4);
   }
 }
 
 // Track header (only with several tracks): file name, samples, close button; a line above it.
+const LABEL_H = 15;
 function drawTrackHeader(T, i, g) {
-  if (!g.hdr) return;
+  if (!g.lbl) return;
   ctx.save();
-  if (i > 0) { ctx.strokeStyle = COL.css.fg; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, Math.round(g.y0) - 1.5); ctx.lineTo(W, Math.round(g.y0) - 1.5); ctx.stroke(); ctx.globalAlpha = 1; }
-  ctx.font = '600 11px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL.css.fg;
-  const y = g.y0 + g.hdr / 2 + 1;
+  if (i > 0) { ctx.strokeStyle = COL.css.fg; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, Math.round(g.y0) + 0.5); ctx.lineTo(W, Math.round(g.y0) + 0.5); ctx.stroke(); ctx.globalAlpha = 1; }
+  ctx.beginPath(); ctx.rect(0, g.readsTop, W, g.bottom - g.readsTop); ctx.clip();
+  ctx.font = '600 10.5px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const y = g.readsTop + LABEL_H / 2, last = CUR === S.panels[S.panels.length - 1];
   let label = T.name + (T.bam.samples.length ? '  ·  ' + T.bam.samples.join(', ') : '');
-  const maxW = W - 48;
+  const maxW = W - (last ? 44 : 16);
   while (label.length > 4 && ctx.measureText(label).width > maxW) label = label.slice(0, -2);
-  ctx.fillText(label, 8, y);
-  if (CUR === S.panels[S.panels.length - 1]) { ctx.fillStyle = COL.css.muted; ctx.font = '13px ' + SANS; ctx.textAlign = 'center'; ctx.fillText('×', W - 14, y); }
+  const lw = ctx.measureText(label).width;
+  ctx.fillStyle = COL.css.panel; ctx.globalAlpha = 0.88; ctx.fillRect(2, g.readsTop + 1, lw + 10, LABEL_H - 1); ctx.globalAlpha = 1;
+  ctx.fillStyle = COL.css.fg; ctx.fillText(label, 7, y + 0.5);
+  if (last) { // × closes the sample
+    ctx.fillStyle = COL.css.panel; ctx.globalAlpha = 0.88; ctx.fillRect(W - 22, g.readsTop + 1, 18, LABEL_H - 1); ctx.globalAlpha = 1;
+    ctx.fillStyle = COL.css.muted; ctx.font = '13px ' + SANS; ctx.textAlign = 'center'; ctx.fillText('×', W - 13, y + 0.5);
+  }
   ctx.restore();
 }
 function drawReadsOverlay(T, g) {
   const sh = T.shown, rt = g.readsTop;
-  if (T.msg) { ctx.save(); ctx.font = '12px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = T.msg.error ? COL.css.accent : COL.css.muted; ctx.fillText(T.msg.text, 8, rt + 6); ctx.restore(); }
+  if (T.msg) { ctx.save(); ctx.font = '12px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillStyle = T.msg.error ? COL.css.accent : COL.css.muted; ctx.fillText(T.msg.text, 8, rt + (g.lbl ? LABEL_H + 6 : 6)); ctx.restore(); }
   if (!sh) return;
   ctx.save(); ctx.beginPath(); ctx.rect(0, rt, W, g.bottom - rt); ctx.clip();
   const rh = P.readHeight, gg = groupGap(), bpp = S.view.bpPerPx, ppb = 1 / bpp, d = T.data, scroll = T.scroll, Hh = g.bottom;
@@ -1029,7 +1038,7 @@ function drawReadsOverlay(T, g) {
   if (cardState && cardState.rec && cardState.T === T && cardState.pn === CUR) {
     const cs = cardState, vs = S.view.start, x0 = (cs.pos - vs) * ppb, w = Math.max(3, ppb);
     if (cs.pos >= vs - 1 && cs.pos <= viewEnd() + 1) {
-      ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 2;
+      ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 1;
       sh.groups.forEach((g, gi) => {
         const firstRow = Math.max(0, Math.floor((scroll - gi * gg) / rh) - g.start - 1);
         const lastRow = Math.min(g.rows.length - 1, Math.ceil((scroll + Hh - rt - gi * gg) / rh) - g.start + 1);
@@ -1037,7 +1046,7 @@ function drawReadsOverlay(T, g) {
           const y = rt + gg + (g.start + ri) * rh + gi * gg - scroll;
           for (const r of g.rows[ri].flatMap(readsOf)) {
             if (r.name !== cs.rec.name || !(r === cs.rec || (P.cardPair && covers(r, cs.pos) && !(r.flag & 0x900)))) continue;
-            ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 1, y - 2, Math.round(w) + 2, Math.max(2, rh - (rh >= 5 ? 1 : 0)) + 4);
+            ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 0.5, Math.round(y) - 1.5, Math.round(w) + 1, Math.max(2, rh - (rh >= 5 ? 1 : 0)) + 2);
           }
         }
       });
@@ -1165,6 +1174,20 @@ const inRuler = y => y >= panelHdr() && y < geneTop();
 const inGenes = y => geneH() > 0 && y >= geneTop() && y < geneTop() + GENE_H;
 const clampX = x => Math.max(0, Math.min(W, x));
 function setActive(pn) { if (S.active !== pn) { S.active = pn; syncLocus(); draw(); } }
+// Hints for the parts of the canvas that do something on click: the browser's own tooltip, which
+// shows only after the pointer rests for a moment, never while moving; none over the reads.
+function zoneOf(L) {
+  if (L.y < panelHdr()) return '';
+  if (inRuler(L.y)) return 'tip.ruler';
+  if (inGenes(L.y)) return 'tip.genes';
+  const ti = trackAtY(L.y); if (ti < 0) return '';
+  const g = trackGeom(ti);
+  if (L.y >= g.covTop && L.y < g.covTop + g.covH + 4) return 'tip.cov';
+  if (g.lbl && L.y >= g.readsTop && L.y < g.readsTop + LABEL_H && L.x > W - 24 && CUR === S.panels[S.panels.length - 1]) return 'tip.closeSample';
+  return '';
+}
+let zoneKey = '';
+function zoneTip(k) { if (k === zoneKey) return; zoneKey = k; ov.title = k ? t(k) : ''; }
 let ideoDrag = false;
 stage.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !S.contigs || !onCanvas(e)) return;
@@ -1186,7 +1209,7 @@ stage.addEventListener('pointermove', e => {
     if (Math.abs(S.rubber.x1 - S.rubber.x0) > 3) S.rubber.moved = true;
     draw(); return;
   }
-  if (!drag) { if (!S.contigs || !onCanvas(e)) { stage.style.cursor = ''; return; } if (e.offsetY < ideoH()) { stage.style.cursor = 'pointer'; return; } const L = local(e); stage.style.cursor = inRuler(L.y) ? 'crosshair' : L.y < panelHdr() && L.x > W - 22 ? 'pointer' : ''; return; }
+  if (!drag) { if (!S.contigs || !onCanvas(e)) { stage.style.cursor = ''; return; } if (e.offsetY < ideoH()) { stage.style.cursor = 'pointer'; zoneTip('tip.ideo'); return; } const L = local(e); stage.style.cursor = inRuler(L.y) ? 'crosshair' : L.y < panelHdr() && L.x > W - 22 ? 'pointer' : ''; zoneTip(zoneOf(L)); return; }
   if (!S.panels.includes(drag.pn)) { drag = null; return; }
   usePanel(drag.pn);
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -1265,7 +1288,7 @@ function hitTest(x, y) {
 function onClick(x, y, gx) {
   if (inGenes(y)) { const h = geneHit(x, y); if (h) { S.selected = null; S.hl = null; showGeneCard(h, Math.floor(S.view.start + x * S.view.bpPerPx), gx, y); } else hideCard(); draw(); return; }
   const ti = trackAtY(y);
-  if (ti >= 0) { const g = trackGeom(ti); if (g.hdr && y < g.y0 + g.hdr && x > W - 28 && CUR === S.panels[S.panels.length - 1]) { closeTrack(S.tracks[ti]); return; } }
+  if (ti >= 0) { const g = trackGeom(ti); if (g.lbl && y >= g.readsTop && y < g.readsTop + LABEL_H && x > W - 24 && CUR === S.panels[S.panels.length - 1]) { closeTrack(S.tracks[ti]); return; } }
   if (ti >= 0) { const g = trackGeom(ti); if (y >= g.covTop && y < g.covTop + g.covH + 4) { S.selected = null; S.hl = null; showCoverageCard(S.tracks[ti], Math.floor(S.view.start + x * S.view.bpPerPx), gx, y); draw(); return; } }
   const h = hitTest(x, y);
   if (!h) { S.selected = null; S.hl = null; hideCard(); draw(); return; }
@@ -1385,6 +1408,7 @@ function renderCard(place) {
     const r = stage.getBoundingClientRect(), cw = c.offsetWidth;
     c.style.left = Math.max(8, Math.min(r.width - cw - 8, parseFloat(c.style.left) || 8)) + 'px';
   }
+  tips(c, { '[data-pair="0"]': 'tip.showRead', '[data-pair="1"]': 'tip.showPair', '#toMate': 'tip.toMate', '#mateSplit': 'tip.mateSplit', '#copyRead': 'tip.copyCard' });
   c.querySelectorAll('[data-pair]').forEach(b => b.onclick = () => { P.cardPair = b.dataset.pair === '1'; saveProfile(); renderCard(false); });
   $('closeCard').onclick = () => { S.selected = null; hideCard(); draw(); };
   $('copyRead').onclick = () => {
@@ -1400,6 +1424,7 @@ function renderCard(place) {
     navPush(); goto(v, rec.matePos - 150, rec.matePos + 300);
   };
 }
+function tips(root, map) { for (const [sel, k] of Object.entries(map)) { const el = root.querySelector(sel); if (el) el.title = t(k); } }
 function hideCard() { $('card').hidden = true; cardState = null; }
 // ---- Coverage at a position, as IGV shows it: counts of A, C, G, T, N by strand, deletions and
 // insertions. Counted from every read at that position (read again from the file, so downsampling
@@ -1442,6 +1467,9 @@ async function showCoverageCard(T, pos, gx, y) {
   }
   L.push(['kv', 'DEL', `${fmtInt(del[0] + del[1])} (${fmtInt(del[0])}+, ${fmtInt(del[1])}−)`], ['kv', 'INS', `${fmtInt(ins[0] + ins[1])} (${fmtInt(ins[0])}+, ${fmtInt(ins[1])}−)`]);
   c.innerHTML = head(true) + linesHtml(L);
+  // what the numbers mean, on the lines themselves (mQV is CGV's own, not IGV's)
+  for (const el of c.querySelectorAll('.ln')) { const k = el.textContent; el.title = t(/mQV/.test(k) ? 'tip.mqvLine' : /^DEL/.test(k) ? 'tip.del' : /^INS/.test(k) ? 'tip.ins' : /^Total|^Всего/.test(k) ? 'tip.total' : 'tip.baseLine'); }
+  tips(c, { '#copyCov': 'tip.copyCard' });
   $('closeCard').onclick = () => { hideCard(); draw(); };
   $('copyCov').onclick = () => navigator.clipboard.writeText(name + ':' + (pos + 1) + '\n' + linesText(L)).then(() => toast(t('copied')), () => toast(t('copyFail')));
 }
@@ -2094,7 +2122,7 @@ function drawGenes(pn) {
   const y0 = geneTop(), vs = S.view.start, ve = viewEnd(), bpp = S.view.bpPerPx;
   const txs = genesIn(S.contigs[S.view.refId].name, Math.floor(vs), Math.ceil(ve));
   ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, GENE_H); ctx.clip();
-  ctx.font = '600 10.5px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.font = '600 9.5px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   const ends = [-Infinity, -Infinity], px = p => (p - vs) / bpp;
   for (const tx of txs) {
     const x0 = px(tx.start), x1 = px(tx.end), a = Math.max(x0, 0), b = Math.min(x1, W);
@@ -2104,27 +2132,27 @@ function drawGenes(pn) {
     let row = ends.findIndex(e => e + 6 <= e0), withLabel = true;
     if (row < 0) { row = ends[0] <= ends[1] ? 0 : 1; withLabel = false; }
     ends[row] = Math.max(ends[row], withLabel ? e1 : b);
-    const top = y0 + row * GENE_ROW, mid = top + 6.5, col = tx.clinical ? COL.css.geneClin : COL.css.gene;
+    const top = y0 + row * GENE_ROW, mid = top + 5, col = tx.clinical ? COL.css.geneClin : COL.css.gene;
     ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(a, mid + 0.5); ctx.lineTo(b, mid + 0.5); ctx.stroke();
     if (b - a > 30) { // strand arrows on the line
       ctx.beginPath();
-      for (let x = a + 10; x < b - 6; x += 22) { const d = tx.strand > 0 ? 2.5 : -2.5; ctx.moveTo(x - d, mid - 2); ctx.lineTo(x + d, mid + 0.5); ctx.lineTo(x - d, mid + 3); }
+      for (let x = a + 10; x < b - 6; x += 22) { const d = tx.strand > 0 ? 2 : -2; ctx.moveTo(x - d, mid - 1.5); ctx.lineTo(x + d, mid + 0.5); ctx.lineTo(x - d, mid + 2.5); }
       ctx.stroke();
     }
     for (let i = 0; i < tx.exons.length; i += 2) {
       const s = tx.exons[i], e = tx.exons[i + 1]; if (e < vs || s > ve) continue;
       const ex0 = px(s), ex1 = px(e);
-      ctx.fillRect(ex0, mid - 3, Math.max(1, ex1 - ex0), 7); // UTR height
+      ctx.fillRect(ex0, mid - 2, Math.max(1, ex1 - ex0), 5); // UTR height
       const c0 = Math.max(s, tx.cdsStart), c1 = Math.min(e, tx.cdsEnd);
-      if (c1 > c0) ctx.fillRect(px(c0), mid - 5.5, Math.max(1, px(c1) - px(c0)), 12);
+      if (c1 > c0) ctx.fillRect(px(c0), mid - 4, Math.max(1, px(c1) - px(c0)), 9);
       // exon number (in the transcript's direction) inside the exon when there is room
       if (ex1 - ex0 >= 26) {
         const n = tx.strand > 0 ? i / 2 + 1 : tx.exons.length / 2 - i / 2, xa = Math.max(ex0, 0), xb = Math.min(ex1, W);
-        if (xb - xa >= 26) { ctx.save(); ctx.font = '600 9px ' + SANS; ctx.fillStyle = COL.css.panel; ctx.textBaseline = 'middle'; ctx.fillText(t('gene.exShort', { n }), (xa + xb) / 2, mid + 0.5); ctx.restore(); }
+        if (xb - xa >= 26) { ctx.save(); ctx.font = '600 8px ' + SANS; ctx.fillStyle = COL.css.panel; ctx.textBaseline = 'middle'; ctx.fillText(t('gene.exShort', { n }), (xa + xb) / 2, mid + 0.5); ctx.restore(); }
       }
     }
-    if (withLabel) ctx.fillText(label, cx, top + GENE_ROW - 1);
+    if (withLabel) ctx.fillText(label, cx, top + GENE_ROW - 0.5);
     pn.geneHits.push({ tx, row, x0: Math.min(a, withLabel ? e0 : a), x1: Math.max(b, withLabel ? e1 : b) });
   }
   ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, y0 + GENE_H - 1.5); ctx.lineTo(W, y0 + GENE_H - 1.5); ctx.stroke();
