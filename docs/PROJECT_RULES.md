@@ -19,4 +19,7 @@
    switch, `docs/*.ru.md`).
 8. **Documentation**: the user guide (`docs/USER_GUIDE.md`, `docs/USER_GUIDE.ru.md`) describes
    every function as it works and looks now, and is updated with every change. Explanations belong
-   in the guide, not in the interface. Future work goes to `docs/TODO.md`.
+   in the guide; in the interface only as tooltips, where possible and without overloading it (the
+   browser's own tooltip, shown after the pointer rests, never on every pass; none over the reads).
+   Anything CGV shows that is not a common standard (e.g. mQV) is explained in the guide.
+   Future work goes to `docs/TODO.md`.
