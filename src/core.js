@@ -107,7 +107,7 @@ function crc32(u8, start, end) {
 // Built-in deflate (DecompressionStream). Reads the output in pieces and stops as soon as it grows
 // past `max`, so a small damaged or hostile block cannot inflate into gigabytes ("zip bomb").
 // Any failure is a CgvError.
-async function inflateStream(u8, format, max, code, vars) {
+async function inflateStream(u8, format, max, code, vars, bigCode) {
   const ds = new DecompressionStream(format);
   const w = ds.writable.getWriter();
   w.write(u8).catch(() => {}); w.close().catch(() => {});
@@ -117,7 +117,7 @@ async function inflateStream(u8, format, max, code, vars) {
       const { value, done } = await r.read();
       if (done) break;
       total += value.length;
-      if (total > max) { r.cancel().catch(() => {}); throw new CgvError(code, vars); }
+      if (total > max) { r.cancel().catch(() => {}); throw new CgvError(bigCode || code, vars); }
       parts.push(value);
     }
   } catch (e) { if (e instanceof CgvError) throw e; throw new CgvError(code, vars); }
@@ -1196,4 +1196,4 @@ if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && s
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, NIB_IDX, DepthDiff, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { isBgzfHeader, BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, NIB_IDX, DepthDiff, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

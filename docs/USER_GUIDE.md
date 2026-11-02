@@ -17,6 +17,7 @@ This guide describes CGV as it is now and is updated with every change. Russian 
 5. [Several regions side by side](#5-several-regions-side-by-side)
 6. [Chromosome map](#6-chromosome-map)
 7. [Genes (MANE)](#7-genes-mane)
+7a. [Your own tracks: BED, bedGraph, VCF, GTF, GFF3](#7a-your-own-tracks-bed-bedgraph-vcf-gtf-gff3)
 8. [Coverage](#8-coverage)
 9. [Reads: how they are drawn](#9-reads-how-they-are-drawn)
 10. [Read details](#10-read-details)
@@ -48,7 +49,7 @@ From top to bottom:
   **Open** and **View**. **H** hides the bar; a button in the corner brings it back.
 - **Chromosome map**: the chromosome on screen, with a red box where the view is (section 6).
 - **Panel headers**: only with several regions side by side (section 5).
-- **Ruler** and **reference sequence**: coordinates are 1-based, as in IGV. The reference shows as
+- **Ruler** and **reference sequence**: coordinates are 1-based. The reference shows as
   colored blocks, and as letters when zoomed in far enough.
 - **Gene track**: MANE transcripts (section 7).
 - **Samples**: each with its coverage and its reads. With several samples, a small label at the top
@@ -91,7 +92,7 @@ can be given for servers that need one; it is not saved.
 
 ### 3.3 Reference
 
-The reference sets the genome, as in IGV. Loading another reference switches the genome and closes
+The reference sets the genome. Loading another reference switches the genome and closes
 the open samples.
 
 - **Presets**: GRCh38, GRCh37 and T2T-CHM13 v2.0 (public copies hosted by the IGV team).
@@ -128,7 +129,7 @@ the open samples.
 
 ## 5. Several regions side by side
 
-The view splits into panels, as IGV's split screen:
+The view splits into panels:
 
 - **Right click a read → View mate region in split screen** (or the button in the read details)
   opens a panel next to the current one, centered on the mate, at the same scale. The read and its
@@ -162,6 +163,34 @@ leave the computer.
   27`, `(UTR)`, or `intron 3 of 26`. **Show whole gene** zooms to it; **Copy** copies the text.
 - The track shows only when the coordinates are GRCh38; it can be turned off in **View**.
 
+## 7a. Your own tracks: BED, bedGraph, VCF, GTF, GFF3
+
+Annotation files open the same way as samples — **Open → From disk** (choose, drop, or together with
+samples), or **By link** — and are recognized by their name: `.bed` (also `.narrowPeak`,
+`.broadPeak`), `.bedgraph` / `.bg`, `.vcf`, `.gtf`, `.gff` / `.gff3`, each also as `.gz` (gzip or
+bgzip). No index is needed: the file is read whole (up to 512 MB unpacked).
+
+They appear as bands under the gene track, in the order opened, fixed while the samples scroll.
+Each band starts with a thin line holding its file name, and × at the right closes it. Contig
+names match with or without `chr`.
+
+- **BED** (3 to 12 columns): features in two rows with their names; blocks are drawn as exons, the
+  thick part as coding, a strand gives arrows (or a pointed end), `itemRgb` colors a feature.
+- **GTF / GFF3**: exons and CDS are grouped into transcripts (by `transcript_id` or `Parent`) and drawn
+  like the gene track; lines without exons (repeats, regions) are drawn as they are.
+- **bedGraph**: a bar chart; the scale (largest visible value, `±` when there are negative values) is
+  on the name line.
+- **VCF**: a mark per variant (red; gray when FILTER is not PASS), and under it a row per sample,
+  up to 8 samples, with the sample name: light gray = homozygous reference, blue = heterozygous,
+  cyan = homozygous alternative, outline only = no call. With more samples the name line says how
+  many there are.
+- **Click a feature** for its card: position and strand in the top row with Copy and ×; then the
+  track name and the details — for BED name, score, blocks and thick part; for GTF / GFF3 type and
+  all attributes; for bedGraph the value; for VCF ID, REF, ALT, QUAL, FILTER, every INFO field and
+  each sample's FORMAT fields (up to 30 samples).
+- Lines that cannot be read are skipped and counted: a message says how many.
+- Tracks stay open when another reference is loaded (they are positions, not reads).
+
 ## 8. Coverage
 
 Each sample has a coverage track: gray bars of read depth; the scale is in the corner (`0–31×`).
@@ -172,7 +201,7 @@ bar shows colored parts by base.
   downsampled.
 - Above 1 Mb wide, coverage is counted as depth only (no allele colors): it loads several times
   faster, and alleles cannot be seen at that scale anyway.
-- **Click the coverage** for the counts at that base, as in IGV. The top row shows the position,
+- **Click the coverage** for the counts at that base. The top row shows the position,
   **Copy** and **×**; then:
 
   ```
@@ -192,7 +221,7 @@ bar shows colored parts by base.
   from the file, so downsampling does not change them; the filters from **View** (duplicates, MAPQ,
   secondary, QC-failed) do apply, as in the view. The counted column is outlined.
 
-  **mQV is CGV's own measure, not a standard one: IGV does not show it.** It is the mean of the
+  **mQV is not a common standard measure**, so here is exactly what it is: the mean of the
   base qualities (Phred QV, as stored in the file) of that base at this position, over the reads
   counted for it: `mQV = (QV₁ + … + QVₙ) / n`, rounded. Reads without stored qualities are left out
   of the mean (if none has them, mQV is not shown). It helps to tell a real allele, usually read with
@@ -208,7 +237,7 @@ bar shows colored parts by base.
   teal = FF or RR, orange = mate unmapped, a color per chromosome for mates on another chromosome;
   expected sizes are the 0.5–99.5% range of the loaded pairs); a tag value (for example
   `HP` for haplotypes).
-- **Strand**: the 3′ end of each read is pointed, as in IGV, so the strand shows under any coloring.
+- **Strand**: the 3′ end of each read is pointed, so the strand shows under any coloring.
 - **MAPQ**: reads with low mapping quality are more transparent (from MAPQ 0 at 18% to full at
   MAPQ 30 and above; adjustable).
 - **Mismatches**: only bases that differ from the reference are colored: A green, C blue, G orange,
@@ -227,14 +256,13 @@ bar shows colored parts by base.
 - **Pairs** (right click → View as pairs): both mates of a pair in one row, joined by a thin line;
   where mates overlap the overlap is shaded. A mate outside the loaded window is shown by the line
   to where it lies.
-- **Downsampling**: in deep regions at most 100 reads are kept per 50 bp window (adjustable, as in
-  IGV); marks above the reads show where reads were left out. Coverage still counts every read.
+- **Downsampling**: in deep regions at most 100 reads are kept per 50 bp window (adjustable); marks above the reads show where reads were left out. Coverage still counts every read.
 - **Rows** never reshuffle on their own: panning, reloading or recoloring keeps every read in its
   row. A new layout is made only when grouping, sorting, filters or downsampling change.
 
 ## 10. Read details
 
-**Click a read** for its details, laid out like IGV's popup: name, sample, read group, length,
+**Click a read** for its details: name, sample, read group, length,
 flags; mapping (primary, secondary or supplementary, MAPQ), reference span and strand, CIGAR,
 clipping; mate (mapped, start, insert size, first or second, pair orientation); all tags (the RG tag
 is used for the sample and listed as hidden). At the bottom: the clicked **Location** and **Base**
@@ -258,7 +286,7 @@ Right click on the reads:
 - **Copy read sequence**, **Copy left / right soft-clipped sequence**, **Copy read pair (FASTA)**.
   All are copied as FASTA with the read name: `>name/1`; clips as `>name/1_left_clip` and
   `>name/1_right_clip`; a pair as `>name/1` and `>name/2`. The sequence is as stored in the file, on
-  the reference's forward strand (as IGV copies it). Items that do not apply are grayed out.
+  the reference's forward strand. Items that do not apply are grayed out.
 - **View as pairs**, **Show soft-clipped bases**.
 - **Color by**: none, strand, pair orientation and insert size, tag value (with the tag field).
 - **Sort by** at the clicked position: start (unsorted), base, MAPQ, strand, insert size. Reads

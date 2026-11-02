@@ -1,0 +1,14 @@
+track name=demo
+demo	11000	11187	region0	582	+
+demo	11180	11294	region1	261	-
+demo	11360	11530	region2	507	+
+demo	11540	12050	region3	483	-
+demo	11720	12437	region4	388	+
+demo	11900	12164	region5	96	-
+demo	12080	12629	region6	29	+
+demo	12260	12709	region7	443	-
+demo	12440	13112	region8	780	+
+demo	12620	12672	region9	712	-
+demo	12800	13306	region10	272	+
+demo	12980	13768	region11	821	-
+demo	11900	12600	TX1	0	+	11950	12500	200,40,40	3	100,80,100	0,300,600

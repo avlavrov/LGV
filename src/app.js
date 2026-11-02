@@ -194,7 +194,7 @@ let W = 0, H = 0, DPR = 1, FULL_W = 0; // W: width of the current panel; FULL_W:
 
 // track geometry (CSS px)
 const RULER_H = 26, REF_H = 14;
-function covTop() { return panelHdr() + RULER_H + REF_H + geneH() + 4; } // where the tracks begin
+function covTop() { return panelHdr() + RULER_H + REF_H + geneH() + annH() + 4; } // where the samples begin
 // ---- gene track (MANE, GRCh38): a fixed band under the reference sequence ----
 const GENE_ROW = 16, GENE_H = 2 * GENE_ROW + 2;
 // The bundled genes are GRCh38: shown only when the coordinates are GRCh38 (chr1 of its length).
@@ -835,7 +835,7 @@ function renderPanel(pn, tp) {
   let n = performance.now(); add('reads', n - tl); tl = n;
   ctx.save(); ctx.translate(pn.x0, 0); ctx.beginPath(); ctx.rect(0, 0, pn.w, H); ctx.clip();
   const part = (k, f) => { f(); const m = performance.now(); add(k, m - tl); tl = m; };
-  part('ruler', () => { ctx.save(); ctx.translate(0, panelHdr()); drawRuler(); drawRefTrack(); ctx.restore(); drawGenes(pn); });
+  part('ruler', () => { ctx.save(); ctx.translate(0, panelHdr()); drawRuler(); drawRefTrack(); ctx.restore(); drawGenes(pn); drawAnnTracks(pn); });
   drawRubber();
   // tracks: below the ruler only, and only those in sight
   ctx.save(); ctx.beginPath(); ctx.rect(0, covTop(), pn.w, H - covTop()); ctx.clip();
@@ -1180,6 +1180,7 @@ function zoneOf(L) {
   if (L.y < panelHdr()) return '';
   if (inRuler(L.y)) return 'tip.ruler';
   if (inGenes(L.y)) return 'tip.genes';
+  { const a = annAt(L.y); if (a) return a.lbl && L.x > W - 24 && CUR === S.panels[S.panels.length - 1] ? 'tip.closeTrack' : 'tip.ann'; }
   const ti = trackAtY(L.y); if (ti < 0) return '';
   const g = trackGeom(ti);
   if (L.y >= g.covTop && L.y < g.covTop + g.covH + 4) return 'tip.cov';
@@ -1286,6 +1287,7 @@ function hitTest(x, y) {
 
 // x: inside the current panel; gx: on the whole view (where the card goes).
 function onClick(x, y, gx) {
+  { const a = annAt(y); if (a) { annClick(a, x, y, gx); return; } }
   if (inGenes(y)) { const h = geneHit(x, y); if (h) { S.selected = null; S.hl = null; showGeneCard(h, Math.floor(S.view.start + x * S.view.bpPerPx), gx, y); } else hideCard(); draw(); return; }
   const ti = trackAtY(y);
   if (ti >= 0) { const g = trackGeom(ti); if (g.lbl && y >= g.readsTop && y < g.readsTop + LABEL_H && x > W - 24 && CUR === S.panels[S.panels.length - 1]) { closeTrack(S.tracks[ti]); return; } }
@@ -1718,8 +1720,11 @@ function askFolder(missing, files, fromFolder) {
   };
 }
 async function openLocalFiles(fileList, fromFolder) {
-  const files = [...fileList], L = f => f.name.toLowerCase();
+  let files = [...fileList]; const L = f => f.name.toLowerCase();
   $('toast').hidden = true; // a message about an earlier choice no longer applies
+  // annotation tracks (BED, bedGraph, VCF, GTF, GFF3) open on their own; the rest goes on as before
+  const trk = files.filter(f => isTrackFile(f.name));
+  if (trk.length) { files = files.filter(f => !trk.includes(f)); closePanels(); openTracks(trk.map(f => new FileSource(f))); if (!files.length) return; }
   if (FSA) { // indexes from folders this session can already read
     for (const f of pairBams(files).missing) { const idx = await indexInDirs(f); if (idx) files.push(idx); }
     const left = pairBams(files).missing;
@@ -1795,9 +1800,10 @@ function openUrls() {
   if (!links.length) { toast(t('url.need')); return; }
   const auth = $('urlAuth').value.trim();
   const headers = auth ? { Authorization: /^bearer\s/i.test(auth) ? auth : 'Bearer ' + auth } : {};
-  const bams = links;
-  const given = bams.length === 1 ? $('urlBai').value.trim() : '';
+  const trk = links.filter(u => isTrackFile(urlPath(u))), bams = links.filter(u => !trk.includes(u));
   closePanels();
+  if (trk.length) openTracks(trk.map(u => new UrlSource(u, headers)));
+  const given = bams.length === 1 ? $('urlBai').value.trim() : '';
   (async () => {
     for (const u of bams) {
       const cram = /\.cram$/i.test(urlPath(u)), ext = cram ? '.cram' : '.bam', ie = IDX_EXT[ext];
@@ -2192,6 +2198,149 @@ function updateGeneSuggest() {
   dl.replaceChildren(...list.map(sym => { const o = document.createElement('option'); o.value = v.slice(0, v.length - word.length) + sym; return o; }));
 }
 $('locus').addEventListener('input', updateGeneSuggest);
+
+// ======================= Annotation tracks (BED, bedGraph, VCF, GTF, GFF3) =======================
+// Fixed bands under the gene track, shared by all panels; each named by a small label (× closes it).
+// Data come from src/tracks.js; click a feature for its details.
+const ANN = { tracks: [], seq: 0 };
+const ANN_ROW = 16, ANN_HDR = 12, VCF_SITE = 9, VCF_GT = 9, VCF_GT_MAX = 8, BG_H = 24;
+// each track: a 12 px name line (with × on the right), then its features
+function annHeight(a) {
+  if (a.kind === 'bedgraph') return ANN_HDR + BG_H;
+  if (a.kind === 'vcf') return ANN_HDR + VCF_SITE + 2 + Math.min(VCF_GT_MAX, a.ix.samples.length) * VCF_GT;
+  return ANN_HDR + 2 * ANN_ROW;
+}
+function annH() { return ANN.tracks.reduce((h, a) => h + annHeight(a) + 2, 0); }
+function annTopOf(a) { let y = geneTop() + geneH(); for (const b of ANN.tracks) { if (b === a) return y; y += annHeight(b) + 2; } return y; }
+function annAt(y) { let y0 = geneTop() + geneH(); for (const a of ANN.tracks) { const h = annHeight(a); if (y >= y0 && y < y0 + h + 2) return Object.assign(a, { y0, lbl: y < y0 + ANN_HDR }); y0 += h + 2; } return null; }
+async function openTracks(srcs) {
+  for (const src of srcs) {
+    const key = sourceKey(src);
+    if (ANN.tracks.some(a => a.key === key)) { toast(t('sample.already', { name: src.name })); continue; }
+    try {
+      const ix = await loadTrack(src);
+      ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix });
+      if (ix.skipped) toast(t('track.skipped', { name: src.name, n: fmtInt(ix.skipped), ok: fmtInt(ix.count) }), true);
+    } catch (e) { toast(t('track.failed', { name: src.name, msg: errText(e) }), true); }
+  }
+  clampScroll(); draw();
+}
+function closeAnn(a) { ANN.tracks = ANN.tracks.filter(x => x !== a); if (cardState && cardState.ann === a) hideCard(); clampScroll(); draw(); }
+const GT_COL = ['', '#c3c8cf', '#2a5fd6', '#14a3b8'];
+function drawAnnTracks(pn) {
+  if (!ANN.tracks.length || !S.contigs) return;
+  const name = S.contigs[S.view.refId].name, vs = S.view.start, ve = viewEnd(), bpp = S.view.bpPerPx, px = p => (p - vs) / bpp;
+  const last = CUR === S.panels[S.panels.length - 1];
+  pn.annHits = pn.annHits || new Map();
+  let y0 = geneTop() + geneH();
+  for (const a of ANN.tracks) {
+    const h = annHeight(a), hits = [];
+    ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, h); ctx.clip();
+    const list = a.ix.query(name, Math.floor(vs), Math.ceil(ve)), fy = y0 + ANN_HDR, fh = h - ANN_HDR;
+    let extra = '';
+    if (a.kind === 'bedgraph') {
+      // one bar per pixel column: the largest value under it; scale from the visible values
+      let mx = 0; for (const f of list) mx = Math.max(mx, Math.abs(f.value));
+      const neg = a.ix.min < 0, base = neg ? fy + fh / 2 : fy + fh - 1, sc = mx ? (neg ? fh / 2 - 1 : fh - 2) / mx : 0;
+      ctx.fillStyle = COL.css.gene;
+      for (const f of list) { const x0 = Math.max(0, px(f.start)), x1 = Math.min(W, px(f.end)), v = f.value * sc; ctx.fillRect(x0, v >= 0 ? base - v : base, Math.max(1, x1 - x0), Math.abs(v)); hits.push({ f, x0, x1, row: -1 }); }
+      extra = mx ? (neg ? '±' : '0–') + (+mx.toPrecision(3)) : '';
+    } else if (a.kind === 'vcf') {
+      const ns = Math.min(VCF_GT_MAX, a.ix.samples.length), st = fy;
+      for (const f of list) {
+        const x0 = px(f.start), w = Math.max(2, px(f.end) - x0);
+        const pass = f.filter === 'PASS' || f.filter === '.';
+        ctx.fillStyle = pass ? '#c0392b' : COL.css.muted; ctx.fillRect(x0, st, w, VCF_SITE);
+        for (let i = 0; i < ns; i++) { const g = vcfGenotype(f, i); const y = st + VCF_SITE + 2 + i * VCF_GT; if (g) { ctx.fillStyle = GT_COL[g]; ctx.fillRect(x0, y, w, VCF_GT - 1); } else { ctx.strokeStyle = COL.css.muted; ctx.lineWidth = 1; ctx.strokeRect(x0 + 0.5, y + 0.5, Math.max(1, w - 1), VCF_GT - 2); } }
+        hits.push({ f, x0: x0 - 1, x1: x0 + w + 1, row: -1 });
+      }
+      if (ns) { ctx.font = '8px ' + SANS; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+        for (let i = 0; i < ns; i++) { const lbl = a.ix.samples[i]; const y = st + VCF_SITE + 2 + i * VCF_GT + (VCF_GT - 1) / 2; const tw = ctx.measureText(lbl).width; ctx.globalAlpha = 0.8; ctx.fillStyle = COL.css.panel; ctx.fillRect(2, y - 4, tw + 6, 8); ctx.globalAlpha = 1; ctx.fillStyle = COL.css.muted; ctx.fillText(lbl, 5, y + 0.5); } }
+    } else drawFeatRows(list, fy, hits, f => f.rgb ? `rgb(${f.rgb.join(' ')})` : COL.css.gene);
+    // name line: file name (and the scale of a bedGraph, the number of VCF samples), × on the right
+    ctx.font = '600 9.5px ' + SANS; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL.css.muted;
+    if (a.kind === 'vcf' && a.ix.samples.length > VCF_GT_MAX) extra = t('track.nSamples', { n: fmtInt(a.ix.samples.length), shown: VCF_GT_MAX });
+    let label = a.name + (extra ? '  ·  ' + extra : '');
+    while (label.length > 4 && ctx.measureText(label).width > W - 30) label = label.slice(0, -2);
+    ctx.fillText(label, 6, y0 + ANN_HDR / 2 + 0.5);
+    if (last) { ctx.font = '12px ' + SANS; ctx.textAlign = 'center'; ctx.fillText('×', W - 12, y0 + ANN_HDR / 2 + 0.5); }
+    ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, y0 + h + 0.5); ctx.lineTo(W, y0 + h + 0.5); ctx.stroke();
+    ctx.restore();
+    pn.annHits.set(a.id, hits);
+    y0 += h + 2;
+  }
+}
+// Features in two rows (like the gene track): blocks as exons, thick part as coding, name below.
+function drawFeatRows(list, y0, hits, colorOf) {
+  const vs = S.view.start, ve = viewEnd(), bpp = S.view.bpPerPx, px = p => (p - vs) / bpp, ends = [-Infinity, -Infinity];
+  ctx.font = '600 9.5px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  for (const f of list) {
+    const x0 = px(f.start), x1 = px(f.end), a = Math.max(x0, 0), b = Math.min(x1, W);
+    const label = f.name || '', lw = label ? ctx.measureText(label).width : 0;
+    const cx = Math.max(lw / 2 + 2, Math.min(W - lw / 2 - 2, (a + b) / 2));
+    const e0 = Math.min(a, cx - lw / 2), e1 = Math.max(b, cx + lw / 2);
+    let row = ends.findIndex(e => e + 6 <= e0), withLabel = !!label;
+    if (row < 0) { row = ends[0] <= ends[1] ? 0 : 1; withLabel = false; }
+    ends[row] = Math.max(ends[row], withLabel ? e1 : b);
+    const top = y0 + row * ANN_ROW, mid = top + 5, col = colorOf(f);
+    ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 1;
+    const ex = f.exons || Int32Array.of(f.start, f.end);
+    if (ex.length > 2) { ctx.beginPath(); ctx.moveTo(a, mid + 0.5); ctx.lineTo(b, mid + 0.5); ctx.stroke();
+      if (f.strand && b - a > 30) { ctx.beginPath(); for (let x = a + 10; x < b - 6; x += 22) { const d = f.strand > 0 ? 2 : -2; ctx.moveTo(x - d, mid - 1.5); ctx.lineTo(x + d, mid + 0.5); ctx.lineTo(x - d, mid + 2.5); } ctx.stroke(); } }
+    const cs = f.cdsStart ?? f.start, ce = f.cdsEnd ?? f.end;
+    for (let i = 0; i < ex.length; i += 2) {
+      const s = ex[i], e = ex[i + 1]; if (e < vs || s > ve) continue;
+      const ex0 = px(s), ex1 = px(e);
+      ctx.fillRect(ex0, mid - 2, Math.max(1, ex1 - ex0), 5);
+      const c0 = Math.max(s, cs), c1 = Math.min(e, ce);
+      if (c1 > c0) ctx.fillRect(px(c0), mid - 4, Math.max(1, px(c1) - px(c0)), 9);
+    }
+    if (f.strand && ex.length === 2 && b - a > 14) { ctx.fillStyle = COL.css.panel; ctx.beginPath(); const tip = f.strand > 0 ? b : a, d = f.strand > 0 ? -4 : 4; ctx.moveTo(tip + d, mid - 4); ctx.lineTo(tip, mid - 4); ctx.lineTo(tip, mid + 0.5); ctx.fill(); ctx.beginPath(); ctx.moveTo(tip + d, mid + 5); ctx.lineTo(tip, mid + 5); ctx.lineTo(tip, mid + 0.5); ctx.fill(); ctx.fillStyle = col; }
+    if (withLabel) ctx.fillText(label, cx, top + ANN_ROW - 0.5);
+    hits.push({ f, row, x0: Math.min(a, withLabel ? e0 : a), x1: Math.max(b, withLabel ? e1 : b) });
+  }
+}
+function annClick(a, x, y, gx) {
+  if (a.lbl && x > W - 24 && CUR === S.panels[S.panels.length - 1]) { closeAnn(a); return; }
+  const hits = (CUR.annHits && CUR.annHits.get(a.id)) || [];
+  const row = a.kind === 'bed' || a.kind === 'gtf' || a.kind === 'gff' ? Math.floor((y - a.y0 - ANN_HDR) / ANN_ROW) : -1;
+  const h = hits.find(k => (k.row === row || k.row === -1) && x >= k.x0 - 2 && x <= k.x1 + 2) || hits.find(k => x >= k.x0 - 2 && x <= k.x1 + 2);
+  S.selected = null; S.hl = null;
+  if (!h) { hideCard(); draw(); return; }
+  showAnnCard(a, h.f, gx, y); draw();
+}
+function showAnnCard(a, f, gx, y) {
+  const c = $('card'), name = S.contigs[S.view.refId].name;
+  const st = f.strand > 0 ? ' (+)' : f.strand < 0 ? ' (−)' : '';
+  const L = [];
+  if (a.kind === 'vcf') {
+    L.push(['kv', 'ID', f.id || '.'], ['kv', 'REF', f.ref], ['kv', 'ALT', f.alt], ['kv', 'QUAL', f.qual], ['kv', 'FILTER', f.filter], ['sep']);
+    for (const [k, v] of vcfInfo(f)) L.push(v === '' ? ['txt', k] : ['kv', k, v]);
+    if (f.gts && a.ix.samples.length) {
+      L.push(['sep']);
+      const fmt = f.format.split(':'), n = Math.min(a.ix.samples.length, 30);
+      for (let i = 0; i < n; i++) { const v = (f.gts[i] || '').split(':'); L.push(['kv', a.ix.samples[i], fmt.map((k, j) => k + '=' + (v[j] ?? '.')).join(' ')]); }
+      if (a.ix.samples.length > n) L.push(['txt', t('track.moreSamples', { n: fmtInt(a.ix.samples.length - n) })]);
+    }
+  } else {
+    if (f.name) L.push(['kv', t('track.name'), f.name]);
+    if (f.type) L.push(['kv', t('track.type'), f.type]);
+    if (f.value !== undefined) L.push(['kv', t('track.value'), String(f.value)]);
+    if (f.score !== undefined) L.push(['kv', t('track.score'), String(f.score)]);
+    if (f.exons && f.exons.length > 2) L.push(['kv', t('track.blocks'), f.exons.length / 2]);
+    if (f.cdsStart !== undefined && f.cdsEnd > f.cdsStart && (f.cdsStart !== f.start || f.cdsEnd !== f.end)) L.push(['kv', t('track.thick'), `${fmtInt(f.cdsStart + 1)}-${fmtInt(f.cdsEnd)}`]);
+    if (f.attrs) { L.push(['sep']); let n = 0; for (const [k, v] of Object.entries(f.attrs)) { if (++n > 40) break; L.push(['kv', k, String(v).slice(0, 300)]); } }
+  }
+  const where = `${name}:${fmtInt(f.start + 1)}` + (f.end - f.start > 1 ? `-${fmtInt(f.end)}` : '') + st;
+  cardState = { pn: CUR, ann: a };
+  c.classList.remove('wide'); c.classList.add('narrow');
+  c.innerHTML = '<div class="card-head"><span class="card-title">' + esc(where) + '</span><button class="btn card-btn" id="copyAnn">' + esc(t('card.copy')) + '</button><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' +
+    `<div class="ln">${esc(a.name)}</div>${linesHtml(L)}`;
+  c.hidden = false; placeCard(gx, y);
+  tips(c, { '#copyAnn': 'tip.copyCard' });
+  $('closeCard').onclick = () => { hideCard(); draw(); };
+  $('copyAnn').onclick = () => navigator.clipboard.writeText(where + '\n' + linesText(L)).then(() => toast(t('copied')), () => toast(t('copyFail')));
+}
 
 // ======================= Chromosome map =======================
 // The chromosome of every panel, side by side across the top when panels show different ones, with

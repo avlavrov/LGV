@@ -50,6 +50,7 @@ More languages are one dictionary in `src/i18n.js`.
 | F5 Go to coordinate | done, contig names case-insensitive (chr1 = Chr1 = 1); drag on the ruler to zoom to a region, click it to center; **gene search**: a gene symbol, an ENST or NM id (MANE), with suggestions while typing; several genes or loci separated by spaces open side by side |
 | Chromosome map | across the top: the chromosome of each panel with GRCh38 bands and centromere (plain bar for other genomes), a red box where each panel is (numbered like the panel headers); click or drag to move the active panel |
 | Strand | the 3' end of every read is pointed, as in IGV, so the strand shows under any coloring |
+| Annotation tracks | BED, bedGraph, VCF, GTF, GFF3 (plain, gzip or bgzip) from disk or a link: bands under the gene track; click a feature for its details |
 | Genes | **MANE track** (GRCh38): MANE Select and Plus Clinical transcripts under the reference — coding exons thick, UTRs thin, strand arrows, exon numbers when zoomed in; click a transcript for its ids, span and the exon or intron at that position. Bundled with CGV (MANE v1.2), works offline |
 | Start | GRCh38 opens by default (View → "At start open": hg38, hg19, T2T, demo or nothing); without a connection the demo opens instead |
 | F6 No hard window limit | windows load on their own up to 64 MB of compressed data, larger on request; downsampling keeps deep regions fast; isolated sequencing errors fade when zoomed out |

@@ -102,6 +102,14 @@ Every reader of file data outside CRAM was reviewed line by line and fuzzed the 
 | Chromosome bands, GRCh38 (`data/cytoband.grch38.tsv`) | ideogram by Eric Weitz, `data/bands/native/homo-sapiens.json` | 850-band resolution, NCBI | CC0 (public domain) | chromosome map |
 | MANE Select and MANE Plus Clinical transcripts, GRCh38 (`data/mane.grch38.tsv`, made by `tools/make-mane.py`) | MANE summary (NCBI / EMBL-EBI) and Ensembl 111 exon coordinates, as exported by genome-nexus-importer (`data/common_input/MANE.GRCh38.v1.2.summary.txt`, `data/grch38_ensembl111/export/ensembl_biomart_transcripts.json.gz`) | MANE v1.2 | public data, no restrictions (NCBI, Ensembl) | gene track and gene search; all 19,268 transcripts on chr1–22, X, Y; every Ensembl transcript version matched the MANE summary |
 
+## Annotation tracks (BED, bedGraph, VCF, GTF, GFF3)
+
+`src/tracks.js`, own code. A file is read whole, capped at 512 MB unpacked (gzip output stops at the
+cap; bgzip blocks are checked like BAM's) and 5 million features. Every coordinate must be a plain
+whole number with end ≥ start; BED blocks must be in order and inside the feature; text fields are
+cut to a fixed length. A line that does not parse is skipped and counted. Text from the file is
+drawn on the canvas or shown through esc(). Fuzzed in tools/test-fuzz.js.
+
 ## Code from others
 
 | Code | From | Version | License | Status |

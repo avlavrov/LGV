@@ -1,0 +1,7 @@
+##gff-version 3
+demo	demo	gene	11500	12800	.	-	.	ID=g1;Name=DEMOGENE
+demo	demo	mRNA	11500	12800	.	-	.	ID=t1;Parent=g1;Name=DEMOGENE-201
+demo	demo	exon	11500	11700	.	-	.	Parent=t1
+demo	demo	exon	12000	12100	.	-	.	Parent=t1
+demo	demo	exon	12600	12800	.	-	.	Parent=t1
+demo	demo	CDS	11600	12700	.	-	0	Parent=t1

@@ -213,6 +213,24 @@ async function readAllWays(bam, bai) {
     return k === 0 ? b : k === 1 ? Buffer.concat([bgzfBlock(b.subarray(0, 20000)), bgzfBlock(b.subarray(20000)), bgzfBlock(Buffer.alloc(0))]) : zlib.gzipSync(b);
   }, async b => { const f = await new C.IndexedFasta(src(b, 'x.fa')).openUnindexed(b.length); await fetchSome(f); });
 
+  // 7b. annotation tracks: BED, bedGraph, VCF, GFF3 (text damaged line by line, and gzip / bgzip)
+  {
+    const Tk = require('../src/tracks.js'), TD = path.join(__dirname, '..', 'test', 'tracks');
+    const texts = ['demo.bed', 'demo.bedgraph', 'demo.vcf', 'demo.gff3'].map(f => [f, fs.readFileSync(path.join(TD, f), 'utf8')]);
+    const junk = ['\t', '\n', '-1', '99999999999999999999', 'NaN', ',', ';', '=', '%', '#', '"', '.', '0', '1e9', '\r', 'é', '\u0000'];
+    await campaign('Annotation tracks (BED, bedGraph, VCF, GFF3), damaged', ROUNDS, i => {
+      const [name, txt] = texts[i % texts.length]; let t = txt;
+      for (let j = 1 + rnd(12); j--;) { const at = rnd(t.length); t = t.slice(0, at) + junk[rnd(junk.length)] + t.slice(at + rnd(4)); }
+      const gz = rnd(3); const buf = gz === 1 ? zlib.gzipSync(Buffer.from(t)) : gz === 2 ? bgzfBlock(Buffer.from(t)) : Buffer.from(t);
+      if (gz && rnd(2)) for (let j = 1 + rnd(4); j--;) buf[rnd(buf.length)] ^= 1 << rnd(8);
+      return [gz ? name + '.gz' : name, buf];
+    }, async ([name, buf]) => {
+      const ix = await Tk.loadTrack(src(buf, name));
+      for (const c of ix.byChr.keys()) ix.query(c, 0, 1e9);
+      if (ix.kind === 'vcf') for (const c of ix.byChr.values()) for (const f of c.list) { Tk.vcfInfo(f); for (let k = 0; k < 4; k++) Tk.vcfGenotype(f, k); }
+    });
+  }
+
   // 8. the locus field and a pasted profile: the functions are taken from app.js as they are
   const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'app.js'), 'utf8');
   const grab = (start, end) => { const a = app.indexOf(start), b = app.indexOf(end, a); if (a < 0 || b < 0) throw new Error('app.js changed: ' + start); return app.slice(a, b); };

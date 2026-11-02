@@ -14,7 +14,9 @@
    labels, small controls, no decorative space. (Confirmed 2026-11-01: so far the interface is on
    the right track.)
 6. **Like IGV where IGV is good**: users come from IGV, so behavior and terms follow it unless
-   there is a reason to differ.
+   there is a reason to differ. Comparisons with IGV are for our internal discussions only: the
+   interface, tooltips and the user guide never compare CGV with IGV (naming the IGV team as the
+   host of the public reference copies is a data source, not a comparison).
 7. **Language**: interface and documents in English by default; Russian as an option (interface
    switch, `docs/*.ru.md`).
 8. **Documentation**: the user guide (`docs/USER_GUIDE.md`, `docs/USER_GUIDE.ru.md`) describes

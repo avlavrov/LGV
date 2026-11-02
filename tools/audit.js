@@ -4,7 +4,7 @@
 'use strict';
 const fs = require('fs'), path = require('path');
 const R = p => path.join(__dirname, '..', p);
-const files = ['src/core.js', 'src/compress.js', 'src/htscodecs.js', 'src/cram.js', 'src/genes.js', 'src/app.js', 'src/i18n.js', 'src/index.html'];
+const files = ['src/core.js', 'src/compress.js', 'src/htscodecs.js', 'src/cram.js', 'src/genes.js', 'src/tracks.js', 'src/app.js', 'src/i18n.js', 'src/index.html'];
 let fails = 0;
 const fail = (f, n, line, why) => { fails++; console.log(`FAIL ${f}:${n}  ${why}\n       ${line.trim().slice(0, 150)}`); };
 
@@ -50,20 +50,20 @@ for (const f of files) {
   });
 }
 // file readers report damage only as CgvError (a clear message for the user), never a bare Error
-for (const f of ['src/core.js', 'src/compress.js', 'src/htscodecs.js', 'src/cram.js']) fs.readFileSync(R(f), 'utf8').split('\n').forEach((line, i) => {
+for (const f of ['src/core.js', 'src/compress.js', 'src/htscodecs.js', 'src/cram.js', 'src/tracks.js']) fs.readFileSync(R(f), 'utf8').split('\n').forEach((line, i) => {
   if (/throw\s+(new\s+(?!CgvError\b)\w*Error\b|['"`])/.test(line.replace(/\/\/.*$/, ''))) fail(f, i + 1, line, 'a file reader throws something other than CgvError');
 });
 // every reader of file data has a fuzzing campaign in the tests
 {
   const tests = ['tools/test-fuzz.js', 'tools/test-cram.js'].map(f => fs.readFileSync(R(f), 'utf8')).join('\n');
-  const need = { 'BAM records': /BAM records, damage/, 'BAM header': /BAM header, damage/, BAI: /BAI index, damaged/, BGZF: /BGZF block headers/, '.fai': /FASTA index \(\.fai\), damaged/, '.gzi': /FASTA \.gzi, damaged/, 'FASTA indexing': /FASTA indexed in the browser, damaged/, CRAM: /fuzzing records/, 'CRAM codecs': /fuzzing/, locus: /locus field/, profile: /pasted profile/ };
+  const need = { 'BAM records': /BAM records, damage/, 'BAM header': /BAM header, damage/, BAI: /BAI index, damaged/, BGZF: /BGZF block headers/, '.fai': /FASTA index \(\.fai\), damaged/, '.gzi': /FASTA \.gzi, damaged/, 'FASTA indexing': /FASTA indexed in the browser, damaged/, CRAM: /fuzzing records/, 'CRAM codecs': /fuzzing/, locus: /locus field/, profile: /pasted profile/, 'annotation tracks': /Annotation tracks \(BED/ };
   const miss = Object.keys(need).filter(k => !need[k].test(tests));
   if (miss.length) { fails++; console.log('FAIL no fuzzing campaign for: ' + miss.join(', ')); } else console.log('OK   every file reader has a fuzzing campaign: ' + Object.keys(need).join(', '));
 }
 // top-level names must not repeat across the scripts that share one page (core + cram + app + i18n)
 {
   const seen = new Map();
-  for (const f of ['src/i18n.js', 'src/core.js', 'src/compress.js', 'src/htscodecs.js', 'src/cram.js', 'src/genes.js', 'src/app.js']) for (const m of fs.readFileSync(R(f), 'utf8').matchAll(/^(?:const|let|var|class|function|async function) ([A-Za-z_$][\w$]*)/gm)) {
+  for (const f of ['src/i18n.js', 'src/core.js', 'src/compress.js', 'src/htscodecs.js', 'src/cram.js', 'src/genes.js', 'src/tracks.js', 'src/app.js']) for (const m of fs.readFileSync(R(f), 'utf8').matchAll(/^(?:const|let|var|class|function|async function) ([A-Za-z_$][\w$]*)/gm)) {
     if (seen.has(m[1])) { fails++; console.log(`FAIL ${f}: top-level name ${m[1]} is also declared in ${seen.get(m[1])}`); } else seen.set(m[1], f);
   }
   console.log('OK   top-level names checked across the page\'s scripts: ' + seen.size);

@@ -24,6 +24,13 @@ Ideas and agreed work for later. Items move to the user guide and README when do
 - Report to htscodecs upstream: its JavaScript decoders hang or return wrong data on cut-off
   blocks (details in SECURITY.md, Findings).
 
+## Annotation tracks, next steps
+
+- Large indexed files read in pieces: VCF / BED with tabix `.tbi` / `.csi`, bigBed, bigWig (now: whole
+  file in memory, up to 512 MB).
+- VCF: more than 8 genotype rows (scrolling), coloring by allele frequency.
+- Tracks in the display profile / share link.
+
 ## Product stages ahead
 
 - Desktop version (native file access: the index next to a file without asking).
