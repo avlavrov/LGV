@@ -247,7 +247,10 @@ bar shows colored parts by base.
   turned off: View → Fade low-quality bases).
 - **Zoomed out**, lone mismatches fade so that sequencing errors do not clutter the picture;
   positions where a non-reference base passes the allele threshold always stay bright.
-- **Insertions**: a purple bar, with its length written above from 10 pixels per base.
+- **Insertions**: a purple bar, with its length written above from 10 pixels per base. **Click the
+  bar** (within a few pixels) for the insertion's card: its place between two bases
+  (`chr1:21,001^21,002`), length, the inserted bases, their qualities and the read name; the mark is
+  outlined. **Copy** copies the inserted bases as FASTA: `>name/2_insertion_chr1:21001^21002`.
   **Deletions**: a dark line. **Spliced gaps (N)**: a thin gray line.
 - **Soft clips** (shown by default; right click → Show soft-clipped bases): the clipped bases
   continue the read in its own color, slightly thinner so the clip boundary shows; clipped bases
@@ -329,6 +332,7 @@ copied as JSON, pasted from someone else and applied, or reset.
 | Scroll the stack of samples | wheel over coverage; scrollbar; PageUp / PageDown |
 | Back / forward | ← → buttons in the top bar |
 | Read details | click a read |
+| Inserted bases | click an insertion mark |
 | Counts at a base | click the coverage |
 | Transcript details | click the gene track |
 | Menu | right click on the reads |

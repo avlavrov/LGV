@@ -1034,6 +1034,19 @@ function drawReadsOverlay(T, g) {
     }
     ctx.globalAlpha = 1;
   }
+  // the insertion an insertion card is about
+  if (cardState && cardState.ins && cardState.T === T && cardState.pn === CUR) {
+    const cs = cardState, x = (cs.ins.pos - S.view.start) * ppb;
+    ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 1;
+    sh.groups.forEach((g, gi) => {
+      const firstRow = Math.max(0, Math.floor((scroll - gi * gg) / rh) - g.start - 1);
+      const lastRow = Math.min(g.rows.length - 1, Math.ceil((scroll + Hh - rt - gi * gg) / rh) - g.start + 1);
+      for (let ri = firstRow; ri <= lastRow; ri++) for (const r of g.rows[ri].flatMap(readsOf)) if (r === cs.rec) {
+        const y = rt + gg + (g.start + ri) * rh + gi * gg - scroll;
+        ctx.strokeRect(Math.round(x) - 3.5, Math.round(y) - 2.5, 7, Math.max(2, rh - (rh >= 5 ? 1 : 0)) + 4);
+      }
+    });
+  }
   // the base the read card is about: in the clicked read, and in its mate when the card shows both
   if (cardState && cardState.rec && cardState.T === T && cardState.pn === CUR) {
     const cs = cardState, vs = S.view.start, x0 = (cs.pos - vs) * ppb, w = Math.max(3, ppb);
@@ -1294,7 +1307,11 @@ function onClick(x, y, gx) {
   if (ti >= 0) { const g = trackGeom(ti); if (y >= g.covTop && y < g.covTop + g.covH + 4) { S.selected = null; S.hl = null; showCoverageCard(S.tracks[ti], Math.floor(S.view.start + x * S.view.bpPerPx), gx, y); draw(); return; } }
   const h = hitTest(x, y);
   if (!h) { S.selected = null; S.hl = null; hideCard(); draw(); return; }
-  S.selected = Object.assign(h, { pn: CUR }); S.hl = { name: h.rec.name, id: h.T.id }; showCard(h.rec, h.T, x, gx, y); draw();
+  S.selected = Object.assign(h, { pn: CUR }); S.hl = { name: h.rec.name, id: h.T.id };
+  // a click on an insertion mark (within a few pixels of it) shows the inserted bases
+  const ins = insertionAt(h.rec, x);
+  if (ins) showInsCard(h.rec, h.T, ins, gx, y); else showCard(h.rec, h.T, x, gx, y);
+  draw();
 }
 
 const FLAG_BITS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048];
@@ -1474,6 +1491,32 @@ async function showCoverageCard(T, pos, gx, y) {
   tips(c, { '#copyCov': 'tip.copyCard' });
   $('closeCard').onclick = () => { hideCard(); draw(); };
   $('copyCov').onclick = () => navigator.clipboard.writeText(name + ':' + (pos + 1) + '\n' + linesText(L)).then(() => toast(t('copied')), () => toast(t('copyFail')));
+}
+// ---- Insertions: the mark sits between two reference bases; clicking it shows the inserted bases.
+function insertionAt(rec, x) {
+  const vs = S.view.start, ppb = 1 / S.view.bpPerPx, tol = Math.max(4, Math.min(8, ppb / 2));
+  let best = null, bd = Infinity;
+  for (const f of feats(rec)) if (f.t === 1) { const d = Math.abs((f.pos - vs) * ppb - x); if (d <= tol && d < bd) { best = f; bd = d; } }
+  return best;
+}
+function showInsCard(rec, T, f, gx, y) {
+  const c = $('card'), name = S.contigs[S.view.refId].name;
+  const seq = rec.lseq ? seqOf(rec, f.q0, f.q0 + f.len) : '';
+  const qs = []; if (rec.lseq) for (let i = f.q0; i < f.q0 + f.len; i++) if (rec.qual[i] !== 255) qs.push(rec.qual[i]);
+  // between the base before (f.pos) and the base after (f.pos + 1), 1-based
+  const where = `${name}:${fmtInt(f.pos)}^${fmtInt(f.pos + 1)}`;
+  const L = [['kv', t('ins.len'), f.len + ' bp'], ['kv', t('ins.seq'), seq || '—']];
+  if (qs.length) L.push(['kv', t('ins.qual'), qs.length <= 40 ? qs.join(', ') : 'mean ' + Math.round(qs.reduce((a, b) => a + b, 0) / qs.length)]);
+  L.push(['kv', t('card.readName'), rec.name]);
+  cardState = { pn: CUR, ins: f, rec, T, pos: f.pos };
+  c.classList.remove('wide'); c.classList.add('narrow');
+  c.innerHTML = '<div class="card-head"><span class="card-title">' + esc(where) + '</span><button class="btn card-btn" id="copyIns">' + esc(t('card.copy')) + '</button><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' +
+    `<div class="ln b">${esc(t('ins.title'))}</div>${linesHtml(L)}`;
+  c.hidden = false; placeCard(gx, y);
+  tips(c, { '#copyIns': 'tip.copyIns' });
+  $('closeCard').onclick = () => { hideCard(); draw(); };
+  const nm = rec.name + (rec.flag & 1 ? (rec.flag & 64 ? '/1' : rec.flag & 128 ? '/2' : '') : '');
+  $('copyIns').onclick = () => { if (!seq) return; navigator.clipboard.writeText(`>${nm}_insertion_${name}:${f.pos}^${f.pos + 1}\n${seq}\n`).then(() => toast(t('copied.seq', { n: fmtInt(seq.length) })), () => toast(t('copyFail'))); };
 }
 // The card opens next to the click, or where it was dragged to last (kept until the page is closed,
 // never stored). It is dragged by its top row.
