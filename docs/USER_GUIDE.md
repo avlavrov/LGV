@@ -1,11 +1,11 @@
-# CGV user guide
+# LGV user guide
 
-CGV (Convenient, custom, genomic viewer) shows read alignments (BAM, CRAM) against a reference
-genome, for medical and human genetics. It runs in a browser from one file, `cgv.html`, with no
+LGV (Lavrov Genome Viewer) shows read alignments (BAM, CRAM) against a reference
+genome, for medical and human genetics. It runs in a browser from one file, `lgv.html`, with no
 installation and no server: files are read in pieces straight from your disk or from links you
 give, and nothing is uploaded anywhere.
 
-This guide describes CGV as it is now and is updated with every change. Russian version:
+This guide describes LGV as it is now and is updated with every change. Russian version:
 [USER_GUIDE.ru.md](USER_GUIDE.ru.md).
 
 ## Contents
@@ -26,17 +26,18 @@ This guide describes CGV as it is now and is updated with every change. Russian 
 13. [View settings](#13-view-settings)
 14. [Keys and mouse](#14-keys-and-mouse)
 15. [Messages and limits](#15-messages-and-limits)
+15a. [Pictures and links](#15a-pictures-and-links)
 16. [Privacy and security](#16-privacy-and-security)
 
 ## 1. Starting
 
-Open `cgv.html` in Chrome, Edge, Firefox or Safari (Chrome or Edge recommended: some features need
-them, see 3.1). At start CGV loads the **GRCh38 / hg38** reference (sequence only, from the IGV
+Open `lgv.html` in Chrome, Edge, Firefox or Safari (Chrome or Edge recommended: some features need
+them, see 3.1). At start LGV loads the **GRCh38 / hg38** reference (sequence only, from the IGV
 team's public storage) and opens on BRCA1. A short message confirms the reference is loaded.
 
 - What opens at start is set in **View → At start open**: GRCh38, GRCh37, T2T-CHM13, the demo data,
   or nothing.
-- Without an internet connection the reference cannot load; CGV then opens the built-in demo data
+- Without an internet connection the reference cannot load; LGV then opens the built-in demo data
   (a synthetic contig `demo` with example variants) and says so.
 - The interface is in English; Russian is under **View → Language**.
 
@@ -44,9 +45,11 @@ team's public storage) and opens on BRCA1. A short message confirms the referenc
 
 From top to bottom:
 
-- **Top bar**: the locus field with **Go**, **← →** (back / forward), **− +** (zoom), the width of the
-  view, the loaded reference and samples, the status line (reads shown, load and draw times),
-  **Open** and **View**. **H** hides the bar; a button in the corner brings it back.
+- **Top bar**: **LGV** (click for About: version, credits, third-party code and data), the locus
+  field with **Go**, **← →** (back / forward), **− +** (zoom), **PNG** (save a picture) and **Link**
+  (copy a link to this view) — section 15a, the width of the view, the loaded reference and samples,
+  the status line (reads shown, load and draw times), **Open** and **View**. **H** hides the bar; a
+  button in the corner brings it back.
 - **Chromosome map**: the chromosome on screen, with a red box where the view is (section 6).
 - **Panel headers**: only with several regions side by side (section 5).
 - **Ruler** and **reference sequence**: coordinates are 1-based. The reference shows as
@@ -73,8 +76,8 @@ Press **Open**.
   (`.fa` / `.fasta` / `.fna`, optionally `.gz`, with `.fai` and `.gzi`) can be chosen at the same
   time.
 - **Just the .bam or .cram, without its index** (Chrome, Edge): a web page may read only the files
-  you choose, so CGV asks once — **Allow the folder**. The folder picker opens where the file lies;
-  confirm it and CGV takes the index from there itself. Later files from the same folder open
+  you choose, so LGV asks once — **Allow the folder**. The folder picker opens where the file lies;
+  confirm it and LGV takes the index from there itself. Later files from the same folder open
   without asking, until the page is closed. The access is read-only and never stored. In Firefox
   and Safari this is not possible: choose the file together with its index, or the whole folder.
 - **Choose a folder**: every sample in it is found and paired with its index. A folder with several
@@ -96,7 +99,7 @@ The reference sets the genome. Loading another reference switches the genome and
 the open samples.
 
 - **Presets**: GRCh38, GRCh37 and T2T-CHM13 v2.0 (public copies hosted by the IGV team).
-- **Your own**: a FASTA file from disk or by link. Without a `.fai`, CGV indexes the file in the
+- **Your own**: a FASTA file from disk or by link. Without a `.fai`, LGV indexes the file in the
   browser in one pass (plain, bgzip or gzip; a progress message shows). With `.fai` (and `.gzi` for
   bgzip) it opens at once.
 - Samples are matched to the reference by contig name (case, `chr` prefix and version suffix
@@ -105,7 +108,7 @@ the open samples.
   refused with an explanation, because its coordinates would be wrong.
 - Without a reference, the first sample's header gives the coordinates, and reference bases are
   rebuilt from MD tags where reads cover them.
-- **CRAM** stores reads as differences from the reference it was made with. CGV checks each part of
+- **CRAM** stores reads as differences from the reference it was made with. LGV checks each part of
   the file against the loaded reference (MD5) and refuses to show reads built on a different
   reference, rather than show wrong bases.
 
@@ -152,7 +155,7 @@ to move the active panel there.
 ## 7. Genes (MANE)
 
 Under the reference sits the gene track: MANE Select and MANE Plus Clinical transcripts on GRCh38
-(19,268 transcripts, MANE v1.2), built into CGV — it works offline, and gene names you type never
+(19,268 transcripts, MANE v1.2), built into LGV — it works offline, and gene names you type never
 leave the computer.
 
 - Thick boxes are coding exons, thin boxes UTRs, the line with arrows is the intron and the strand.
@@ -331,6 +334,9 @@ copied as JSON, pasted from someone else and applied, or reset.
 | Scroll reads | wheel over reads; drag up / down; ↑ ↓ |
 | Scroll the stack of samples | wheel over coverage; scrollbar; PageUp / PageDown |
 | Back / forward | ← → buttons in the top bar |
+| Picture of the view | PNG button |
+| Link to the view | Link button |
+| About LGV | click LGV in the top bar |
 | Read details | click a read |
 | Inserted bases | click an insertion mark |
 | Counts at a base | click the coverage |
@@ -353,9 +359,35 @@ copied as JSON, pasted from someone else and applied, or reset.
 - **Another genome build**: the sample was aligned to a different reference than the one loaded
   (3.3).
 
+## 15a. Pictures and links
+
+- **PNG** saves the view as it is on screen — all panels, the chromosome map, genes, tracks,
+  coverage and reads — at screen resolution, with a line at the bottom naming the loci, the
+  samples, the reference and the date. The file is named after the first locus, for example
+  `LGV_chr7_117559500-117560000.png`. Cards and menus are not in the picture.
+- **Link** copies a link that opens this view: the reference, the samples and tracks that were
+  opened by link, and every panel's locus. Files opened from this computer cannot be in a link (a
+  message names them), and access tokens are never put in a link.
+- **Opening LGV from another system** (a LIMS, a report, a variant table): add parameters after
+  `#` (or `?`) to the address of `lgv.html`:
+
+  ```
+  lgv.html#ref=hg38&file=https://server/sample.cram&locus=CFTR
+  ```
+
+  - `ref` — `hg38`, `hg19`, `chm13`, `demo`, or a link to a FASTA (`.fai` next to it, `.gzi` for
+    `.fa.gz`); without it, the reference chosen in View → At start open;
+  - `file` — a BAM, CRAM or annotation track link; repeat for several;
+  - `index` — the BAM / CRAM index links in the same order, when they are not next to the files;
+  - `locus` — loci or genes; several separated by spaces (`%20` or `+`) open side by side.
+
+  Only `https` links are read (and `http` on this computer). Parameters after `#` stay in the
+  browser and are not sent to the server that hosts `lgv.html`, so they are the better choice for
+  patient data.
+
 ## 16. Privacy and security
 
-- Data goes only between the files or links you chose and your computer. CGV sends nothing
+- Data goes only between the files or links you chose and your computer. LGV sends nothing
   anywhere; the only connection it makes by itself is loading the reference chosen to open at
   start (sequence only).
 - Gene search and the gene track are built in: typed gene names are not sent anywhere.

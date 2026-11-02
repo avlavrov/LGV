@@ -33,15 +33,15 @@ const CRAM_CT = { FILE_HEADER: 0, COMPRESSION_HEADER: 1, SLICE_HEADER: 2, EXTERN
 
 Object.assign(CGV_ERR_EN, {
   notCram: 'This is not a CRAM file (no CRAM signature)',
-  cramVersion: 'CRAM {v} is not supported; CGV reads CRAM 3.0 and 3.1',
+  cramVersion: 'CRAM {v} is not supported; LGV reads CRAM 3.0 and 3.1',
   cramBad: 'The CRAM file is damaged: {what}',
   cramCrc: 'CRAM checksum mismatch in {what}: the file is damaged',
-  cramCodec: 'A CRAM block is compressed with {codec}, which CGV does not read yet',
-  cramLimit: 'A CRAM {what} is larger than CGV allows ({size})',
+  cramCodec: 'A CRAM block is compressed with {codec}, which LGV does not read yet',
+  cramLimit: 'A CRAM {what} is larger than LGV allows ({size})',
   notCrai: 'This is not a CRAM index (.crai)',
   cramRefMd5: 'The loaded reference is not the one this CRAM was made with: the MD5 of contig {name} differs. Load the reference the file was made with',
   cramNeedRef: 'This CRAM stores reads as differences from its reference: load the reference it was made with (contig {name})',
-  cramEncoding: 'CRAM data series {ds} uses encoding {enc}, which CGV does not read',
+  cramEncoding: 'CRAM data series {ds} uses encoding {enc}, which LGV does not read',
 });
 
 // CRC32: crc32() from core.js (the same check as for BGZF blocks).

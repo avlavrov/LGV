@@ -1,16 +1,17 @@
-# CGV — Convenient, custom, genomic viewer
+# LGV — Lavrov Genome Viewer
 
-A fast, light and secure viewer for read alignments (BAM) in human genetics.
+A fast, light and secure viewer for read alignments (BAM, CRAM) in human genetics. Built with
+Claude, an AI model by Anthropic.
 It runs in the browser with no server and no third-party dependencies.
 
-**Status:** working prototype: BAM and CRAM, GRCh38 genes, split screen.
+**Status:** MVP, version 0.9.0. (Formerly CGV.)
 
 **User guide:** [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (Russian: [docs/USER_GUIDE.ru.md](docs/USER_GUIDE.ru.md)).
 Project rules: [docs/PROJECT_RULES.md](docs/PROJECT_RULES.md). Plans: [docs/TODO.md](docs/TODO.md).
 
 ## Run
 
-Open `dist/cgv.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38 reference
+Open `dist/lgv.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38 reference
 (synthetic demo data when offline). To view your own data, press **Open**:
 
 - **From disk**: choose one or more `.bam` files with their indexes (you can add `.fa` +
@@ -30,7 +31,7 @@ Open `dist/cgv.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38
   afterwards are matched to it: contig names are compared without case, `chr` prefix or
   version suffix (and with NCBI header fields), then remaining contigs pair up by a length
   only one sequence on each side has. A sample with no matching contig is refused with
-  both lists shown. One `.fa` / `.fasta` file is enough: without a `.fai` CGV indexes it in
+  both lists shown. One `.fa` / `.fasta` file is enough: without a `.fai` LGV indexes it in
   the browser in one pass (plain, bgzip or gzip); with `.fai` (and `.gzi` for `.fa.gz`) it
   opens at once. Public GRCh38, GRCh37 and T2T-CHM13 v2.0 copies (hosted by the IGV team
   on Amazon S3) are offered as presets. Without a reference, the sample's header gives the
@@ -43,15 +44,15 @@ More languages are one dictionary in `src/i18n.js`.
 
 | Requirement | State |
 | --- | --- |
-| F1 BAM by HTTPS link (Range) | done; CRAM in progress: CRAM 3.0 / 3.1 records are read and match BAM read for read; CRAM 3.0 and 3.1 open, including 3.1 archive mode, decoded in Web Workers; each slice's reference MD5 is checked against the loaded reference; every CRAM block codec is read, bzip2 and lzma by CGV's own decoders |
-| F2 Local BAM + BAI | done: several samples at once as tracks, index paired by name, folder or drag and drop; in Chrome and Edge choosing just the .bam / .cram is enough — CGV asks once to read its folder (read only, this session) and takes the index from there; with many samples each keeps a minimum height (View → Coverage, 240 px by default) and the whole stack scrolls under the ruler: wheel over coverage or a header, wheel past the end of a sample's reads, the scrollbar on the right, PageUp / PageDown |
+| F1 BAM by HTTPS link (Range) | done; CRAM in progress: CRAM 3.0 / 3.1 records are read and match BAM read for read; CRAM 3.0 and 3.1 open, including 3.1 archive mode, decoded in Web Workers; each slice's reference MD5 is checked against the loaded reference; every CRAM block codec is read, bzip2 and lzma by LGV's own decoders |
+| F2 Local BAM + BAI | done: several samples at once as tracks, index paired by name, folder or drag and drop; in Chrome and Edge choosing just the .bam / .cram is enough — LGV asks once to read its folder (read only, this session) and takes the index from there; with many samples each keeps a minimum height (View → Coverage, 240 px by default) and the whole stack scrolls under the ruler: wheel over coverage or a header, wheel past the end of a sample's reads, the scrollbar on the right, PageUp / PageDown |
 | F3 Reference (GRCh38, GRCh37, T2T-CHM13) | done: files or link, plain or bgzip, public presets |
 | F4 Access token / presigned URL | done |
 | F5 Go to coordinate | done, contig names case-insensitive (chr1 = Chr1 = 1); drag on the ruler to zoom to a region, click it to center; **gene search**: a gene symbol, an ENST or NM id (MANE), with suggestions while typing; several genes or loci separated by spaces open side by side |
 | Chromosome map | across the top: the chromosome of each panel with GRCh38 bands and centromere (plain bar for other genomes), a red box where each panel is (numbered like the panel headers); click or drag to move the active panel |
 | Strand | the 3' end of every read is pointed, as in IGV, so the strand shows under any coloring |
 | Annotation tracks | BED, bedGraph, VCF, GTF, GFF3 (plain, gzip or bgzip) from disk or a link: bands under the gene track; click a feature for its details |
-| Genes | **MANE track** (GRCh38): MANE Select and Plus Clinical transcripts under the reference — coding exons thick, UTRs thin, strand arrows, exon numbers when zoomed in; click a transcript for its ids, span and the exon or intron at that position. Bundled with CGV (MANE v1.2), works offline |
+| Genes | **MANE track** (GRCh38): MANE Select and Plus Clinical transcripts under the reference — coding exons thick, UTRs thin, strand arrows, exon numbers when zoomed in; click a transcript for its ids, span and the exon or intron at that position. Bundled with LGV (MANE v1.2), works offline |
 | Start | GRCh38 opens by default (View → "At start open": hg38, hg19, T2T, demo or nothing); without a connection the demo opens instead |
 | F6 No hard window limit | windows load on their own up to 64 MB of compressed data, larger on request; downsampling keeps deep regions fast; isolated sequencing errors fade when zoomed out |
 | F8 Coverage with allele highlight | done, threshold adjustable; click the coverage for counts at that base as in IGV: A/C/G/T/N with strands, DEL, INS, mean base quality — from every read, before downsampling |
@@ -59,6 +60,7 @@ More languages are one dictionary in `src/i18n.js`.
 | F10 Coloring + MAPQ as a transparency gradient | right click on reads: strand, pair (orientation and insert size), tag; MAPQ works on top of any of them |
 | F11 Group and sort | groups (View): strand, first/second, pair orientation, tag; sort by (right click, at the clicked position): base, MAPQ, strand, insert size |
 | F12 Filters | MAPQ, duplicates, secondary, supplementary, QC fail; downsampling |
+| Pictures and links | PNG of the view; a link that opens the same view; open LGV from another system with `#ref=…&file=…&locus=…` |
 | Navigation | ← → back / forward between places jumped to; − + zoom all panels at once |
 | F13 Mate | view as pairs (right click), read details + go to mate; **split screen** as in IGV: right click on a read → "View mate region in split screen" (or the button in the read details) opens a panel centered on the mate, the read and its mate outlined in every panel; several loci typed in the locus field separated by spaces open one panel each; each panel has its own ruler, scroll and zoom, × in its header closes it; at least 6 panels, more as the width allows (60 px each) |
 | F14 Read details | IGV-style popup: read, mapping, clipping, mate and tags, then Location and `Base = A @ QV 14` for the clicked base; one read or read + mate side by side; copy; dragged by its top row, then opens where it was left (until the page is closed). Right click on a read: copy its sequence, left or right soft clip, or the pair as FASTA |
@@ -70,7 +72,7 @@ More languages are one dictionary in `src/i18n.js`.
 ```
 src/core.js    data sources (file, URL), BGZF, BAI, BAM, FASTA (+ .gzi), coverage, layout
 src/cram.js    CRAM 3.0 / 3.1: containers, blocks, SAM header, .crai, records
-src/compress.js   bzip2 and xz/LZMA2 decoders, written for CGV
+src/compress.js   bzip2 and xz/LZMA2 decoders, written for LGV
 src/htscodecs.js  CRAM block codecs adapted from htscodecs: rANS 4x8 / 4x16, arithmetic, FQZcomp, names (BSD; changes in SECURITY.md)
 test/cram/     CRAM test files made with samtools (tools/make-cram-tests.sh); htslib/ holds htslib's own test cases
 src/app.js     WebGL2 read rendering, Canvas2D ruler and coverage, UI, display profile
@@ -82,7 +84,7 @@ tools/         demo data generator, build, tests
 BGZF is inflated with the browser's built-in `DecompressionStream('deflate-raw')`; the CRC32 and
 length of every block are checked, and every size read from a file is checked before use (see SECURITY.md). There are
 no third-party libraries: a smaller attack surface and nothing to keep patched. The local
-build (`dist/cgv.html`) carries a strict Content Security Policy: no remote scripts, styles
+build (`dist/lgv.html`) carries a strict Content Security Policy: no remote scripts, styles
 or fonts, and network access only for data the user points to.
 
 ## Development
@@ -93,13 +95,13 @@ node tools/test-core.js                     # core checks on the demo data
 node tools/test-cram.js                     # CRAM checks against the same data as BAM, with fuzzing
 node tools/test-fuzz.js                     # fuzzing of BGZF, BAM, BAI, FASTA/.fai/.gzi, locus field, profile
 node tools/audit.js                         # security audit of our own code (see SECURITY.md)
-node tools/build.js                         # dist/cgv.html and dist/artifact.html
+node tools/build.js                         # dist/lgv.html and dist/artifact.html
 CGV_L=1000000 node tools/gen-demo.js big    # 1 Mb at 30× for speed tests
 ```
 
 ## Deep data
 
-Targeted panels reach thousands of reads per base. CGV handles them the way IGV does:
+Targeted panels reach thousands of reads per base. LGV handles them the way IGV does:
 
 - **Downsampling while reading:** at most 100 reads are kept per 50 bp window (both
   adjustable under View → Filters). Coverage still counts every read. Marks above the

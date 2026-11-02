@@ -1,6 +1,6 @@
-<title>CGV Genome Viewer</title>
+<title>LGV — Lavrov Genome Viewer</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="CGV — a fast in-browser viewer for BAM alignments">
+<meta name="description" content="LGV — Lavrov Genome Viewer: a fast in-browser viewer for BAM and CRAM alignments">
 <style>
 /* Data fills the screen; the UI is one thin bar on top plus slide-in panels. */
 :root {
@@ -41,7 +41,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bar { height: var(--bar-h); flex: none; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line);
   padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px)); background: var(--bg); min-width: 0; }
 body.bare .bar { display: none; }
-.mark { font: 700 13px/1 var(--mono); letter-spacing: .06em; color: var(--accent); flex: none; }
+.mark { font: 700 13px/1 var(--mono); letter-spacing: .06em; color: var(--accent); flex: none; border: 0; background: none; padding: 4px 2px; cursor: pointer; }
+.about-ver { font-weight: 600; }
+.about-list { margin: 4px 0 8px; padding-left: 18px; font-size: 12.5px; line-height: 1.45; }
 .locus { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 390px; }
 .locus input { min-width: 0; }
 #locus { width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
@@ -148,12 +150,13 @@ body.bare .side { top: 0; }
 </style>
 
 <header class="bar">
-  <span class="mark" title="Convenient, custom, genomic viewer">CGV</span>
+  <button class="mark" id="aboutBtn" data-i18n-title="tip.about" title="About LGV">LGV</button>
   <div class="locus">
     <input id="locus" data-i18n-title="tip.locus" type="text" list="geneList" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
     <datalist id="geneList"></datalist>
     <button class="btn" id="goBtn" data-i18n-title="tip.go" data-i18n="btn.go">Go</button>
     <span class="navs"><button class="btn icon" id="navBack" data-i18n-title="nav.back" title="Back">←</button><button class="btn icon" id="navFwd" data-i18n-title="nav.fwd" title="Forward">→</button><button class="btn icon" id="zoomOut" data-i18n-title="nav.zoomOut" title="Zoom out (all panels)">−</button><button class="btn icon" id="zoomIn" data-i18n-title="nav.zoomIn" title="Zoom in (all panels)">+</button></span>
+    <span class="navs"><button class="btn" id="snapBtn" data-i18n="btn.snap" data-i18n-title="tip.snap">PNG</button><button class="btn" id="copyLink" data-i18n="btn.link" data-i18n-title="tip.link">Link</button></span>
     <span id="span"></span>
   </div>
   <select id="examples" class="btn" data-i18n-aria="examples" aria-label="Examples" hidden>
@@ -221,6 +224,10 @@ body.bare .side { top: 0; }
     </section>
   </aside>
 
+  <aside id="aboutPanel" class="side" hidden aria-label="About LGV">
+    <header><h1>LGV — Lavrov Genome Viewer</h1><button class="btn ghost" data-close data-i18n="btn.close">Close</button></header>
+    <section id="aboutBody"></section>
+  </aside>
   <aside id="panel" class="side" hidden data-i18n-aria="view.title" aria-label="View settings">
     <header><h1 data-i18n="view.title">View</h1><button class="btn ghost" data-close data-i18n="btn.close">Close</button></header>
     <section>

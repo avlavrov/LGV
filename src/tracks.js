@@ -10,9 +10,9 @@ if (typeof contigKey === 'undefined' && typeof require !== 'undefined') Object.a
 
 const TRACK_LIMITS = { bytes: 512 << 20, features: 5000000, blocks: 10000, samples: 100000 };
 Object.assign(CGV_ERR_EN, {
-  trackFormat: 'Unknown annotation format: {name}. CGV reads BED, bedGraph, VCF, GTF and GFF3',
+  trackFormat: 'Unknown annotation format: {name}. LGV reads BED, bedGraph, VCF, GTF and GFF3',
   trackEmpty: 'No features found in {name}',
-  trackBig: '{name} is larger than CGV reads at once ({size})',
+  trackBig: '{name} is larger than LGV reads at once ({size})',
   trackMany: '{name} has more than {n} features',
 });
 

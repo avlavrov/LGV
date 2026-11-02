@@ -2026,7 +2026,7 @@ stage.addEventListener('contextmenu', e => {
 document.addEventListener('pointerdown', e => { if (!$('ctx').hidden && !$('ctx').contains(e.target)) closeMenu(); }, true);
 
 // ======================= Panels and settings =======================
-function closePanels() { $('panel').hidden = true; $('openPanel').hidden = true; $('viewBtn').setAttribute('aria-expanded', 'false'); $('openBtn').setAttribute('aria-expanded', 'false'); }
+function closePanels() { $('aboutPanel').hidden = true; $('panel').hidden = true; $('openPanel').hidden = true; $('viewBtn').setAttribute('aria-expanded', 'false'); $('openBtn').setAttribute('aria-expanded', 'false'); }
 function togglePanel(id, btn) { const el = $(id), was = el.hidden; closePanels(); el.hidden = !was; btn.setAttribute('aria-expanded', String(was)); if (id === 'panel' && was) syncPanel(); }
 $('viewBtn').onclick = () => togglePanel('panel', $('viewBtn'));
 $('openBtn').onclick = () => togglePanel('openPanel', $('openBtn'));
@@ -2262,7 +2262,7 @@ async function openTracks(srcs) {
     if (ANN.tracks.some(a => a.key === key)) { toast(t('sample.already', { name: src.name })); continue; }
     try {
       const ix = await loadTrack(src);
-      ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix });
+      ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix, src });
       if (ix.skipped) toast(t('track.skipped', { name: src.name, n: fmtInt(ix.skipped), ok: fmtInt(ix.count) }), true);
     } catch (e) { toast(t('track.failed', { name: src.name, msg: errText(e) }), true); }
   }
@@ -2447,6 +2447,8 @@ async function startup() {
   const cyto = $('cgv-cyto'); if (cyto) parseCyto(cyto.textContent);
   const mane = $('cgv-mane');
   if (mane && mane.textContent.trim()) loadGenes(mane.textContent.trim()).then(() => { S._g38 = null; draw(); }).catch(e => console.error(e));
+  const L = launchParams();
+  if (L) { openLaunch(L); return; }
   const what = P.startReference;
   if (what === 'demo') { openDemo(); return; }
   const pr = REF_PRESETS[what]; if (!pr) return;
@@ -2464,4 +2466,115 @@ async function startup() {
   S.viewSet = true;
 }
 const START_GENE = 'BRCA1';
+
+// ======================= Opening from a link =======================
+// lgv.html#ref=hg38&file=https://…/sample.bam&locus=CFTR — so another system (a LIMS, a report, a
+// table of variants) can open a sample at a place. Parameters after # stay in the browser (they are
+// not sent to the server hosting LGV); after ? works too.
+//   ref    hg38 | hg19 | chm13 | demo, or a link to a FASTA (.fai next to it; .gzi for .fa.gz)
+//   file   a BAM / CRAM / annotation track link; may repeat
+//   index  the index of the BAM / CRAM files, in the same order (else looked for next to each file)
+//   locus  loci or genes; several separated by spaces open side by side
+// Only https links (and http on this computer) are read. Access tokens are never taken from a link.
+const okLink = u => { try { const x = new URL(u); return x.protocol === 'https:' || (x.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/.test(x.hostname)); } catch (e) { return false; } };
+function launchParams() {
+  const q = new URLSearchParams(location.search), h = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const get = k => [...q.getAll(k), ...h.getAll(k)].map(v => v.trim()).filter(Boolean);
+  const L = { ref: get('ref')[0] || '', files: get('file').slice(0, 50), index: get('index').slice(0, 50), locus: get('locus').join(' ').slice(0, 2000) };
+  if (!L.ref && !L.files.length && !L.locus) return null;
+  const bad = [...L.files, ...L.index, ...(REF_PRESETS[L.ref] || L.ref === 'demo' || !L.ref ? [] : [L.ref])].filter(u => !okLink(u));
+  L.files = L.files.filter(okLink); L.index = L.index.filter(okLink);
+  if (bad.length) L.bad = bad;
+  return L;
+}
+async function openLaunch(L) {
+  if (L.bad) toast(t('launch.bad', { n: L.bad.length }), true);
+  if (L.ref === 'demo') { await openDemo(); }
+  else {
+    const pr = REF_PRESETS[L.ref || P.startReference] || (L.ref && okLink(L.ref) ? { fa: L.ref, label: urlPath(L.ref).split('/').pop() } : null);
+    if (pr) {
+      const gz = /\.gz$/i.test(urlPath(pr.fa));
+      $('refUrl').value = pr.fa;
+      const ok = await openReference({ fa: new UrlSource(pr.fa), fai: new UrlSource(addSuffix(pr.fa, '.fai')), gzi: gz ? new UrlSource(addSuffix(pr.fa, '.gzi')) : null }, { quiet: true, noGoto: true });
+      if (!ok) toast(t('start.refFailedLink', { name: pr.label || pr.fa }), true);
+    }
+  }
+  for (let k = 0; k < 20 && !GENES.ready; k++) await new Promise(r => setTimeout(r, 100));
+  const tracks = L.files.filter(u => isTrackFile(urlPath(u))), bams = L.files.filter(u => !tracks.includes(u));
+  if (tracks.length) await openTracks(tracks.map(u => new UrlSource(u)));
+  for (let i = 0; i < bams.length; i++) {
+    const u = bams[i], cram = /\.cram$/i.test(urlPath(u)), ext = cram ? '.cram' : '.bam', ie = IDX_EXT[ext];
+    const cands = L.index[i] ? [L.index[i]] : [addSuffix(u, ie), swapExt(u, ext, ie)].filter((x, j, a) => x && a.indexOf(x) === j);
+    await openBam(new UrlSource(u), cands.map(x => new UrlSource(x)));
+  }
+  if (!S.contigs) return;
+  const l = L.locus ? parseLoci(L.locus) : null;
+  if (l && !l.error) setPanels(l);
+  else { if (l && l.error) toast(l.error); if (!S.viewSet) { const i = Math.max(0, contigId('chr1')); goto(i, 0, Math.min(S.contigs[i].len, 100000)); } }
+  S.viewSet = true;
+}
+// The link to what is on screen: the reference, samples and tracks opened by link, every panel's locus.
+// Files from this computer cannot be in a link; neither can access tokens.
+function viewLink() {
+  const p = new URLSearchParams(), skipped = [];
+  if (S.fasta) {
+    const u = S.fasta.src && S.fasta.src.url, pre = Object.entries(REF_PRESETS).find(([, v]) => v.fa === u);
+    if (pre) p.append('ref', pre[0]); else if (u) p.append('ref', u); else skipped.push(S.fasta.name);
+  }
+  for (const T of S.tracks) {
+    if (T.demo) { p.set('ref', 'demo'); continue; }
+    if (T.bam.src instanceof UrlSource && !Object.keys(T.bam.src.headers || {}).length) { p.append('file', T.bam.src.url); if (T.bam.baiSrc instanceof UrlSource) p.append('index', T.bam.baiSrc.url); }
+    else skipped.push(T.name);
+  }
+  for (const a of ANN.tracks) { if (a.src instanceof UrlSource && !Object.keys(a.src.headers || {}).length) p.append('file', a.src.url); else skipped.push(a.name); }
+  if (S.contigs) p.append('locus', S.panels.map(panelLocus).join(' ').replace(/,/g, ''));
+  return { url: location.href.replace(/[?#].*$/, '') + '#' + p.toString(), skipped };
+}
+$('copyLink').onclick = () => {
+  const { url, skipped } = viewLink();
+  navigator.clipboard.writeText(url).then(() => toast(skipped.length ? t('link.copiedSkipped', { names: skipped.join(', ') }) : t('link.copied'), !!skipped.length), () => toast(t('copyFail')));
+};
+
+// ======================= Snapshot =======================
+// The view as it is on screen (all panels, the chromosome map, genes, tracks, coverage, reads) saved
+// as a PNG at screen resolution, with a line naming the loci, the samples and the date.
+function saveSnapshot() {
+  if (!S.contigs) return;
+  render(); // draws now, so the GPU picture is still there to be copied
+  const foot = Math.round(18 * DPR), c = document.createElement('canvas');
+  c.width = glCanvas.width; c.height = glCanvas.height + foot;
+  const g = c.getContext('2d');
+  g.fillStyle = COL.css.bg; g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(glCanvas, 0, 0); g.drawImage(ov, 0, 0);
+  const loci = S.panels.map(panelLocus).join('  '), names = S.tracks.map(T => T.name + (T.bam.samples.length ? ' (' + T.bam.samples.join(', ') + ')' : '')).join(', ');
+  const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  g.fillStyle = COL.css.muted; g.font = Math.round(11 * DPR) + 'px ' + SANS; g.textBaseline = 'middle';
+  g.fillText(['LGV', loci, names, (S.fasta ? S.fasta.name : ''), date].filter(Boolean).join('  ·  '), 6 * DPR, glCanvas.height + foot / 2);
+  const first = S.panels[0], fname = 'LGV_' + (S.contigs[first.view.refId].name + '_' + Math.max(1, Math.round(first.view.start + 1)) + '-' + Math.round(first.view.start + first.w * first.view.bpPerPx)).replace(/[^\w.-]+/g, '_') + (S.panels.length > 1 ? '_and_' + (S.panels.length - 1) + '_more' : '') + '.png';
+  c.toBlob(b => {
+    if (!b) { toast(t('snap.fail')); return; }
+    const a = document.createElement('a'), u = URL.createObjectURL(b);
+    a.href = u; a.download = fname; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 10000);
+    toast(t('snap.saved', { name: fname }));
+  }, 'image/png');
+}
+$('snapBtn').onclick = saveSnapshot;
+
+// ======================= About =======================
+const LGV_INFO = { version: '0.9.0', build: '__BUILD_DATE__' };
+function showAbout() {
+  const el = $('aboutBody'), v = LGV_INFO.build.startsWith('__') ? '' : ' · ' + LGV_INFO.build;
+  el.replaceChildren();
+  const add = (tag, text, cls) => { const e = document.createElement(tag); e.textContent = text; if (cls) e.className = cls; el.append(e); return e; };
+  add('p', t('about.version', { v: LGV_INFO.version }) + v, 'about-ver');
+  add('p', t('about.built'));
+  add('p', t('about.asis'), 'hint');
+  add('h2', t('about.third'));
+  const ul = document.createElement('ul'); ul.className = 'about-list'; el.append(ul);
+  for (const k of ['about.htscodecs', 'about.mane', 'about.bands', 'about.refs']) { const li = document.createElement('li'); li.textContent = t(k); ul.append(li); }
+  add('p', t('about.guide'), 'hint');
+  closePanels(); $('aboutPanel').hidden = false;
+}
+$('aboutBtn').onclick = () => { if ($('aboutPanel').hidden) showAbout(); else $('aboutPanel').hidden = true; };
 startup();

@@ -7,9 +7,9 @@
 <style>body{margin:0}</style>
 </head>
 <body>
-<title>CGV Genome Viewer</title>
+<title>LGV — Lavrov Genome Viewer</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="CGV — a fast in-browser viewer for BAM alignments">
+<meta name="description" content="LGV — Lavrov Genome Viewer: a fast in-browser viewer for BAM and CRAM alignments">
 <style>
 /* Data fills the screen; the UI is one thin bar on top plus slide-in panels. */
 :root {
@@ -50,7 +50,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .bar { height: var(--bar-h); flex: none; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line);
   padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px)); background: var(--bg); min-width: 0; }
 body.bare .bar { display: none; }
-.mark { font: 700 13px/1 var(--mono); letter-spacing: .06em; color: var(--accent); flex: none; }
+.mark { font: 700 13px/1 var(--mono); letter-spacing: .06em; color: var(--accent); flex: none; border: 0; background: none; padding: 4px 2px; cursor: pointer; }
+.about-ver { font-weight: 600; }
+.about-list { margin: 4px 0 8px; padding-left: 18px; font-size: 12.5px; line-height: 1.45; }
 .locus { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 390px; }
 .locus input { min-width: 0; }
 #locus { width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
@@ -157,12 +159,13 @@ body.bare .side { top: 0; }
 </style>
 
 <header class="bar">
-  <span class="mark" title="Convenient, custom, genomic viewer">CGV</span>
+  <button class="mark" id="aboutBtn" data-i18n-title="tip.about" title="About LGV">LGV</button>
   <div class="locus">
     <input id="locus" data-i18n-title="tip.locus" type="text" list="geneList" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
     <datalist id="geneList"></datalist>
     <button class="btn" id="goBtn" data-i18n-title="tip.go" data-i18n="btn.go">Go</button>
     <span class="navs"><button class="btn icon" id="navBack" data-i18n-title="nav.back" title="Back">←</button><button class="btn icon" id="navFwd" data-i18n-title="nav.fwd" title="Forward">→</button><button class="btn icon" id="zoomOut" data-i18n-title="nav.zoomOut" title="Zoom out (all panels)">−</button><button class="btn icon" id="zoomIn" data-i18n-title="nav.zoomIn" title="Zoom in (all panels)">+</button></span>
+    <span class="navs"><button class="btn" id="snapBtn" data-i18n="btn.snap" data-i18n-title="tip.snap">PNG</button><button class="btn" id="copyLink" data-i18n="btn.link" data-i18n-title="tip.link">Link</button></span>
     <span id="span"></span>
   </div>
   <select id="examples" class="btn" data-i18n-aria="examples" aria-label="Examples" hidden>
@@ -230,6 +233,10 @@ body.bare .side { top: 0; }
     </section>
   </aside>
 
+  <aside id="aboutPanel" class="side" hidden aria-label="About LGV">
+    <header><h1>LGV — Lavrov Genome Viewer</h1><button class="btn ghost" data-close data-i18n="btn.close">Close</button></header>
+    <section id="aboutBody"></section>
+  </aside>
   <aside id="panel" class="side" hidden data-i18n-aria="view.title" aria-label="View settings">
     <header><h1 data-i18n="view.title">View</h1><button class="btn ghost" data-close data-i18n="btn.close">Close</button></header>
     <section>
@@ -329,16 +336,16 @@ const STRINGS = {
     'open.folder': 'Choose a folder', 'open.indexHint': 'Each .bam or .cram is paired with its index by name (sample.bam.bai or sample.bai, sample.cram.crai or sample.crai). Choose several samples at once, or a whole folder: a web page can read only the files you choose, so for the index to be found it has to be chosen too.',
     'open.urlBam': 'BAM — one or more links, one per line', 'open.urlBaiPh': 'default: next to the BAM (.bam.bai, then .bai)',
     'files.noIndex': 'No index chosen for {names} (.bai for BAM, .crai for CRAM). A web page can read only the files you choose: select the file together with its index, or choose the whole folder.',
-    'files.askFolder': 'The index of {names} was not chosen. Allow CGV to read this folder and it will find the index itself (read only, until the page is closed).', 'files.allowFolder': 'Allow the folder', 'files.dirWrong': 'This folder does not hold {name}: choose the folder where it lies.',
+    'files.askFolder': 'The index of {names} was not chosen. Allow LGV to read this folder and it will find the index itself (read only, until the page is closed).', 'files.allowFolder': 'Allow the folder', 'files.dirWrong': 'This folder does not hold {name}: choose the folder where it lies.',
     'files.noIndexSome': 'Skipped, no index chosen: {names}.', 'files.needBam': 'Choose the .bam or .cram together with its index',
     'folder.found': 'Samples in this folder: {n}. Choose which to open.', 'folder.noIndex': 'no index next to it', 'folder.open': 'Open selected', 'folder.none': 'Nothing selected',
     'tracks.n': '{n} samples', 'sample.already': '{name} is already open', 'sample.failed': 'Could not open {name}: {msg}',
     'open.urlAuth': 'Access token (optional)', 'open.urlBtn': 'Open link',
     'open.urlHint': 'The server must allow CORS and Range requests. The token is not saved. On claude.ai, loading by link is blocked by the platform security policy — open cgv.html locally to use links.',
     'open.demo': 'Demo', 'open.demoBtn': 'Synthetic demo data', 'open.demoHint': '40 kb of made-up sequence, 30×, five known variants.',
-    'ref.title': 'Reference', 'ref.hint': 'Loading a reference switches the genome and closes open samples. Samples opened afterwards are matched to it. Without a reference, CGV rebuilds reference bases from MD tags where reads cover them.',
+    'ref.title': 'Reference', 'ref.hint': 'Loading a reference switches the genome and closes open samples. Samples opened afterwards are matched to it. Without a reference, LGV rebuilds reference bases from MD tags where reads cover them.',
     'ref.current': 'Current reference: {name}', 'ref.none': 'No reference loaded', 'ref.fromMd': 'reference from MD tags',
-    'ref.pick': 'Choose a .fa or .fasta file', 'ref.pickSub': 'add .fai / .gzi if you have them — otherwise CGV indexes the file itself',
+    'ref.pick': 'Choose a .fa or .fasta file', 'ref.pickSub': 'add .fai / .gzi if you have them — otherwise LGV indexes the file itself',
     'ref.preset': 'Public genome', 'ref.presetNone': 'Choose…', 'ref.url': 'FASTA link', 'ref.urlPh': 'https://…/genome.fa (.fai next to it)', 'ref.load': 'Load reference',
     'ref.presetHint': 'Public copies hosted by the IGV team (Broad Institute) on Amazon S3. Use only with data aligned to the same assembly.',
     'ref.loaded': 'Reference loaded: {name}', 'ref.failed': 'Reference not loaded: {msg}', 'ref.needBam': 'Open a BAM first, then add the reference',
@@ -406,17 +413,17 @@ const STRINGS = {
     'copied': 'Copied', 'copyFail': 'Could not copy — select the text manually',
     'profile.copied': 'Profile copied', 'profile.applied': 'Profile applied', 'profile.reset': 'Profile reset', 'profile.bad': 'The profile has a JSON error: {msg}',
     'card.name': 'Name', 'card.pos': 'Position', 'card.flag': 'Flag', 'card.len': 'Length', 'card.mate': 'Mate', 'card.mateUnmapped': 'unmapped', 'card.tlen': 'Insert (TLEN)',
-    'card.toMate': 'Go to mate', 'ins.title': 'Insertion', 'ins.len': 'Length', 'ins.seq': 'Inserted bases', 'ins.qual': 'Base qualities', 'tip.copyIns': 'Copy the inserted bases (FASTA, with the read name and position)', 'track.skipped': '{name}: {n} lines could not be read and were skipped; {ok} features loaded', 'track.failed': 'Track {name} not opened: {msg}', 'track.nSamples': '{n} samples, first {shown} shown', 'track.moreSamples': '… {n} more samples', 'track.name': 'Name', 'track.type': 'Type', 'track.value': 'Value', 'track.score': 'Score', 'track.blocks': 'Blocks', 'track.thick': 'Thick part', 'tip.ann': 'Annotation track: click a feature for its details', 'tip.closeTrack': 'Close this track', 'tip.go': "Go to the locus or gene (Enter)", 'tip.open': "Open BAM / CRAM files, links or a reference", 'tip.view': "Display settings", 'tip.locus': "chr7:117,559,500-117,560,000, a position, a gene (CFTR) or a MANE transcript; several separated by spaces open side by side", 'tip.ideo': "Chromosome map: click or drag to move the active panel there", 'tip.ruler': "Drag to zoom to a region; click to center the view there", 'tip.genes': "MANE transcripts: click one for its details", 'tip.cov': "Click for base counts at this position (all reads, before downsampling)", 'tip.closeSample': "Close this sample", 'tip.showRead': "Details of the clicked read only", 'tip.showPair': "The read and its mate side by side", 'tip.toMate': "Move the view to the mate", 'tip.mateSplit': "Open the mate in a new panel next to this one", 'tip.copyCard': "Copy the text of this card", 'tip.mqvLine': "Reads with this base (share of all; + forward, − reverse strand). mQV: mean base quality (Phred) of this base in these reads", 'tip.baseLine': "Reads with this base (share of all; + forward, − reverse strand)", 'tip.total': "A + C + G + T + N; deletions are counted separately", 'tip.del': "Reads with a deletion at this position", 'tip.ins': "Reads with an insertion right after this base", 'tip.bqShade': "Mismatches of bases below Q20 are paler: 20% below Q5, full at Q20", 'tip.softClips': "Show the clipped ends of reads in the read’s color; clipped mismatches are colored", 'tip.mqMinAlpha': "How visible reads with MAPQ at or below \"From MQ\" are", 'tip.minMapq': "Reads below this mapping quality are not read at all (coverage too)", 'tip.downsample': "Keep at most N reads starting in each window; coverage still counts every read", 'tip.dsMax': "Reads kept per window", 'tip.trackMinH': "With many samples each keeps this height and the view scrolls", 'tip.covHeight': "Height of each coverage track", 'tip.alleleThr': "Coverage bars are split by base where non-reference bases reach this share of reads", 'tip.showGenes': "MANE Select and Plus Clinical transcripts on GRCh38, built into CGV", 'tip.startRef': "Reference (or demo) opened when CGV starts", 'nav.back': 'Back to the previous place', 'nav.fwd': 'Forward', 'nav.zoomIn': 'Zoom in (all panels)', 'nav.zoomOut': 'Zoom out (all panels)', 'cov.title': 'Coverage', 'cov.total': 'Total count', 'cov.ref': 'reference', 'cov.meanQ': 'Mean base quality', 'cov.note': 'All reads at this position, before downsampling; filters from View apply. INS: insertions right after this base.', 'menu.copySeq': 'Copy read sequence', 'menu.copyLeft': 'Copy left soft-clipped sequence', 'menu.copyRight': 'Copy right soft-clipped sequence', 'menu.copyPair': 'Copy read pair (FASTA)', 'menu.copyPairNo': 'Copy read pair (mate not loaded)', 'copied.seq': 'Copied: {n} bases', 'card.mateSplit': 'Mate in split screen', 'menu.mateSplit': 'View mate region in split screen', 'split.full': 'No room for more panels ({n}). Close one with × in its header', 'card.copy': 'Copy',
+    'card.toMate': 'Go to mate', 'btn.snap': 'PNG', 'btn.link': 'Link', 'tip.snap': 'Save the view as a PNG picture', 'tip.link': 'Copy a link that opens this view (reference, samples and tracks opened by link, loci)', 'tip.about': 'About LGV', 'link.copied': 'Link copied', 'link.copiedSkipped': 'Link copied. Not in it (opened from this computer): {names}', 'launch.bad': '{n} link(s) were not opened: only https links are read', 'start.refFailedLink': 'Could not load the reference {name}', 'snap.saved': 'Saved {name}', 'snap.fail': 'Could not make the picture', 'about.version': 'Version {v}', 'about.built': 'Built with Claude, an AI model by Anthropic.', 'about.asis': 'Provided as is, without warranty of any kind.', 'about.third': 'Third-party code and data', 'about.htscodecs': 'CRAM codecs adapted from htscodecs (Genome Research Ltd), BSD 3-Clause license.', 'about.mane': 'MANE Select and Plus Clinical v1.2 transcripts (NCBI, EMBL-EBI); exon coordinates from Ensembl 111.', 'about.bands': 'GRCh38 chromosome bands from ideogram by Eric Weitz (CC0).', 'about.refs': 'Reference genome presets: public copies hosted by the IGV team (Broad Institute).', 'about.guide': 'The user guide is docs/USER_GUIDE.md (Russian: docs/USER_GUIDE.ru.md) in the LGV repository.', 'ins.title': 'Insertion', 'ins.len': 'Length', 'ins.seq': 'Inserted bases', 'ins.qual': 'Base qualities', 'tip.copyIns': 'Copy the inserted bases (FASTA, with the read name and position)', 'track.skipped': '{name}: {n} lines could not be read and were skipped; {ok} features loaded', 'track.failed': 'Track {name} not opened: {msg}', 'track.nSamples': '{n} samples, first {shown} shown', 'track.moreSamples': '… {n} more samples', 'track.name': 'Name', 'track.type': 'Type', 'track.value': 'Value', 'track.score': 'Score', 'track.blocks': 'Blocks', 'track.thick': 'Thick part', 'tip.ann': 'Annotation track: click a feature for its details', 'tip.closeTrack': 'Close this track', 'tip.go': "Go to the locus or gene (Enter)", 'tip.open': "Open BAM / CRAM files, links or a reference", 'tip.view': "Display settings", 'tip.locus': "chr7:117,559,500-117,560,000, a position, a gene (CFTR) or a MANE transcript; several separated by spaces open side by side", 'tip.ideo': "Chromosome map: click or drag to move the active panel there", 'tip.ruler': "Drag to zoom to a region; click to center the view there", 'tip.genes': "MANE transcripts: click one for its details", 'tip.cov': "Click for base counts at this position (all reads, before downsampling)", 'tip.closeSample': "Close this sample", 'tip.showRead': "Details of the clicked read only", 'tip.showPair': "The read and its mate side by side", 'tip.toMate': "Move the view to the mate", 'tip.mateSplit': "Open the mate in a new panel next to this one", 'tip.copyCard': "Copy the text of this card", 'tip.mqvLine': "Reads with this base (share of all; + forward, − reverse strand). mQV: mean base quality (Phred) of this base in these reads", 'tip.baseLine': "Reads with this base (share of all; + forward, − reverse strand)", 'tip.total': "A + C + G + T + N; deletions are counted separately", 'tip.del': "Reads with a deletion at this position", 'tip.ins': "Reads with an insertion right after this base", 'tip.bqShade': "Mismatches of bases below Q20 are paler: 20% below Q5, full at Q20", 'tip.softClips': "Show the clipped ends of reads in the read’s color; clipped mismatches are colored", 'tip.mqMinAlpha': "How visible reads with MAPQ at or below \"From MQ\" are", 'tip.minMapq': "Reads below this mapping quality are not read at all (coverage too)", 'tip.downsample': "Keep at most N reads starting in each window; coverage still counts every read", 'tip.dsMax': "Reads kept per window", 'tip.trackMinH': "With many samples each keeps this height and the view scrolls", 'tip.covHeight': "Height of each coverage track", 'tip.alleleThr': "Coverage bars are split by base where non-reference bases reach this share of reads", 'tip.showGenes': "MANE Select and Plus Clinical transcripts on GRCh38, built into LGV", 'tip.startRef': "Reference (or demo) opened when LGV starts", 'nav.back': 'Back to the previous place', 'nav.fwd': 'Forward', 'nav.zoomIn': 'Zoom in (all panels)', 'nav.zoomOut': 'Zoom out (all panels)', 'cov.title': 'Coverage', 'cov.total': 'Total count', 'cov.ref': 'reference', 'cov.meanQ': 'Mean base quality', 'cov.note': 'All reads at this position, before downsampling; filters from View apply. INS: insertions right after this base.', 'menu.copySeq': 'Copy read sequence', 'menu.copyLeft': 'Copy left soft-clipped sequence', 'menu.copyRight': 'Copy right soft-clipped sequence', 'menu.copyPair': 'Copy read pair (FASTA)', 'menu.copyPairNo': 'Copy read pair (mate not loaded)', 'copied.seq': 'Copied: {n} bases', 'card.mateSplit': 'Mate in split screen', 'menu.mateSplit': 'View mate region in split screen', 'split.full': 'No room for more panels ({n}). Close one with × in its header', 'card.copy': 'Copy',
     'card.clicked': 'Base', 'card.bq': 'Base quality', 'card.ref': 'ref', 'card.del': 'deletion',
     'flag.1': 'paired', 'flag.2': 'proper pair', 'flag.4': 'unmapped', 'flag.8': 'mate unmapped', 'flag.16': 'reverse strand', 'flag.32': 'mate reverse',
     'flag.64': 'first in pair', 'flag.128': 'second in pair', 'flag.256': 'secondary', 'flag.512': 'QC fail', 'flag.1024': 'duplicate', 'flag.2048': 'supplementary',
     'g.fwd': 'Forward strand (+)', 'g.rev': 'Reverse strand (−)', 'g.first': 'First in pair', 'g.second': 'Second in pair', 'g.unpaired': 'Unpaired',
     'g.FR': 'FR (normal)', 'g.other': 'Mate on another contig', 'g.mateUnmapped': 'Mate unmapped', 'g.tagNone': '{tag}: none',
     'unit.bp': 'bp', 'unit.kb': 'kb', 'unit.mb': 'Mb',
-    'err.notCram': 'This is not a CRAM file (no CRAM signature)', 'err.cramVersion': 'CRAM {v} is not supported; CGV reads CRAM 3.0 and 3.1',
+    'err.notCram': 'This is not a CRAM file (no CRAM signature)', 'err.cramVersion': 'CRAM {v} is not supported; LGV reads CRAM 3.0 and 3.1',
     'err.cramBad': 'The CRAM file is damaged: {what}', 'err.cramCrc': 'CRAM checksum mismatch in {what}: the file is damaged',
-    'err.cramCodec': 'A CRAM block is compressed with {codec}, which CGV does not read yet', 'err.cramLimit': 'A CRAM {what} is larger than CGV allows ({size})',
-    'err.notCrai': 'This is not a CRAM index (.crai)', 'err.cramRefMd5': 'The loaded reference is not the one this CRAM was made with: the MD5 of contig {name} differs. Load the reference the file was made with', 'err.cramNeedRef': 'This CRAM stores reads as differences from its reference: load the reference it was made with (contig {name})', 'err.cramEncoding': 'CRAM data series {ds} uses encoding {enc}, which CGV does not read',
+    'err.cramCodec': 'A CRAM block is compressed with {codec}, which LGV does not read yet', 'err.cramLimit': 'A CRAM {what} is larger than LGV allows ({size})',
+    'err.notCrai': 'This is not a CRAM index (.crai)', 'err.cramRefMd5': 'The loaded reference is not the one this CRAM was made with: the MD5 of contig {name} differs. Load the reference the file was made with', 'err.cramNeedRef': 'This CRAM stores reads as differences from its reference: load the reference it was made with (contig {name})', 'err.cramEncoding': 'CRAM data series {ds} uses encoding {enc}, which LGV does not read',
     'err.network': 'Cannot reach {name}. Check the link and that the server allows CORS and Range requests.',
     'err.auth': 'Access denied ({status}): {name}. The link has expired or a token is needed.',
     'err.notfound': 'File not found (404): {name}', 'err.noIndex': 'No index found for {name} (tried {tried})', 'err.http': 'The server answered {status} for {name}',
@@ -444,7 +451,7 @@ const STRINGS = {
     'open.folder': 'Выбрать папку', 'open.indexHint': 'Каждый .bam или .cram сопоставляется со своим индексом по имени (sample.bam.bai или sample.bai, sample.cram.crai или sample.crai). Выберите сразу несколько образцов или целую папку: веб-страница может читать только выбранные вами файлы, поэтому индекс тоже нужно выбрать.',
     'open.urlBam': 'BAM — одна или несколько ссылок, по одной в строке', 'open.urlBaiPh': 'по умолчанию: рядом с BAM (.bam.bai, затем .bai)',
     'files.noIndex': 'Для {names} не выбран индекс (.bai для BAM, .crai для CRAM). Веб-страница может читать только выбранные вами файлы: выберите файл вместе с индексом или выберите всю папку.',
-    'files.askFolder': 'Индекс для {names} не выбран. Разрешите CGV читать эту папку, и он найдёт индекс сам (только чтение, пока страница открыта).', 'files.allowFolder': 'Разрешить папку', 'files.dirWrong': 'В этой папке нет {name}: выберите папку, где он лежит.',
+    'files.askFolder': 'Индекс для {names} не выбран. Разрешите LGV читать эту папку, и он найдёт индекс сам (только чтение, пока страница открыта).', 'files.allowFolder': 'Разрешить папку', 'files.dirWrong': 'В этой папке нет {name}: выберите папку, где он лежит.',
     'files.noIndexSome': 'Пропущены, нет индекса: {names}.', 'files.needBam': 'Выберите .bam или .cram вместе с его индексом',
     'folder.found': 'Образцов в папке: {n}. Отметьте, какие открыть.', 'folder.noIndex': 'рядом нет индекса', 'folder.open': 'Открыть выбранные', 'folder.none': 'Ничего не выбрано',
     'tracks.n': 'образцов: {n}', 'sample.already': '{name} уже открыт', 'sample.failed': 'Не удалось открыть {name}: {msg}',
@@ -452,9 +459,9 @@ const STRINGS = {
     'open.urlAuth': 'Токен доступа (необязательно)', 'open.urlBtn': 'Открыть по ссылке',
     'open.urlHint': 'Сервер должен разрешать CORS и Range-запросы. Токен не сохраняется. На claude.ai загрузка по ссылке заблокирована политикой безопасности платформы — для ссылок откройте cgv.html локально.',
     'open.demo': 'Демо', 'open.demoBtn': 'Синтетические демо-данные', 'open.demoHint': '40 т.п.н. выдуманной последовательности, 30×, пять известных вариантов.',
-    'ref.title': 'Референс', 'ref.hint': 'Загрузка референса переключает геном и закрывает открытые образцы. Образцы, открытые после этого, сопоставляются с ним. Без референса CGV восстанавливает базы референса из тегов MD там, где есть риды.',
+    'ref.title': 'Референс', 'ref.hint': 'Загрузка референса переключает геном и закрывает открытые образцы. Образцы, открытые после этого, сопоставляются с ним. Без референса LGV восстанавливает базы референса из тегов MD там, где есть риды.',
     'ref.current': 'Текущий референс: {name}', 'ref.none': 'Референс не загружен', 'ref.fromMd': 'референс из MD',
-    'ref.pick': 'Выберите файл .fa или .fasta', 'ref.pickSub': 'добавьте .fai / .gzi, если они есть, — иначе CGV проиндексирует файл сам',
+    'ref.pick': 'Выберите файл .fa или .fasta', 'ref.pickSub': 'добавьте .fai / .gzi, если они есть, — иначе LGV проиндексирует файл сам',
     'ref.preset': 'Публичная сборка', 'ref.presetNone': 'Выберите…', 'ref.url': 'Ссылка на FASTA', 'ref.urlPh': 'https://…/genome.fa (рядом .fai)', 'ref.load': 'Загрузить референс',
     'ref.presetHint': 'Публичные копии, которые команда IGV (Broad Institute) держит на Amazon S3. Используйте только с данными, выровненными на ту же сборку.',
     'ref.loaded': 'Референс загружен: {name}', 'ref.failed': 'Референс не загружен: {msg}', 'ref.needBam': 'Сначала откройте BAM, потом добавьте референс',
@@ -522,17 +529,17 @@ const STRINGS = {
     'copied': 'Скопировано', 'copyFail': 'Не удалось скопировать — выделите текст вручную',
     'profile.copied': 'Профиль скопирован', 'profile.applied': 'Профиль применён', 'profile.reset': 'Профиль сброшен', 'profile.bad': 'В профиле ошибка JSON: {msg}',
     'card.name': 'Имя', 'card.pos': 'Позиция', 'card.flag': 'Флаг', 'card.len': 'Длина', 'card.mate': 'Мейт', 'card.mateUnmapped': 'не выровнен', 'card.tlen': 'Вставка (TLEN)',
-    'card.toMate': 'К мейту', 'ins.title': 'Инсерция', 'ins.len': 'Длина', 'ins.seq': 'Вставленные основания', 'ins.qual': 'Качество оснований', 'tip.copyIns': 'Скопировать вставленные основания (FASTA, с именем рида и позицией)', 'track.skipped': '{name}: {n} строк не прочитаны и пропущены; загружено объектов: {ok}', 'track.failed': 'Дорожка {name} не открыта: {msg}', 'track.nSamples': 'образцов: {n}, показаны первые {shown}', 'track.moreSamples': '… ещё образцов: {n}', 'track.name': 'Имя', 'track.type': 'Тип', 'track.value': 'Значение', 'track.score': 'Score', 'track.blocks': 'Блоков', 'track.thick': 'Толстая часть', 'tip.ann': 'Дорожка аннотации: клик по объекту — его карточка', 'tip.closeTrack': 'Закрыть эту дорожку', 'tip.go': "Перейти к локусу или гену (Enter)", 'tip.open': "Открыть BAM / CRAM, ссылки или референс", 'tip.view': "Настройки отображения", 'tip.locus': "chr7:117,559,500-117,560,000, позиция, ген (CFTR) или транскрипт MANE; несколько через пробел — окна рядом", 'tip.ideo': "Карта хромосомы: клик или перетаскивание переносит туда активное окно", 'tip.ruler': "Протяните, чтобы приблизить участок; клик центрирует", 'tip.genes': "Транскрипты MANE: клик — карточка транскрипта", 'tip.cov': "Клик — счёт оснований в позиции (все риды, без даунсэмплинга)", 'tip.closeSample': "Закрыть этот образец", 'tip.showRead': "Карточка только кликнутого рида", 'tip.showPair': "Рид и его мейт рядом", 'tip.toMate': "Перейти к мейту", 'tip.mateSplit': "Открыть мейта в новом окне рядом", 'tip.copyCard': "Скопировать текст карточки", 'tip.mqvLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь). mQV — среднее качество (Phred) этого основания в этих ридах", 'tip.baseLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь)", 'tip.total': "A + C + G + T + N; делеции считаются отдельно", 'tip.del': "Риды с делецией в этой позиции", 'tip.ins': "Риды с инсерцией сразу после этого основания", 'tip.bqShade': "Несовпадения с качеством ниже Q20 бледнее: 20% ниже Q5, полностью с Q20", 'tip.softClips': "Показывать клипированные концы ридов цветом рида; несовпадения в клипах раскрашены", 'tip.mqMinAlpha': "Насколько видны риды с MAPQ не выше «От MQ»", 'tip.minMapq': "Риды с качеством картирования ниже не читаются вовсе (и в покрытии тоже)", 'tip.downsample': "Не больше N ридов, начинающихся в каждом окне; покрытие считает все риды", 'tip.dsMax': "Сколько ридов оставлять на окно", 'tip.trackMinH': "Если образцов много, каждый сохраняет эту высоту, а экран прокручивается", 'tip.covHeight': "Высота дорожки покрытия", 'tip.alleleThr': "Столбик покрытия делится по основаниям, если не-референсные основания набирают эту долю ридов", 'tip.showGenes': "Транскрипты MANE Select и Plus Clinical на GRCh38, встроены в CGV", 'tip.startRef': "Референс (или демо), который открывается при запуске CGV", 'nav.back': 'Назад к предыдущему месту', 'nav.fwd': 'Вперёд', 'nav.zoomIn': 'Приблизить (все окна)', 'nav.zoomOut': 'Отдалить (все окна)', 'cov.title': 'Покрытие', 'cov.total': 'Всего', 'cov.ref': 'референс', 'cov.meanQ': 'Среднее качество основания', 'cov.note': 'Все риды в этой позиции, без даунсэмплинга; фильтры из «Вид» действуют. INS — инсерции сразу после этого основания.', 'menu.copySeq': 'Копировать последовательность рида', 'menu.copyLeft': 'Копировать левый soft clip', 'menu.copyRight': 'Копировать правый soft clip', 'menu.copyPair': 'Копировать пару ридов (FASTA)', 'menu.copyPairNo': 'Копировать пару ридов (мейт не загружен)', 'copied.seq': 'Скопировано оснований: {n}', 'card.mateSplit': 'Мейт в соседнем окне', 'menu.mateSplit': 'Показать регион мейта в соседнем окне', 'split.full': 'Больше окон не помещается ({n}). Закройте одно крестиком в его заголовке', 'card.copy': 'Копировать',
+    'card.toMate': 'К мейту', 'btn.snap': 'PNG', 'btn.link': 'Ссылка', 'tip.snap': 'Сохранить вид картинкой PNG', 'tip.link': 'Скопировать ссылку, открывающую этот вид (референс, образцы и дорожки по ссылкам, локусы)', 'tip.about': 'О программе LGV', 'link.copied': 'Ссылка скопирована', 'link.copiedSkipped': 'Ссылка скопирована. В неё не вошли (открыты с этого компьютера): {names}', 'launch.bad': 'Ссылок не открыто: {n} — читаются только https-ссылки', 'start.refFailedLink': 'Не удалось загрузить референс {name}', 'snap.saved': 'Сохранено: {name}', 'snap.fail': 'Не удалось сделать картинку', 'about.version': 'Версия {v}', 'about.built': 'Сделано с помощью Claude — модели ИИ компании Anthropic.', 'about.asis': 'Предоставляется как есть, без каких-либо гарантий.', 'about.third': 'Сторонний код и данные', 'about.htscodecs': 'Кодеки CRAM на основе htscodecs (Genome Research Ltd), лицензия BSD 3-Clause.', 'about.mane': 'Транскрипты MANE Select и Plus Clinical v1.2 (NCBI, EMBL-EBI); координаты экзонов из Ensembl 111.', 'about.bands': 'Полосы хромосом GRCh38 из ideogram, Eric Weitz (CC0).', 'about.refs': 'Готовые референсы: публичные копии из хранилища команды IGV (Broad Institute).', 'about.guide': 'Руководство пользователя — docs/USER_GUIDE.ru.md в репозитории LGV.', 'ins.title': 'Инсерция', 'ins.len': 'Длина', 'ins.seq': 'Вставленные основания', 'ins.qual': 'Качество оснований', 'tip.copyIns': 'Скопировать вставленные основания (FASTA, с именем рида и позицией)', 'track.skipped': '{name}: {n} строк не прочитаны и пропущены; загружено объектов: {ok}', 'track.failed': 'Дорожка {name} не открыта: {msg}', 'track.nSamples': 'образцов: {n}, показаны первые {shown}', 'track.moreSamples': '… ещё образцов: {n}', 'track.name': 'Имя', 'track.type': 'Тип', 'track.value': 'Значение', 'track.score': 'Score', 'track.blocks': 'Блоков', 'track.thick': 'Толстая часть', 'tip.ann': 'Дорожка аннотации: клик по объекту — его карточка', 'tip.closeTrack': 'Закрыть эту дорожку', 'tip.go': "Перейти к локусу или гену (Enter)", 'tip.open': "Открыть BAM / CRAM, ссылки или референс", 'tip.view': "Настройки отображения", 'tip.locus': "chr7:117,559,500-117,560,000, позиция, ген (CFTR) или транскрипт MANE; несколько через пробел — окна рядом", 'tip.ideo': "Карта хромосомы: клик или перетаскивание переносит туда активное окно", 'tip.ruler': "Протяните, чтобы приблизить участок; клик центрирует", 'tip.genes': "Транскрипты MANE: клик — карточка транскрипта", 'tip.cov': "Клик — счёт оснований в позиции (все риды, без даунсэмплинга)", 'tip.closeSample': "Закрыть этот образец", 'tip.showRead': "Карточка только кликнутого рида", 'tip.showPair': "Рид и его мейт рядом", 'tip.toMate': "Перейти к мейту", 'tip.mateSplit': "Открыть мейта в новом окне рядом", 'tip.copyCard': "Скопировать текст карточки", 'tip.mqvLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь). mQV — среднее качество (Phred) этого основания в этих ридах", 'tip.baseLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь)", 'tip.total': "A + C + G + T + N; делеции считаются отдельно", 'tip.del': "Риды с делецией в этой позиции", 'tip.ins': "Риды с инсерцией сразу после этого основания", 'tip.bqShade': "Несовпадения с качеством ниже Q20 бледнее: 20% ниже Q5, полностью с Q20", 'tip.softClips': "Показывать клипированные концы ридов цветом рида; несовпадения в клипах раскрашены", 'tip.mqMinAlpha': "Насколько видны риды с MAPQ не выше «От MQ»", 'tip.minMapq': "Риды с качеством картирования ниже не читаются вовсе (и в покрытии тоже)", 'tip.downsample': "Не больше N ридов, начинающихся в каждом окне; покрытие считает все риды", 'tip.dsMax': "Сколько ридов оставлять на окно", 'tip.trackMinH': "Если образцов много, каждый сохраняет эту высоту, а экран прокручивается", 'tip.covHeight': "Высота дорожки покрытия", 'tip.alleleThr': "Столбик покрытия делится по основаниям, если не-референсные основания набирают эту долю ридов", 'tip.showGenes': "Транскрипты MANE Select и Plus Clinical на GRCh38, встроены в LGV", 'tip.startRef': "Референс (или демо), который открывается при запуске LGV", 'nav.back': 'Назад к предыдущему месту', 'nav.fwd': 'Вперёд', 'nav.zoomIn': 'Приблизить (все окна)', 'nav.zoomOut': 'Отдалить (все окна)', 'cov.title': 'Покрытие', 'cov.total': 'Всего', 'cov.ref': 'референс', 'cov.meanQ': 'Среднее качество основания', 'cov.note': 'Все риды в этой позиции, без даунсэмплинга; фильтры из «Вид» действуют. INS — инсерции сразу после этого основания.', 'menu.copySeq': 'Копировать последовательность рида', 'menu.copyLeft': 'Копировать левый soft clip', 'menu.copyRight': 'Копировать правый soft clip', 'menu.copyPair': 'Копировать пару ридов (FASTA)', 'menu.copyPairNo': 'Копировать пару ридов (мейт не загружен)', 'copied.seq': 'Скопировано оснований: {n}', 'card.mateSplit': 'Мейт в соседнем окне', 'menu.mateSplit': 'Показать регион мейта в соседнем окне', 'split.full': 'Больше окон не помещается ({n}). Закройте одно крестиком в его заголовке', 'card.copy': 'Копировать',
     'card.clicked': 'Основание', 'card.bq': 'Качество основания', 'card.ref': 'реф.', 'card.del': 'делеция',
     'flag.1': 'парный', 'flag.2': 'правильная пара', 'flag.4': 'не выровнен', 'flag.8': 'мейт не выровнен', 'flag.16': 'обратная цепь', 'flag.32': 'мейт на обратной',
     'flag.64': 'первый в паре', 'flag.128': 'второй в паре', 'flag.256': 'вторичное', 'flag.512': 'не прошёл QC', 'flag.1024': 'дубликат', 'flag.2048': 'дополнительное',
     'g.fwd': 'Прямая цепь (+)', 'g.rev': 'Обратная цепь (−)', 'g.first': 'Первый в паре', 'g.second': 'Второй в паре', 'g.unpaired': 'Без пары',
     'g.FR': 'FR (норма)', 'g.other': 'Мейт на другом контиге', 'g.mateUnmapped': 'Мейт не выровнен', 'g.tagNone': '{tag}: нет',
     'unit.bp': 'п.н.', 'unit.kb': 'т.п.н.', 'unit.mb': 'млн п.н.',
-    'err.notCram': 'Это не файл CRAM (нет подписи CRAM)', 'err.cramVersion': 'CRAM {v} не поддерживается; CGV читает CRAM 3.0 и 3.1',
+    'err.notCram': 'Это не файл CRAM (нет подписи CRAM)', 'err.cramVersion': 'CRAM {v} не поддерживается; LGV читает CRAM 3.0 и 3.1',
     'err.cramBad': 'Файл CRAM повреждён: {what}', 'err.cramCrc': 'Не совпала контрольная сумма CRAM ({what}): файл повреждён',
-    'err.cramCodec': 'Блок CRAM сжат методом {codec}, который CGV пока не читает', 'err.cramLimit': 'Часть файла CRAM ({what}) больше, чем допускает CGV ({size})',
-    'err.notCrai': 'Это не индекс CRAM (.crai)', 'err.cramRefMd5': 'Загруженный референс не тот, с которым создан этот CRAM: не совпала MD5 контига {name}. Загрузите референс, с которым создан файл', 'err.cramNeedRef': 'CRAM хранит риды как отличия от референса: загрузите референс, с которым он создан (контиг {name})', 'err.cramEncoding': 'Серия данных CRAM {ds} записана кодировкой {enc}, которую CGV не читает',
+    'err.cramCodec': 'Блок CRAM сжат методом {codec}, который LGV пока не читает', 'err.cramLimit': 'Часть файла CRAM ({what}) больше, чем допускает LGV ({size})',
+    'err.notCrai': 'Это не индекс CRAM (.crai)', 'err.cramRefMd5': 'Загруженный референс не тот, с которым создан этот CRAM: не совпала MD5 контига {name}. Загрузите референс, с которым создан файл', 'err.cramNeedRef': 'CRAM хранит риды как отличия от референса: загрузите референс, с которым он создан (контиг {name})', 'err.cramEncoding': 'Серия данных CRAM {ds} записана кодировкой {enc}, которую LGV не читает',
     'err.network': 'Нет доступа к {name}. Проверьте ссылку и что сервер разрешает CORS и Range-запросы.',
     'err.auth': 'Доступ запрещён ({status}): {name}. Ссылка устарела или нужен токен.',
     'err.notfound': 'Файл не найден (404): {name}', 'err.http': 'Сервер ответил {status} на {name}',
@@ -3704,15 +3711,15 @@ const CRAM_CT = { FILE_HEADER: 0, COMPRESSION_HEADER: 1, SLICE_HEADER: 2, EXTERN
 
 Object.assign(CGV_ERR_EN, {
   notCram: 'This is not a CRAM file (no CRAM signature)',
-  cramVersion: 'CRAM {v} is not supported; CGV reads CRAM 3.0 and 3.1',
+  cramVersion: 'CRAM {v} is not supported; LGV reads CRAM 3.0 and 3.1',
   cramBad: 'The CRAM file is damaged: {what}',
   cramCrc: 'CRAM checksum mismatch in {what}: the file is damaged',
-  cramCodec: 'A CRAM block is compressed with {codec}, which CGV does not read yet',
-  cramLimit: 'A CRAM {what} is larger than CGV allows ({size})',
+  cramCodec: 'A CRAM block is compressed with {codec}, which LGV does not read yet',
+  cramLimit: 'A CRAM {what} is larger than LGV allows ({size})',
   notCrai: 'This is not a CRAM index (.crai)',
   cramRefMd5: 'The loaded reference is not the one this CRAM was made with: the MD5 of contig {name} differs. Load the reference the file was made with',
   cramNeedRef: 'This CRAM stores reads as differences from its reference: load the reference it was made with (contig {name})',
-  cramEncoding: 'CRAM data series {ds} uses encoding {enc}, which CGV does not read',
+  cramEncoding: 'CRAM data series {ds} uses encoding {enc}, which LGV does not read',
 });
 
 // CRC32: crc32() from core.js (the same check as for BGZF blocks).
@@ -4504,9 +4511,9 @@ if (typeof contigKey === 'undefined' && typeof require !== 'undefined') Object.a
 
 const TRACK_LIMITS = { bytes: 512 << 20, features: 5000000, blocks: 10000, samples: 100000 };
 Object.assign(CGV_ERR_EN, {
-  trackFormat: 'Unknown annotation format: {name}. CGV reads BED, bedGraph, VCF, GTF and GFF3',
+  trackFormat: 'Unknown annotation format: {name}. LGV reads BED, bedGraph, VCF, GTF and GFF3',
   trackEmpty: 'No features found in {name}',
-  trackBig: '{name} is larger than CGV reads at once ({size})',
+  trackBig: '{name} is larger than LGV reads at once ({size})',
   trackMany: '{name} has more than {n} features',
 });
 
@@ -6734,7 +6741,7 @@ stage.addEventListener('contextmenu', e => {
 document.addEventListener('pointerdown', e => { if (!$('ctx').hidden && !$('ctx').contains(e.target)) closeMenu(); }, true);
 
 // ======================= Panels and settings =======================
-function closePanels() { $('panel').hidden = true; $('openPanel').hidden = true; $('viewBtn').setAttribute('aria-expanded', 'false'); $('openBtn').setAttribute('aria-expanded', 'false'); }
+function closePanels() { $('aboutPanel').hidden = true; $('panel').hidden = true; $('openPanel').hidden = true; $('viewBtn').setAttribute('aria-expanded', 'false'); $('openBtn').setAttribute('aria-expanded', 'false'); }
 function togglePanel(id, btn) { const el = $(id), was = el.hidden; closePanels(); el.hidden = !was; btn.setAttribute('aria-expanded', String(was)); if (id === 'panel' && was) syncPanel(); }
 $('viewBtn').onclick = () => togglePanel('panel', $('viewBtn'));
 $('openBtn').onclick = () => togglePanel('openPanel', $('openBtn'));
@@ -6970,7 +6977,7 @@ async function openTracks(srcs) {
     if (ANN.tracks.some(a => a.key === key)) { toast(t('sample.already', { name: src.name })); continue; }
     try {
       const ix = await loadTrack(src);
-      ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix });
+      ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix, src });
       if (ix.skipped) toast(t('track.skipped', { name: src.name, n: fmtInt(ix.skipped), ok: fmtInt(ix.count) }), true);
     } catch (e) { toast(t('track.failed', { name: src.name, msg: errText(e) }), true); }
   }
@@ -7155,6 +7162,8 @@ async function startup() {
   const cyto = $('cgv-cyto'); if (cyto) parseCyto(cyto.textContent);
   const mane = $('cgv-mane');
   if (mane && mane.textContent.trim()) loadGenes(mane.textContent.trim()).then(() => { S._g38 = null; draw(); }).catch(e => console.error(e));
+  const L = launchParams();
+  if (L) { openLaunch(L); return; }
   const what = P.startReference;
   if (what === 'demo') { openDemo(); return; }
   const pr = REF_PRESETS[what]; if (!pr) return;
@@ -7172,6 +7181,117 @@ async function startup() {
   S.viewSet = true;
 }
 const START_GENE = 'BRCA1';
+
+// ======================= Opening from a link =======================
+// lgv.html#ref=hg38&file=https://…/sample.bam&locus=CFTR — so another system (a LIMS, a report, a
+// table of variants) can open a sample at a place. Parameters after # stay in the browser (they are
+// not sent to the server hosting LGV); after ? works too.
+//   ref    hg38 | hg19 | chm13 | demo, or a link to a FASTA (.fai next to it; .gzi for .fa.gz)
+//   file   a BAM / CRAM / annotation track link; may repeat
+//   index  the index of the BAM / CRAM files, in the same order (else looked for next to each file)
+//   locus  loci or genes; several separated by spaces open side by side
+// Only https links (and http on this computer) are read. Access tokens are never taken from a link.
+const okLink = u => { try { const x = new URL(u); return x.protocol === 'https:' || (x.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/.test(x.hostname)); } catch (e) { return false; } };
+function launchParams() {
+  const q = new URLSearchParams(location.search), h = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const get = k => [...q.getAll(k), ...h.getAll(k)].map(v => v.trim()).filter(Boolean);
+  const L = { ref: get('ref')[0] || '', files: get('file').slice(0, 50), index: get('index').slice(0, 50), locus: get('locus').join(' ').slice(0, 2000) };
+  if (!L.ref && !L.files.length && !L.locus) return null;
+  const bad = [...L.files, ...L.index, ...(REF_PRESETS[L.ref] || L.ref === 'demo' || !L.ref ? [] : [L.ref])].filter(u => !okLink(u));
+  L.files = L.files.filter(okLink); L.index = L.index.filter(okLink);
+  if (bad.length) L.bad = bad;
+  return L;
+}
+async function openLaunch(L) {
+  if (L.bad) toast(t('launch.bad', { n: L.bad.length }), true);
+  if (L.ref === 'demo') { await openDemo(); }
+  else {
+    const pr = REF_PRESETS[L.ref || P.startReference] || (L.ref && okLink(L.ref) ? { fa: L.ref, label: urlPath(L.ref).split('/').pop() } : null);
+    if (pr) {
+      const gz = /\.gz$/i.test(urlPath(pr.fa));
+      $('refUrl').value = pr.fa;
+      const ok = await openReference({ fa: new UrlSource(pr.fa), fai: new UrlSource(addSuffix(pr.fa, '.fai')), gzi: gz ? new UrlSource(addSuffix(pr.fa, '.gzi')) : null }, { quiet: true, noGoto: true });
+      if (!ok) toast(t('start.refFailedLink', { name: pr.label || pr.fa }), true);
+    }
+  }
+  for (let k = 0; k < 20 && !GENES.ready; k++) await new Promise(r => setTimeout(r, 100));
+  const tracks = L.files.filter(u => isTrackFile(urlPath(u))), bams = L.files.filter(u => !tracks.includes(u));
+  if (tracks.length) await openTracks(tracks.map(u => new UrlSource(u)));
+  for (let i = 0; i < bams.length; i++) {
+    const u = bams[i], cram = /\.cram$/i.test(urlPath(u)), ext = cram ? '.cram' : '.bam', ie = IDX_EXT[ext];
+    const cands = L.index[i] ? [L.index[i]] : [addSuffix(u, ie), swapExt(u, ext, ie)].filter((x, j, a) => x && a.indexOf(x) === j);
+    await openBam(new UrlSource(u), cands.map(x => new UrlSource(x)));
+  }
+  if (!S.contigs) return;
+  const l = L.locus ? parseLoci(L.locus) : null;
+  if (l && !l.error) setPanels(l);
+  else { if (l && l.error) toast(l.error); if (!S.viewSet) { const i = Math.max(0, contigId('chr1')); goto(i, 0, Math.min(S.contigs[i].len, 100000)); } }
+  S.viewSet = true;
+}
+// The link to what is on screen: the reference, samples and tracks opened by link, every panel's locus.
+// Files from this computer cannot be in a link; neither can access tokens.
+function viewLink() {
+  const p = new URLSearchParams(), skipped = [];
+  if (S.fasta) {
+    const u = S.fasta.src && S.fasta.src.url, pre = Object.entries(REF_PRESETS).find(([, v]) => v.fa === u);
+    if (pre) p.append('ref', pre[0]); else if (u) p.append('ref', u); else skipped.push(S.fasta.name);
+  }
+  for (const T of S.tracks) {
+    if (T.demo) { p.set('ref', 'demo'); continue; }
+    if (T.bam.src instanceof UrlSource && !Object.keys(T.bam.src.headers || {}).length) { p.append('file', T.bam.src.url); if (T.bam.baiSrc instanceof UrlSource) p.append('index', T.bam.baiSrc.url); }
+    else skipped.push(T.name);
+  }
+  for (const a of ANN.tracks) { if (a.src instanceof UrlSource && !Object.keys(a.src.headers || {}).length) p.append('file', a.src.url); else skipped.push(a.name); }
+  if (S.contigs) p.append('locus', S.panels.map(panelLocus).join(' ').replace(/,/g, ''));
+  return { url: location.href.replace(/[?#].*$/, '') + '#' + p.toString(), skipped };
+}
+$('copyLink').onclick = () => {
+  const { url, skipped } = viewLink();
+  navigator.clipboard.writeText(url).then(() => toast(skipped.length ? t('link.copiedSkipped', { names: skipped.join(', ') }) : t('link.copied'), !!skipped.length), () => toast(t('copyFail')));
+};
+
+// ======================= Snapshot =======================
+// The view as it is on screen (all panels, the chromosome map, genes, tracks, coverage, reads) saved
+// as a PNG at screen resolution, with a line naming the loci, the samples and the date.
+function saveSnapshot() {
+  if (!S.contigs) return;
+  render(); // draws now, so the GPU picture is still there to be copied
+  const foot = Math.round(18 * DPR), c = document.createElement('canvas');
+  c.width = glCanvas.width; c.height = glCanvas.height + foot;
+  const g = c.getContext('2d');
+  g.fillStyle = COL.css.bg; g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(glCanvas, 0, 0); g.drawImage(ov, 0, 0);
+  const loci = S.panels.map(panelLocus).join('  '), names = S.tracks.map(T => T.name + (T.bam.samples.length ? ' (' + T.bam.samples.join(', ') + ')' : '')).join(', ');
+  const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  g.fillStyle = COL.css.muted; g.font = Math.round(11 * DPR) + 'px ' + SANS; g.textBaseline = 'middle';
+  g.fillText(['LGV', loci, names, (S.fasta ? S.fasta.name : ''), date].filter(Boolean).join('  ·  '), 6 * DPR, glCanvas.height + foot / 2);
+  const first = S.panels[0], fname = 'LGV_' + (S.contigs[first.view.refId].name + '_' + Math.max(1, Math.round(first.view.start + 1)) + '-' + Math.round(first.view.start + first.w * first.view.bpPerPx)).replace(/[^\w.-]+/g, '_') + (S.panels.length > 1 ? '_and_' + (S.panels.length - 1) + '_more' : '') + '.png';
+  c.toBlob(b => {
+    if (!b) { toast(t('snap.fail')); return; }
+    const a = document.createElement('a'), u = URL.createObjectURL(b);
+    a.href = u; a.download = fname; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 10000);
+    toast(t('snap.saved', { name: fname }));
+  }, 'image/png');
+}
+$('snapBtn').onclick = saveSnapshot;
+
+// ======================= About =======================
+const LGV_INFO = { version: '0.9.0', build: '2026-11-02' };
+function showAbout() {
+  const el = $('aboutBody'), v = LGV_INFO.build.startsWith('__') ? '' : ' · ' + LGV_INFO.build;
+  el.replaceChildren();
+  const add = (tag, text, cls) => { const e = document.createElement(tag); e.textContent = text; if (cls) e.className = cls; el.append(e); return e; };
+  add('p', t('about.version', { v: LGV_INFO.version }) + v, 'about-ver');
+  add('p', t('about.built'));
+  add('p', t('about.asis'), 'hint');
+  add('h2', t('about.third'));
+  const ul = document.createElement('ul'); ul.className = 'about-list'; el.append(ul);
+  for (const k of ['about.htscodecs', 'about.mane', 'about.bands', 'about.refs']) { const li = document.createElement('li'); li.textContent = t(k); ul.append(li); }
+  add('p', t('about.guide'), 'hint');
+  closePanels(); $('aboutPanel').hidden = false;
+}
+$('aboutBtn').onclick = () => { if ($('aboutPanel').hidden) showAbout(); else $('aboutPanel').hidden = true; };
 startup();
 
 </script>

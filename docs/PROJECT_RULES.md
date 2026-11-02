@@ -1,4 +1,7 @@
-# CGV project rules
+# LGV project rules
+
+LGV — Lavrov Genome Viewer (renamed from CGV on 2026-11-02). About and README say it is built with
+Claude, an AI model by Anthropic.
 
 1. **Purpose**: a fast, light, secure BAM/CRAM viewer for medical and human genetics, replacing
    IGV; online, desktop and company-server versions. Clinical scenarios and QC are out of scope for
@@ -15,7 +18,7 @@
    the right track.)
 6. **Like IGV where IGV is good**: users come from IGV, so behavior and terms follow it unless
    there is a reason to differ. Comparisons with IGV are for our internal discussions only: the
-   interface, tooltips and the user guide never compare CGV with IGV (naming the IGV team as the
+   interface, tooltips and the user guide never compare LGV with IGV (naming the IGV team as the
    host of the public reference copies is a data source, not a comparison).
 7. **Language**: interface and documents in English by default; Russian as an option (interface
    switch, `docs/*.ru.md`).
@@ -23,5 +26,5 @@
    every function as it works and looks now, and is updated with every change. Explanations belong
    in the guide; in the interface only as tooltips, where possible and without overloading it (the
    browser's own tooltip, shown after the pointer rests, never on every pass; none over the reads).
-   Anything CGV shows that is not a common standard (e.g. mQV) is explained in the guide.
+   Anything LGV shows that is not a common standard (e.g. mQV) is explained in the guide.
    Future work goes to `docs/TODO.md`.
