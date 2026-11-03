@@ -1755,10 +1755,10 @@ function askFolder(missing, files, fromFolder) {
   $('allowDir').onclick = async ev => {
     ev.stopPropagation(); el.hidden = true;
     let dir;
-    try { dir = await showDirectoryPicker({ id: 'cgv-data', mode: 'read', startIn: withHandle ? withHandle._h : 'documents' }); }
+    try { dir = await showDirectoryPicker({ id: 'lgv-data', mode: 'read', startIn: withHandle ? withHandle._h : lastPick || 'documents' }); }
     catch (e) { return; } // closed without choosing
     if (!(await dirHolds(dir, missing[0]))) { toast(t('files.dirWrong', { name: missing[0].name }), true); return; }
-    grantedDirs.push(dir);
+    grantedDirs.push(dir); lastPick = dir;
     openLocalFiles(files, fromFolder);
   };
 }
@@ -1821,7 +1821,7 @@ async function droppedFiles(dt) {
   const entries = [...dt.items].map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
   if (!entries.some(e => e.isDirectory)) {
     const files = [...dt.files], hs = await Promise.all(hp);
-    hs.forEach(h => { if (!h) return; if (h.kind === 'directory') grantedDirs.push(h); else { const f = files.find(x => x.name === h.name); if (f) f._h = h; } });
+    hs.forEach(h => { if (!h) return; lastPick = h; if (h.kind === 'directory') grantedDirs.push(h); else { const f = files.find(x => x.name === h.name); if (f) f._h = h; } });
     return { files, folder: false };
   }
   const out = [];
@@ -2033,15 +2033,40 @@ $('openBtn').onclick = () => togglePanel('openPanel', $('openBtn'));
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = closePanels);
 $('pickFiles').onchange = e => { if (e.target.files.length) openLocalFiles(e.target.files); e.target.value = ''; };
 // Chrome, Edge: the browser's own file picker with handles, so the folder can be asked for when needed
-document.querySelectorAll('label[for="pickFiles"]').forEach(lb => lb.addEventListener('click', async e => {
-  if (!FSA) return;
-  e.preventDefault();
+// Chrome, Edge: the browser's own pickers, which open where the last file or folder was chosen in
+// this session (the place is kept in memory only; the browser's own memory of it does not work for a
+// page opened from disk), and give handles, so the folder can be asked for when an index is missing.
+let lastPick = null;
+const pickerAt = o => (lastPick ? Object.assign(o, { startIn: lastPick }) : o);
+async function pickFiles(fallback) {
   let hs;
-  try { hs = await showOpenFilePicker({ multiple: true, id: 'cgv-data' }); }
-  catch (err) { if (err.name !== 'AbortError') $('pickFiles').click(); return; } // not allowed here (an embedded page): the plain picker
-  const files = await Promise.all(hs.map(async h => { const f = await h.getFile(); f._h = h; return f; }));
-  openLocalFiles(files);
-}));
+  try { hs = await showOpenFilePicker(pickerAt({ multiple: true, id: 'lgv-data' })); }
+  catch (err) { if (err.name !== 'AbortError') fallback(); return null; } // not allowed here (an embedded page): the plain picker
+  lastPick = hs[0];
+  return Promise.all(hs.map(async h => { const f = await h.getFile(); f._h = h; return f; }));
+}
+// Files in a folder handle and its subfolders (a few levels), each with its handle.
+async function dirFiles(dir, depth) {
+  const out = [];
+  for await (const [, h] of dir.entries()) {
+    if (h.kind === 'file') { const f = await h.getFile(); f._h = h; out.push(f); }
+    else if (depth < 3) out.push(...await dirFiles(h, depth + 1));
+  }
+  return out;
+}
+const fsaLabel = (id, run) => document.querySelectorAll(`label[for="${id}"]`).forEach(lb => lb.addEventListener('click', e => { if (!FSA) return; e.preventDefault(); run(); }));
+fsaLabel('pickFiles', async () => { const files = await pickFiles(() => $('pickFiles').click()); if (files) openLocalFiles(files); });
+fsaLabel('pickRef', async () => {
+  const files = await pickFiles(() => $('pickRef').click()); if (!files) return;
+  const r = pickRefFiles(files); if (!r) { toast(t('ref.failed', { msg: t('err.faEmpty') })); return; } openReference(r);
+});
+fsaLabel('pickFolder', async () => {
+  let dir;
+  try { dir = await showDirectoryPicker(pickerAt({ id: 'lgv-data', mode: 'read' })); }
+  catch (err) { if (err.name !== 'AbortError') $('pickFolder').click(); return; }
+  lastPick = dir; grantedDirs.push(dir);
+  openLocalFiles(await dirFiles(dir, 0), true);
+});
 $('pickFolder').onchange = e => { if (e.target.files.length) openLocalFiles(e.target.files, true); e.target.value = ''; };
 $('openUrl').onclick = openUrls;
 $('openDemo').onclick = () => { openDemo(); closePanels(); };

@@ -9,9 +9,17 @@ It runs in the browser with no server and no third-party dependencies.
 **User guide:** [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (Russian: [docs/USER_GUIDE.ru.md](docs/USER_GUIDE.ru.md)).
 Project rules: [docs/PROJECT_RULES.md](docs/PROJECT_RULES.md). Plans: [docs/TODO.md](docs/TODO.md).
 
+## Online
+
+Every push to `main` publishes the page on GitHub Pages (`.github/workflows/pages.yml`): the site's
+`index.html` is `dist/lgv.html`, so LGV opens by its address with nothing to download. Data never
+go to GitHub: the page reads files from the user's computer or the links the user gives. To switch it
+on once: repository Settings → Pages → Source: **GitHub Actions** (a private repository needs a paid
+GitHub plan for Pages; the published page itself is public, and it contains LGV's whole code).
+
 ## Run
 
-Open `dist/lgv.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38 reference
+Open the online address or `dist/lgv.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38 reference
 (synthetic demo data when offline). To view your own data, press **Open**:
 
 - **From disk**: choose one or more `.bam` files with their indexes (you can add `.fa` +

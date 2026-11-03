@@ -84,6 +84,9 @@ Press **Open**.
   samples first shows a list to pick from (the first four are ticked).
 - **Drag and drop** files or a folder onto the screen works the same way.
 
+In Chrome and Edge every file and folder picker opens in the folder used last (until the page is
+closed), since data usually lie in the same place.
+
 Opening the same file twice does nothing: it is already open.
 
 ### 3.2 By link
