@@ -55,8 +55,8 @@ From top to bottom:
 - **Ruler** and **reference sequence**: coordinates are 1-based. The reference shows as
   colored blocks, and as letters when zoomed in far enough.
 - **Gene track**: MANE transcripts (section 7).
-- **Samples**: each with its coverage and its reads. With several samples, a small label at the top
-  of each sample's reads names it (file and sample; it may cover a row or two), with × at the right
+- **Samples**: each with its coverage and its reads. A small label at the top of each sample's
+  reads, also when there is only one, names it (file and sample; it may cover a row or two), with × at the right
   to close it.
 
 The interface is kept compact on purpose: as much of the screen as possible goes to data.
@@ -83,6 +83,9 @@ Press **Open**.
 - **Choose a folder**: every sample in it is found and paired with its index. A folder with several
   samples first shows a list to pick from (the first four are ticked).
 - **Drag and drop** files or a folder onto the screen works the same way.
+
+In Chrome and Edge every file and folder picker opens in the folder used last (until the page is
+closed), since data usually lie in the same place.
 
 Opening the same file twice does nothing: it is already open.
 

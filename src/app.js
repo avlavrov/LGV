@@ -217,9 +217,9 @@ function clampVScroll() { S.vscroll = Math.max(0, Math.min(tracksHeight() - (H -
 function vscrollBy(d) { const v = S.vscroll || 0; S.vscroll = v + d; clampVScroll(); if (S.vscroll !== v) draw(); return S.vscroll - v; }
 function trackGeom(i) {
   const N = Math.max(1, S.tracks.length), top = covTop(), slot = trackSlot(), y0 = top + i * slot - (S.vscroll || 0);
-  // with several samples each is named in a small label at the top of its reads (it may cover a row
-  // or two); there is no separate header row
-  const lbl = N > 1, top0 = y0 + (i > 0 ? 3 : 0);
+  // every sample, also a single one, is named in a small label at the top of its reads (it may cover
+  // a row or two), with × on the right; there is no separate header row
+  const lbl = S.tracks.length > 0, top0 = y0 + (i > 0 ? 3 : 0);
   const covH = N > 1 ? Math.max(14, Math.min(P.coverage.height, Math.round(slot * 0.3))) : P.coverage.height;
   const ct = top0, rt = ct + covH + 6;
   return { y0, lbl, covTop: ct, covH, readsTop: rt, bottom: Math.max(rt, y0 + slot - (i < N - 1 ? 4 : 0)), end: y0 + slot };
@@ -968,7 +968,7 @@ function drawCoverage(T, g) {
   }
 }
 
-// Track header (only with several tracks): file name, samples, close button; a line above it.
+// Track header (every sample): file name, samples, close button; a line above it.
 const LABEL_H = 15;
 function drawTrackHeader(T, i, g) {
   if (!g.lbl) return;
@@ -1755,10 +1755,10 @@ function askFolder(missing, files, fromFolder) {
   $('allowDir').onclick = async ev => {
     ev.stopPropagation(); el.hidden = true;
     let dir;
-    try { dir = await showDirectoryPicker({ id: 'cgv-data', mode: 'read', startIn: withHandle ? withHandle._h : 'documents' }); }
+    try { dir = await showDirectoryPicker({ id: 'lgv-data', mode: 'read', startIn: withHandle ? withHandle._h : lastPick || 'documents' }); }
     catch (e) { return; } // closed without choosing
     if (!(await dirHolds(dir, missing[0]))) { toast(t('files.dirWrong', { name: missing[0].name }), true); return; }
-    grantedDirs.push(dir);
+    grantedDirs.push(dir); lastPick = dir;
     openLocalFiles(files, fromFolder);
   };
 }
@@ -1821,7 +1821,7 @@ async function droppedFiles(dt) {
   const entries = [...dt.items].map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
   if (!entries.some(e => e.isDirectory)) {
     const files = [...dt.files], hs = await Promise.all(hp);
-    hs.forEach(h => { if (!h) return; if (h.kind === 'directory') grantedDirs.push(h); else { const f = files.find(x => x.name === h.name); if (f) f._h = h; } });
+    hs.forEach(h => { if (!h) return; lastPick = h; if (h.kind === 'directory') grantedDirs.push(h); else { const f = files.find(x => x.name === h.name); if (f) f._h = h; } });
     return { files, folder: false };
   }
   const out = [];
@@ -2033,15 +2033,45 @@ $('openBtn').onclick = () => togglePanel('openPanel', $('openBtn'));
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = closePanels);
 $('pickFiles').onchange = e => { if (e.target.files.length) openLocalFiles(e.target.files); e.target.value = ''; };
 // Chrome, Edge: the browser's own file picker with handles, so the folder can be asked for when needed
-document.querySelectorAll('label[for="pickFiles"]').forEach(lb => lb.addEventListener('click', async e => {
-  if (!FSA) return;
-  e.preventDefault();
+// Chrome, Edge: the browser's own pickers, which open where the last file or folder was chosen in
+// this session (the place is kept in memory only; the browser's own memory of it does not work for a
+// page opened from disk), and give handles, so the folder can be asked for when an index is missing.
+let lastPick = null;
+const pickerAt = o => (lastPick ? Object.assign(o, { startIn: lastPick }) : o);
+async function pickFiles(fallback) {
   let hs;
-  try { hs = await showOpenFilePicker({ multiple: true, id: 'cgv-data' }); }
-  catch (err) { if (err.name !== 'AbortError') $('pickFiles').click(); return; } // not allowed here (an embedded page): the plain picker
-  const files = await Promise.all(hs.map(async h => { const f = await h.getFile(); f._h = h; return f; }));
-  openLocalFiles(files);
-}));
+  try { hs = await showOpenFilePicker(pickerAt({ multiple: true, id: 'lgv-data' })); }
+  catch (err) { if (err.name !== 'AbortError') fallback(); return null; } // not allowed here (an embedded page): the plain picker
+  lastPick = hs[0];
+  return Promise.all(hs.map(async h => { const f = await h.getFile(); f._h = h; return f; }));
+}
+// Files LGV can open in a folder handle and its subfolders (a few levels), each with its handle.
+// Only names are looked at for everything else, and the walk stops after a fixed number of
+// entries, so choosing a large folder (Documents, a whole disk) cannot keep the page busy.
+const DATA_EXT = /\.(bam|bai|cram|crai|csi|fa|fasta|fna|fai|gzi|bed|bedgraph|bg|vcf|gtf|gff|gff3|narrowpeak|broadpeak)(\.gz)?$|\.(gz|gzi)$/i;
+async function dirFiles(dir, depth, budget) {
+  budget = budget || { n: 20000 };
+  const out = [];
+  for await (const [name, h] of dir.entries()) {
+    if (--budget.n < 0) break;
+    if (h.kind === 'file') { if (DATA_EXT.test(name)) { const f = await h.getFile(); f._h = h; out.push(f); } }
+    else if (depth < 3 && !name.startsWith('.')) out.push(...await dirFiles(h, depth + 1, budget));
+  }
+  return out;
+}
+const fsaLabel = (id, run) => document.querySelectorAll(`label[for="${id}"]`).forEach(lb => lb.addEventListener('click', e => { if (!FSA) return; e.preventDefault(); run(); }));
+fsaLabel('pickFiles', async () => { const files = await pickFiles(() => $('pickFiles').click()); if (files) openLocalFiles(files); });
+fsaLabel('pickRef', async () => {
+  const files = await pickFiles(() => $('pickRef').click()); if (!files) return;
+  const r = pickRefFiles(files); if (!r) { toast(t('ref.failed', { msg: t('err.faEmpty') })); return; } openReference(r);
+});
+fsaLabel('pickFolder', async () => {
+  let dir;
+  try { dir = await showDirectoryPicker(pickerAt({ id: 'lgv-data', mode: 'read' })); }
+  catch (err) { if (err.name !== 'AbortError') $('pickFolder').click(); return; }
+  lastPick = dir; grantedDirs.push(dir);
+  openLocalFiles(await dirFiles(dir, 0), true);
+});
 $('pickFolder').onchange = e => { if (e.target.files.length) openLocalFiles(e.target.files, true); e.target.value = ''; };
 $('openUrl').onclick = openUrls;
 $('openDemo').onclick = () => { openDemo(); closePanels(); };
