@@ -56,7 +56,7 @@ for (const f of ['src/core.js', 'src/compress.js', 'src/htscodecs.js', 'src/cram
 // every reader of file data has a fuzzing campaign in the tests
 {
   const tests = ['tools/test-fuzz.js', 'tools/test-cram.js'].map(f => fs.readFileSync(R(f), 'utf8')).join('\n');
-  const need = { 'BAM records': /BAM records, damage/, 'BAM header': /BAM header, damage/, BAI: /BAI index, damaged/, BGZF: /BGZF block headers/, '.fai': /FASTA index \(\.fai\), damaged/, '.gzi': /FASTA \.gzi, damaged/, 'FASTA indexing': /FASTA indexed in the browser, damaged/, CRAM: /fuzzing records/, 'CRAM codecs': /fuzzing/, locus: /locus field/, profile: /pasted profile/, 'annotation tracks': /Annotation tracks \(BED/ };
+  const need = { 'BAM records': /BAM records, damage/, 'BAM header': /BAM header, damage/, BAI: /BAI index, damaged/, BGZF: /BGZF block headers/, '.fai': /FASTA index \(\.fai\), damaged/, '.gzi': /FASTA \.gzi, damaged/, 'FASTA indexing': /FASTA indexed in the browser, damaged/, CRAM: /fuzzing records/, 'CRAM codecs': /fuzzing/, locus: /locus field/, profile: /pasted profile/, 'annotation tracks': /Annotation tracks \(BED/, TDF: /TDF files, damaged/, 'TDF tiles': /TDF tiles, damage behind/ };
   const miss = Object.keys(need).filter(k => !need[k].test(tests));
   if (miss.length) { fails++; console.log('FAIL no fuzzing campaign for: ' + miss.join(', ')); } else console.log('OK   every file reader has a fuzzing campaign: ' + Object.keys(need).join(', '));
 }

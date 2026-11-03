@@ -117,12 +117,24 @@ whole number with end ≥ start; BED blocks must be in order and inside the feat
 cut to a fixed length. A line that does not parse is skipped and counted. Text from the file is
 drawn on the canvas or shown through esc(). Fuzzed in tools/test-fuzz.js.
 
+## TDF files
+
+`TdfFile` in `src/tracks.js`, own code written from the format as igv.js reads it (no code taken).
+Read by region with range reads, never whole. A bounds-checked reader (`BinReader`) checks every
+number, string and count against the bytes actually read; blocks are capped (index, dataset, tile:
+64 MB each, strings 100 000 bytes, 10 million tiles); offsets above 2^53 are refused; tiles are
+inflated with the same size-capped stream as gzip tracks; a tile step or span that is not a
+positive finite number is an error. At most 2000 tiles per view and 4000 kept in memory. Fuzzed in
+tools/test-fuzz.js twice: damage anywhere in the file, and damage inside decompressed tiles (this
+found a negative span giving intervals ending before they start — now refused).
+
 ## Code from others
 
 | Code | From | Version | License | Status |
 | --- | --- | --- | --- | --- |
 | CRAM block decoders (`src/htscodecs.js`): rANS 4x8, rANS 4x16, arithmetic, FQZcomp, name tokeniser | htscodecs `javascript/` rans.js, rans4x16.js, arith_gen.js, arith_sh.js, byte_model.js, fqzcomp.js, tok3.js, iostream.js (Genome Research Ltd, James Bonfield) | commit 0a487b5 | BSD 3-clause, notice kept in the file | decoding only; read line by line and changed as below |
 | Test data only: SAM test cases | htslib `test/` | commit 446b29a | MIT/Expat (test/cram/htslib/LICENSE-htslib) | used by tools/test-cram.js, not shipped |
+| Test data only: two TDF files | igv.js `test/data/tdf/` | master | MIT (test/tracks/LICENSE-igv.js-test-data) | used by tools/test-fuzz.js, not shipped |
 
 ### Changes made to htscodecs code
 

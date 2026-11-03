@@ -219,7 +219,7 @@ function trackGeom(i) {
   const N = Math.max(1, S.tracks.length), top = covTop(), slot = trackSlot(), y0 = top + i * slot - (S.vscroll || 0);
   // with several samples each is named in a small label at the top of its reads (it may cover a row
   // or two); there is no separate header row
-  const lbl = N > 1, top0 = y0 + (i > 0 ? 3 : 0);
+  const lbl = S.tracks.length > 0, top0 = y0 + (i > 0 ? 3 : 0); // every sample carries its name and ×, also a single one
   const covH = N > 1 ? Math.max(14, Math.min(P.coverage.height, Math.round(slot * 0.3))) : P.coverage.height;
   const ct = top0, rt = ct + covH + 6;
   return { y0, lbl, covTop: ct, covH, readsTop: rt, bottom: Math.max(rt, y0 + slot - (i < N - 1 ? 4 : 0)), end: y0 + slot };
@@ -1611,6 +1611,7 @@ function sourceKey(src) { return src.blob ? `${src.name}|${src.blob.size}|${src.
 async function openBam(bamSrc, baiSrc, opts) {
   opts = opts || {};
   const key = sourceKey(bamSrc);
+  if (S.hiddenTracks) toggleType('bam'); // samples were switched off: a new one switches them back on
   if (S.tracks.some(x => x.key === key)) { toast(t('sample.already', { name: bamSrc.name })); return true; }
   S.loading = true; S.msg = null; draw();
   try {
@@ -1655,7 +1656,7 @@ async function openBam(bamSrc, baiSrc, opts) {
     if (bam.isCram) bam.refProvider = async (id, a, b) => { const v = T.back[id]; return v >= 0 && S.fasta ? S.fasta.fetch(S.contigs[v].name, a, b) : null; };
     await attachWorker(T);
     usePanel(S.active);
-    S.tracks.push(T);
+    S.tracks.push(T); setTimeout(renderTypeChips);
     S.sortPos = S.tracks.length > 1 ? S.sortPos : null; S.selected = null; hideCard();
     updateFileLabel();
     $('examples').hidden = !S.tracks.some(x => x.demo);
@@ -1680,13 +1681,14 @@ async function openBam(bamSrc, baiSrc, opts) {
 }
 function closeTrack(T) {
   const i = S.tracks.indexOf(T); if (i < 0) return;
+  setTimeout(renderTypeChips);
   S.tracks.splice(i, 1); forEachPanel(pn => { freeVao(T); pn.ts.delete(T.id); });
   if (T.worker) T.worker.postMessage({ op: 'close', key: T.id });
   if (S.selected && S.selected.T === T) { S.selected = null; hideCard(); }
   $('examples').hidden = !S.tracks.some(x => x.demo);
   updateFileLabel(); clampScroll(); rebuild(); draw();
 }
-function closeAllTracks() { for (const T of S.tracks) { forEachPanel(pn => { freeVao(T); pn.ts.delete(T.id); }); if (T.worker) T.worker.postMessage({ op: 'close', key: T.id }); } S.tracks = []; S.selected = null; S.hl = null; hideCard(); }
+function closeAllTracks() { if (S.hiddenTracks) { S.tracks = S.hiddenTracks; S.hiddenTracks = null; SHOW.bam = true; } setTimeout(renderTypeChips); for (const T of S.tracks) { forEachPanel(pn => { freeVao(T); pn.ts.delete(T.id); }); if (T.worker) T.worker.postMessage({ op: 'close', key: T.id }); } S.tracks = []; S.selected = null; S.hl = null; hideCard(); }
 function updateFileLabel() {
   const parts = [];
   if (S.fasta) parts.push(S.fasta.name);
@@ -2274,13 +2276,43 @@ const ANN = { tracks: [], seq: 0 };
 const ANN_ROW = 16, ANN_HDR = 12, VCF_SITE = 9, VCF_GT = 9, VCF_GT_MAX = 8, BG_H = 24;
 // each track: a 12 px name line (with × on the right), then its features
 function annHeight(a) {
-  if (a.kind === 'bedgraph') return ANN_HDR + BG_H;
+  if (a.kind === 'bedgraph' || a.kind === 'tdf') return ANN_HDR + BG_H;
   if (a.kind === 'vcf') return ANN_HDR + VCF_SITE + 2 + Math.min(VCF_GT_MAX, a.ix.samples.length) * VCF_GT;
   return ANN_HDR + 2 * ANN_ROW;
 }
-function annH() { return ANN.tracks.reduce((h, a) => h + annHeight(a) + 2, 0); }
-function annTopOf(a) { let y = geneTop() + geneH(); for (const b of ANN.tracks) { if (b === a) return y; y += annHeight(b) + 2; } return y; }
-function annAt(y) { let y0 = geneTop() + geneH(); for (const a of ANN.tracks) { const h = annHeight(a); if (y >= y0 && y < y0 + h + 2) return Object.assign(a, { y0, lbl: y < y0 + ANN_HDR }); y0 += h + 2; } return null; }
+// ---- Track types switched on and off for all samples at once (this session only) ----
+// Switching samples (BAM / CRAM) off stops reading reads, so a whole chromosome opens at once with
+// the other tracks on it.
+const SHOW = { bam: true, vcf: true, bed: true, gff: true, bedgraph: true, tdf: true };
+const TYPE_LABEL = { bam: 'BAM', vcf: 'VCF', bed: 'BED', gff: 'GFF', bedgraph: 'bedGraph', tdf: 'TDF' };
+const typeOf = a => (a.kind === 'gtf' || a.kind === 'gff') ? 'gff' : a.kind;
+function annVis() { return ANN.tracks.filter(a => SHOW[typeOf(a)]); }
+function toggleType(k) {
+  SHOW[k] = !SHOW[k];
+  if (k === 'bam') {
+    if (!SHOW.bam) { S.hiddenTracks = S.tracks; S.tracks = []; S.selected = null; S.hl = null; hideCard(); forEachPanel(() => { S.loadToken++; S.data = null; S.loading = false; S.msg = null; }); requestLoad(); }
+    else if (S.hiddenTracks) { S.tracks = S.hiddenTracks; S.hiddenTracks = null; reloadData(); }
+    updateFileLabel();
+  } else if (cardState && cardState.ann && typeOf(cardState.ann) === k) hideCard();
+  renderTypeChips(); clampScroll(); draw();
+}
+function renderTypeChips() {
+  const box = $('typeChips'); if (!box) return;
+  const n = { bam: (S.hiddenTracks || S.tracks).length };
+  for (const a of ANN.tracks) n[typeOf(a)] = (n[typeOf(a)] || 0) + 1;
+  const kinds = Object.keys(TYPE_LABEL).filter(k => n[k]);
+  box.replaceChildren(...(kinds.length > 1 || ANN.tracks.length ? kinds : []).map(k => {
+    const b = document.createElement('button');
+    b.className = 'btn chip' + (SHOW[k] ? ' on' : ''); b.setAttribute('aria-pressed', String(SHOW[k]));
+    b.textContent = (SHOW[k] ? '✓ ' : '') + TYPE_LABEL[k] + (n[k] > 1 ? ' ' + n[k] : '');
+    b.title = t(SHOW[k] ? 'tip.typeOff' : 'tip.typeOn', { type: TYPE_LABEL[k] });
+    b.onclick = () => toggleType(k);
+    return b;
+  }));
+}
+function annH() { return annVis().reduce((h, a) => h + annHeight(a) + 2, 0); }
+function annTopOf(a) { let y = geneTop() + geneH(); for (const b of annVis()) { if (b === a) return y; y += annHeight(b) + 2; } return y; }
+function annAt(y) { let y0 = geneTop() + geneH(); for (const a of annVis()) { const h = annHeight(a); if (y >= y0 && y < y0 + h + 2) return Object.assign(a, { y0, lbl: y < y0 + ANN_HDR }); y0 += h + 2; } return null; }
 async function openTracks(srcs) {
   for (const src of srcs) {
     const key = sourceKey(src);
@@ -2291,25 +2323,27 @@ async function openTracks(srcs) {
       if (ix.skipped) toast(t('track.skipped', { name: src.name, n: fmtInt(ix.skipped), ok: fmtInt(ix.count) }), true);
     } catch (e) { toast(t('track.failed', { name: src.name, msg: errText(e) }), true); }
   }
-  clampScroll(); draw();
+  renderTypeChips(); clampScroll(); draw();
 }
-function closeAnn(a) { ANN.tracks = ANN.tracks.filter(x => x !== a); if (cardState && cardState.ann === a) hideCard(); clampScroll(); draw(); }
+function closeAnn(a) { ANN.tracks = ANN.tracks.filter(x => x !== a); renderTypeChips(); if (cardState && cardState.ann === a) hideCard(); clampScroll(); draw(); }
 const GT_COL = ['', '#c3c8cf', '#2a5fd6', '#14a3b8'];
 function drawAnnTracks(pn) {
-  if (!ANN.tracks.length || !S.contigs) return;
+  if (!annVis().length || !S.contigs) return;
   const name = S.contigs[S.view.refId].name, vs = S.view.start, ve = viewEnd(), bpp = S.view.bpPerPx, px = p => (p - vs) / bpp;
   const last = CUR === S.panels[S.panels.length - 1];
   pn.annHits = pn.annHits || new Map();
   let y0 = geneTop() + geneH();
-  for (const a of ANN.tracks) {
+  for (const a of annVis()) {
     const h = annHeight(a), hits = [];
     ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, h); ctx.clip();
-    const list = a.ix.query(name, Math.floor(vs), Math.ceil(ve)), fy = y0 + ANN_HDR, fh = h - ANN_HDR;
+    const list = a.kind === 'tdf'
+      ? a.ix.values(name, Math.floor(vs), Math.ceil(ve), bpp, refLen(), e => { if (e && !a.warned) { a.warned = true; toast(t('track.failed', { name: a.name, msg: errText(e) }), true); } draw(); })
+      : a.ix.query(name, Math.floor(vs), Math.ceil(ve)), fy = y0 + ANN_HDR, fh = h - ANN_HDR;
     let extra = '';
-    if (a.kind === 'bedgraph') {
+    if (a.kind === 'bedgraph' || a.kind === 'tdf') {
       // one bar per pixel column: the largest value under it; scale from the visible values
       let mx = 0; for (const f of list) mx = Math.max(mx, Math.abs(f.value));
-      const neg = a.ix.min < 0, base = neg ? fy + fh / 2 : fy + fh - 1, sc = mx ? (neg ? fh / 2 - 1 : fh - 2) / mx : 0;
+      const neg = list.some(f => f.value < 0), base = neg ? fy + fh / 2 : fy + fh - 1, sc = mx ? (neg ? fh / 2 - 1 : fh - 2) / mx : 0;
       ctx.fillStyle = COL.css.gene;
       for (const f of list) { const x0 = Math.max(0, px(f.start)), x1 = Math.min(W, px(f.end)), v = f.value * sc; ctx.fillRect(x0, v >= 0 ? base - v : base, Math.max(1, x1 - x0), Math.abs(v)); hits.push({ f, x0, x1, row: -1 }); }
       extra = mx ? (neg ? '±' : '0–') + (+mx.toPrecision(3)) : '';

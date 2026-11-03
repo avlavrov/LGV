@@ -10,7 +10,7 @@ if (typeof contigKey === 'undefined' && typeof require !== 'undefined') Object.a
 
 const TRACK_LIMITS = { bytes: 512 << 20, features: 5000000, blocks: 10000, samples: 100000 };
 Object.assign(CGV_ERR_EN, {
-  trackFormat: 'Unknown annotation format: {name}. LGV reads BED, bedGraph, VCF, GTF and GFF3',
+  trackFormat: 'Unknown annotation format: {name}. LGV reads BED, bedGraph, VCF, GTF, GFF3 and TDF',
   trackEmpty: 'No features found in {name}',
   trackBig: '{name} is larger than LGV reads at once ({size})',
   trackMany: '{name} has more than {n} features',
@@ -23,6 +23,7 @@ function trackKind(name) {
   if (/\.(bedgraph|bg)$/.test(n)) return 'bedgraph';
   if (/\.vcf$/.test(n)) return 'vcf';
   if (/\.gtf$/.test(n)) return 'gtf';
+  if (/\.tdf$/.test(n)) return 'tdf';
   if (/\.(gff|gff3)$/.test(n)) return 'gff';
   return null;
 }
@@ -196,10 +197,125 @@ async function gunzipTrack(bytes, name) {
   const out = new Uint8Array(total); let o = 0; for (const u of parts) { out.set(u, o); o += u.length; }
   return out;
 }
+// ---- TDF (tiled data format: coverage at several zoom levels), read by region with Range reads ----
+// Layout (little-endian): magic "TDF", version, index position and size, header (window functions,
+// track type and line, track names, genome, flags: bit 0 = tiles compressed with zlib); the index
+// lists datasets ("/chr1/z3/mean", "/chr1/raw") and groups ("/" with "chromosomes", "maxZoom").
+// A dataset lists tiles; a tile holds fixedStep, variableStep or bed records with float values.
+// Every count and size is checked against the bytes actually there before use.
+const TDF_LIMITS = { header: 64 << 20, index: 64 << 20, dataset: 64 << 20, tile: 64 << 20, string: 100000, tiles: 10000000 };
+Object.assign(CGV_ERR_EN, { tdfBad: 'The TDF file is damaged or not TDF: {what}' });
+class BinReader {
+  constructor(u8) { this.u8 = u8; this.dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength); this.p = 0; }
+  need(n, what) { if (n < 0 || this.p + n > this.u8.length) throw new CgvError('tdfBad', { what: what || 'cut short' }); }
+  int() { this.need(4); const v = this.dv.getInt32(this.p, true); this.p += 4; return v; }
+  float() { this.need(4); const v = this.dv.getFloat32(this.p, true); this.p += 4; return v; }
+  long() { this.need(8); const lo = this.dv.getUint32(this.p, true), hi = this.dv.getUint32(this.p + 4, true); this.p += 8; if (hi & 0x80000000) return -1; /* empty tile */ if (hi > 0x1fffff) throw new CgvError('tdfBad', { what: 'an offset is too large' }); return hi * 4294967296 + lo; }
+  str() { let e = this.p; while (e < this.u8.length && this.u8[e] !== 0) e++; if (e >= this.u8.length || e - this.p > TDF_LIMITS.string) throw new CgvError('tdfBad', { what: 'a text field does not end' }); const s = new TextDecoder().decode(this.u8.subarray(this.p, e)); this.p = e + 1; return s; }
+  count(each, max, what) { const n = this.int(); if (n < 0 || n > max || (each && this.p + n * each > this.u8.length)) throw new CgvError('tdfBad', { what }); return n; }
+}
+class TdfFile {
+  constructor(src) { this.src = src; this.name = src.name; this.datasets = new Map(); this.tiles = new Map(); this.pending = new Set(); this.count = 1; this.skipped = 0; this.min = 0; }
+  async read(pos, size, max) { if (size < 0 || size > max) throw new CgvError('tdfBad', { what: 'a block is too large' }); const b = await this.src.read(pos, size); if (b.length < size) throw new CgvError('tdfBad', { what: 'cut short' }); return b; }
+  async open() {
+    const h = await this.src.read(0, 64000), r = new BinReader(h);
+    if (h.length < 24 || h[0] !== 84 || h[1] !== 68 || h[2] !== 70) throw new CgvError('tdfBad', { what: 'no TDF signature' });
+    r.int(); this.version = r.int();
+    const indexPos = r.long(), indexSize = r.int(); r.int();
+    this.windowFunctions = [];
+    if (this.version >= 2) { const n = r.count(1, 1000, 'window functions'); for (let i = 0; i < n; i++) this.windowFunctions.push(r.str()); }
+    this.trackType = r.str(); this.trackLine = r.str();
+    const nt = r.count(1, 100000, 'track names'); this.trackNames = []; for (let i = 0; i < nt; i++) this.trackNames.push(r.str());
+    if (this.version >= 3) { this.genomeId = r.str(); this.compressed = (r.int() & 1) !== 0; } else this.compressed = false;
+    const ix = new BinReader(await this.read(indexPos, indexSize, TDF_LIMITS.index));
+    this.dsIndex = new Map(); this.grIndex = new Map();
+    for (const map of [this.dsIndex, this.grIndex]) { const n = ix.count(13, TDF_LIMITS.tiles, 'index'); for (let i = 0; i < n; i++) { const k = ix.str(); map.set(k, { pos: ix.long(), size: ix.int() }); } }
+    const root = await this.group('/');
+    this.maxZoom = root && isFinite(+root.maxZoom) ? +root.maxZoom : -1;
+    this.chrs = new Map();
+    for (const c of String((root && root.chromosomes) || '').split(',')) if (c) this.chrs.set(contigKey(c), c);
+    for (const k of this.dsIndex.keys()) { const c = k.split('/')[1]; if (c && !this.chrs.has(contigKey(c))) this.chrs.set(contigKey(c), c); }
+    return this;
+  }
+  async group(name) {
+    const e = this.grIndex.get(name); if (!e) return null;
+    const r = new BinReader(await this.read(e.pos, e.size, TDF_LIMITS.header)), g = {};
+    const n = r.count(2, 100000, 'group'); for (let i = 0; i < n; i++) { const k = r.str(); g[k] = r.str(); }
+    return g;
+  }
+  async dataset(name) {
+    if (this.datasets.has(name)) return this.datasets.get(name);
+    const e = this.dsIndex.get(name); let ds = null;
+    if (e) {
+      const r = new BinReader(await this.read(e.pos, e.size, TDF_LIMITS.dataset));
+      const na = r.count(2, 100000, 'dataset'); for (let i = 0; i < na; i++) { r.str(); r.str(); }
+      r.str(); const tileWidth = r.float(), n = r.count(12, TDF_LIMITS.tiles, 'tiles');
+      if (!(tileWidth > 0)) throw new CgvError('tdfBad', { what: 'tile width' });
+      const tiles = []; for (let i = 0; i < n; i++) tiles.push({ pos: r.long(), size: r.int() });
+      ds = { tileWidth, tiles };
+    }
+    this.datasets.set(name, ds); return ds;
+  }
+  async tile(dsName, i, t) {
+    const raw = await this.read(t.pos, t.size, TDF_LIMITS.tile);
+    let u8 = raw;
+    if (this.compressed) u8 = await inflateStream(raw, 'deflate', TDF_LIMITS.tile, 'tdfBad', { what: 'a tile does not decompress' });
+    const r = new BinReader(u8), type = r.str(), out = [];
+    const floats = n => { const a = new Float32Array(n); for (let k = 0; k < n; k++) a[k] = r.float(); return a; };
+    if (type === 'fixedStep') {
+      const n = r.count(4, 1e8, 'tile'), start = r.int(), span = r.float(), v = floats(n);
+      if (!(span > 0 && span < 1e9)) throw new CgvError('tdfBad', { what: 'tile step' });
+      for (let k = 0; k < n; k++) if (!Number.isNaN(v[k])) out.push({ start: Math.round(start + k * span), end: Math.round(start + (k + 1) * span), value: v[k] });
+    } else if (type === 'variableStep') {
+      r.int(); const span = r.float(), n = r.count(8, 1e8, 'tile'), st = new Int32Array(n);
+      if (!(span > 0 && span < 1e9)) throw new CgvError('tdfBad', { what: 'tile span' });
+      for (let k = 0; k < n; k++) st[k] = r.int();
+      r.int(); const v = floats(n);
+      for (let k = 0; k < n; k++) if (!Number.isNaN(v[k])) out.push({ start: st[k], end: Math.round(st[k] + span), value: v[k] });
+    } else if (type === 'bed' || type === 'bedWithName') {
+      const n = r.count(12, 1e8, 'tile'), st = new Int32Array(n), en = new Int32Array(n);
+      for (let k = 0; k < n; k++) st[k] = r.int(); for (let k = 0; k < n; k++) en[k] = r.int();
+      r.int(); const v = floats(n);
+      for (let k = 0; k < n; k++) if (!Number.isNaN(v[k]) && en[k] >= st[k]) out.push({ start: st[k], end: Math.max(en[k], st[k] + 1), value: v[k] });
+    } else throw new CgvError('tdfBad', { what: 'unknown tile type' });
+    return out;
+  }
+  // Values over [a, b) of a contig at the zoom fitting bpPerPx; tiles not read yet are fetched in the
+  // background and onLoad() is called when they arrive. Returns what is already there.
+  values(contig, a, b, bpPerPx, chrLen, onLoad) {
+    const c = this.chrs.get(contigKey(contig)); if (!c) return [];
+    let z = Math.ceil(Math.log2(Math.max(1, chrLen / (bpPerPx * 700))));
+    if (!(z >= 0)) z = 0;
+    const wf = this.windowFunctions.includes('mean') ? 'mean' : this.windowFunctions[0] || '';
+    const name = z > this.maxZoom ? `/${c}/raw` : `/${c}/z${z}` + (this.version >= 2 ? '/' + wf : '');
+    const ds = this.datasets.get(name);
+    if (ds === undefined) { this.load(name, null, onLoad); return []; }
+    if (!ds) return [];
+    const out = [], t0 = Math.max(0, Math.floor(a / ds.tileWidth)), t1 = Math.min(ds.tiles.length - 1, Math.floor(b / ds.tileWidth));
+    if (t1 - t0 > 2000) return out; // far too many tiles for one view: a coarser zoom should be used
+    for (let i = t0; i <= t1; i++) {
+      const t = ds.tiles[i]; if (!t || t.size <= 0 || t.pos < 0) continue;
+      const v = this.tiles.get(name + '#' + i);
+      if (v === undefined) { this.load(name, i, onLoad); continue; }
+      for (const f of v) if (f.end > a && f.start < b) out.push(f);
+    }
+    return out;
+  }
+  load(name, i, onLoad) {
+    const key = name + '#' + (i == null ? 'ds' : i);
+    if (this.pending.has(key) || this.failed) return;
+    this.pending.add(key);
+    (i == null ? this.dataset(name) : this.dataset(name).then(ds => this.tile(name, i, ds.tiles[i])).then(v => { this.tiles.set(name + '#' + i, v); if (this.tiles.size > 4000) this.tiles.delete(this.tiles.keys().next().value); }))
+      .catch(e => { this.failed = e; if (onLoad) onLoad(e); })
+      .then(() => { this.pending.delete(key); if (onLoad && !this.failed) onLoad(); });
+  }
+}
+
 // Reads a track file from a source (file or link): gzip / bgzip is unpacked, the size capped.
 async function loadTrack(src) {
   const name = src.name || 'track', kind = trackKind(name);
   if (!kind) throw new CgvError('trackFormat', { name });
+  if (kind === 'tdf') { const f = await new TdfFile(src).open(); f.kind = 'tdf'; return f; } // read by region, not whole
   let bytes = await src.readAll();
   if (bytes.length > TRACK_LIMITS.bytes) throw new CgvError('trackBig', { name, size: '512 MB' });
   if (bytes.length >= 2 && bytes[0] === 31 && bytes[1] === 139) bytes = await gunzipTrack(bytes, name);
@@ -210,4 +326,4 @@ async function loadTrack(src) {
   return ix;
 }
 
-if (typeof module !== 'undefined') module.exports = { gunzipTrack, TRACK_LIMITS, trackKind, isTrackFile, FeatureIndex, parseBed, parseBedGraph, parseVcf, vcfGenotype, vcfInfo, parseGtfGff, loadTrack };
+if (typeof module !== 'undefined') module.exports = { TdfFile, gunzipTrack, TRACK_LIMITS, trackKind, isTrackFile, FeatureIndex, parseBed, parseBedGraph, parseVcf, vcfGenotype, vcfInfo, parseGtfGff, loadTrack };

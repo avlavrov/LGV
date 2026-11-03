@@ -229,6 +229,26 @@ async function readAllWays(bam, bai) {
       for (const c of ix.byChr.keys()) ix.query(c, 0, 1e9);
       if (ix.kind === 'vcf') for (const c of ix.byChr.values()) for (const f of c.list) { Tk.vcfInfo(f); for (let k = 0; k < 4; k++) Tk.vcfGenotype(f, k); }
     });
+
+    // TDF: damage anywhere in the file (header, index, datasets, compressed tiles), then every tile read
+    const tdfs = ['gstt1_sample.bam.tdf', 'BRAF_C.bam.tdf'].map(f => fs.readFileSync(path.join(TD, f)));
+    const readTdf = async f => { for (const k of f.dsIndex.keys()) { const ds = await f.dataset(k); if (ds) for (let i = 0; i < ds.tiles.length; i++) { const t = ds.tiles[i]; if (t.size > 0 && t.pos >= 0) await f.tile(k, i, t); } } };
+    await campaign('TDF files, damaged', ROUNDS, i => {
+      const b = Buffer.from(tdfs[i % 2]);
+      for (let j = 1 + rnd(8); j--;) b[rnd(b.length)] = rnd(4) ? b[rnd(b.length)] ^ (1 << rnd(8)) : rnd(256);
+      return rnd(5) ? b : b.subarray(0, rnd(b.length));
+    }, async b => readTdf(await new Tk.TdfFile(src(b, 'x.tdf')).open()));
+    // TDF tiles damaged after decompression, so the damage reaches the tile parser
+    const plainTiles = [];
+    for (const raw of tdfs) {
+      const f = await new Tk.TdfFile(src(raw, 'x.tdf')).open();
+      for (const k of f.dsIndex.keys()) { const ds = await f.dataset(k); if (ds) for (const t of ds.tiles) if (t.size > 0 && t.pos >= 0) plainTiles.push(zlib.inflateSync(raw.subarray(t.pos, t.pos + t.size))); }
+    }
+    await campaign('TDF tiles, damage behind compression', ROUNDS, i => {
+      const b = Buffer.from(plainTiles[rnd(plainTiles.length)]);
+      for (let j = 1 + rnd(6); j--;) b[rnd(b.length)] = rnd(2) ? b[rnd(b.length)] ^ (1 << rnd(8)) : [0, 255, 127, 128][rnd(4)];
+      return rnd(5) ? b : b.subarray(0, rnd(b.length));
+    }, async b => { const f = new Tk.TdfFile(src(b, 'x.tdf')); f.compressed = false; for (const v of await f.tile('t', 0, { pos: 0, size: b.length })) if (!(v.end >= v.start) && !Number.isNaN(v.start)) throw new Error('bad interval'); });
   }
 
   // 8. the locus field and a pasted profile: the functions are taken from app.js as they are
