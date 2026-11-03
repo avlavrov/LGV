@@ -11,13 +11,6 @@ html = html.replace('/*DEMO*/', () => demo).replace('/*I18N*/', () => safe(fs.re
   // MANE transcripts (data/mane.grch38.tsv), gzip + base64: read by src/genes.js at start
   .replace('/*CYTO*/', () => safe(fs.readFileSync(R('data/cytoband.grch38.tsv'), 'utf8')))
   .replace('/*MANE*/', () => require('zlib').gzipSync(fs.readFileSync(R('data/mane.grch38.tsv')), { level: 9 }).toString('base64'));
-// every inline script must compile: a syntax error would leave the page blank
-{
-  const vm = require('vm');
-  for (const m of html.matchAll(/<script(?![^>]*type="text\/plain")[^>]*>([\s\S]*?)<\/script>/g)) {
-    try { new vm.Script(m[1]); } catch (e) { console.error('Build stopped: a script does not compile:', e.message); process.exit(1); }
-  }
-}
 fs.mkdirSync(R('dist'), { recursive: true });
 // for claude.ai: no <html>/<head> of its own — the platform adds them
 fs.writeFileSync(R('dist/artifact.html'), html);

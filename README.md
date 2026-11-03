@@ -9,17 +9,9 @@ It runs in the browser with no server and no third-party dependencies.
 **User guide:** [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (Russian: [docs/USER_GUIDE.ru.md](docs/USER_GUIDE.ru.md)).
 Project rules: [docs/PROJECT_RULES.md](docs/PROJECT_RULES.md). Plans: [docs/TODO.md](docs/TODO.md).
 
-## Online
-
-Every push to `main` publishes the page on GitHub Pages (`.github/workflows/pages.yml`): the site's
-`index.html` is `dist/lgv.html`, so LGV opens by its address with nothing to download. Data never
-go to GitHub: the page reads files from the user's computer or the links the user gives. To switch it
-on once: repository Settings → Pages → Source: **GitHub Actions** (a private repository needs a paid
-GitHub plan for Pages; the published page itself is public, and it contains LGV's whole code).
-
 ## Run
 
-Open the online address or `dist/lgv.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38 reference
+Open `dist/lgv.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38 reference
 (synthetic demo data when offline). To view your own data, press **Open**:
 
 - **From disk**: choose one or more `.bam` files with their indexes (you can add `.fa` +
@@ -59,7 +51,7 @@ More languages are one dictionary in `src/i18n.js`.
 | F5 Go to coordinate | done, contig names case-insensitive (chr1 = Chr1 = 1); drag on the ruler to zoom to a region, click it to center; **gene search**: a gene symbol, an ENST or NM id (MANE), with suggestions while typing; several genes or loci separated by spaces open side by side |
 | Chromosome map | across the top: the chromosome of each panel with GRCh38 bands and centromere (plain bar for other genomes), a red box where each panel is (numbered like the panel headers); click or drag to move the active panel |
 | Strand | the 3' end of every read is pointed, as in IGV, so the strand shows under any coloring |
-| Annotation tracks | BED, bedGraph, VCF, GTF, GFF3 (plain, gzip or bgzip) and TDF (read by region, any scale) from disk or a link: bands under the gene track; click a feature for its details; a switch per track type hides all its tracks (BAM off: no reads read, whole chromosomes open at once) |
+| Annotation tracks | BED, bedGraph, VCF, GTF, GFF3 (plain, gzip or bgzip) from disk or a link: bands under the gene track; click a feature for its details |
 | Genes | **MANE track** (GRCh38): MANE Select and Plus Clinical transcripts under the reference — coding exons thick, UTRs thin, strand arrows, exon numbers when zoomed in; click a transcript for its ids, span and the exon or intron at that position. Bundled with LGV (MANE v1.2), works offline |
 | Start | GRCh38 opens by default (View → "At start open": hg38, hg19, T2T, demo or nothing); without a connection the demo opens instead |
 | F6 No hard window limit | windows load on their own up to 64 MB of compressed data, larger on request; downsampling keeps deep regions fast; isolated sequencing errors fade when zoomed out |

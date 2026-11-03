@@ -57,7 +57,7 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .file { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
 .status { color: var(--muted); font: 11px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; font-variant-numeric: tabular-nums; }
 @media (max-width: 900px) { .status, .file { display: none; } .locus { flex: 0 1 auto; } }
-@media (max-width: 560px) { #span, #examples, #snapBtn, #copyLink, #navBack, #navFwd, #typeChips { display: none; } #locus { flex-basis: 180px; } }
+@media (max-width: 560px) { #span, #examples, #snapBtn, #copyLink, #navBack, #navFwd { display: none; } #locus { flex-basis: 180px; } }
 
 #stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; cursor: default; user-select: none; -webkit-user-select: none; }
 #stage.drop::after { content: attr(data-drop-text); position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: grid; place-items: center; color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--bg) 80%, transparent); }
@@ -103,8 +103,6 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .navs { display: inline-flex; gap: 2px; flex: none; }
 .btn.icon { width: 28px; padding: 0; font-size: 15px; line-height: 1; }
 .btn:disabled { opacity: .4; cursor: default; }
-.btn.chip { height: 24px; padding: 0 7px; font-size: 11.5px; color: var(--muted); }
-.btn.chip.on { color: var(--fg); border-color: var(--muted); }
 .card .card-x { margin-left: auto; height: 24px; width: 28px; padding: 0; font-size: 15px; line-height: 1; flex: none; }
 .card .seg .btn { height: 24px; font-size: 12px; border-radius: 0; }
 .card .seg .btn:first-child { border-radius: 6px 0 0 6px; } .card .seg .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
@@ -159,7 +157,6 @@ body.bare .side { top: 0; }
     <button class="btn" id="goBtn" data-i18n-title="tip.go" data-i18n="btn.go">Go</button>
     <span class="navs"><button class="btn icon" id="navBack" data-i18n-title="nav.back" title="Back">←</button><button class="btn icon" id="navFwd" data-i18n-title="nav.fwd" title="Forward">→</button><button class="btn icon" id="zoomOut" data-i18n-title="nav.zoomOut" title="Zoom out (all panels)">−</button><button class="btn icon" id="zoomIn" data-i18n-title="nav.zoomIn" title="Zoom in (all panels)">+</button></span>
     <span class="navs"><button class="btn" id="snapBtn" data-i18n="btn.snap" data-i18n-title="tip.snap">PNG</button><button class="btn" id="copyLink" data-i18n="btn.link" data-i18n-title="tip.link">Link</button></span>
-    <span class="navs chips" id="typeChips"></span>
     <span id="span"></span>
   </div>
   <select id="examples" class="btn" data-i18n-aria="examples" aria-label="Examples" hidden>
@@ -193,7 +190,7 @@ body.bare .side { top: 0; }
     <section>
       <h2 data-i18n="open.disk">From disk</h2>
       <label class="drop-zone" for="pickFiles"><strong data-i18n="open.pick">Choose .bam and .bai</strong><span data-i18n="open.pickSub">you can add .fa and .fai</span><span data-i18n="open.pickDrop">or drop files onto the screen</span></label>
-      <input id="pickFiles" type="file" multiple accept=".bam,.bai,.cram,.crai,.fa,.fasta,.fna,.gz,.fai,.gzi,.bed,.bedgraph,.bg,.vcf,.gtf,.gff,.gff3,.narrowpeak,.broadpeak,.tdf" hidden>
+      <input id="pickFiles" type="file" multiple accept=".bam,.bai,.cram,.crai,.fa,.fasta,.fna,.gz,.fai,.gzi,.bed,.bedgraph,.bg,.vcf,.gtf,.gff,.gff3,.narrowpeak,.broadpeak" hidden>
       <div class="row-actions"><label class="btn" for="pickFolder" data-i18n="open.folder">Choose a folder</label></div>
       <input id="pickFolder" type="file" webkitdirectory multiple hidden>
       <p class="hint" data-i18n="open.indexHint"></p>

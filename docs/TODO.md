@@ -26,9 +26,6 @@ Ideas and agreed work for later. Items move to the user guide and README when do
 
 ## Annotation tracks, next steps
 
-- CNVpytor `.pytor` (HDF5): needs an HDF5 reader — a reviewed, fuzzed copy of an existing JavaScript
-  reader (as with htscodecs) or our own minimal one; a real `.pytor` file is needed to test.
-
 - Large indexed files read in pieces: VCF / BED with tabix `.tbi` / `.csi`, bigBed, bigWig (now: whole
   file in memory, up to 512 MB).
 - VCF: more than 8 genotype rows (scrolling), coloring by allele frequency.

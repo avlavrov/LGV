@@ -17,7 +17,7 @@ This guide describes LGV as it is now and is updated with every change. Russian 
 5. [Several regions side by side](#5-several-regions-side-by-side)
 6. [Chromosome map](#6-chromosome-map)
 7. [Genes (MANE)](#7-genes-mane)
-7a. [Your own tracks: BED, bedGraph, VCF, GTF, GFF3, TDF](#7a-your-own-tracks-bed-bedgraph-vcf-gtf-gff3-tdf)
+7a. [Your own tracks: BED, bedGraph, VCF, GTF, GFF3](#7a-your-own-tracks-bed-bedgraph-vcf-gtf-gff3)
 8. [Coverage](#8-coverage)
 9. [Reads: how they are drawn](#9-reads-how-they-are-drawn)
 10. [Read details](#10-read-details)
@@ -55,8 +55,9 @@ From top to bottom:
 - **Ruler** and **reference sequence**: coordinates are 1-based. The reference shows as
   colored blocks, and as letters when zoomed in far enough.
 - **Gene track**: MANE transcripts (section 7).
-- **Samples**: each with its coverage and its reads. A small label at the top of each sample's reads
-  names it (file and sample; it may cover a row or two), with × at the right to close it.
+- **Samples**: each with its coverage and its reads. With several samples, a small label at the top
+  of each sample's reads names it (file and sample; it may cover a row or two), with × at the right
+  to close it.
 
 The interface is kept compact on purpose: as much of the screen as possible goes to data.
 Explanations are kept out of the way, as **tooltips**: rest the pointer on a button, a setting, a
@@ -82,9 +83,6 @@ Press **Open**.
 - **Choose a folder**: every sample in it is found and paired with its index. A folder with several
   samples first shows a list to pick from (the first four are ticked).
 - **Drag and drop** files or a folder onto the screen works the same way.
-
-In Chrome and Edge every file and folder picker opens in the folder used last (until the page is
-closed), since data usually lie in the same place.
 
 Opening the same file twice does nothing: it is already open.
 
@@ -168,14 +166,12 @@ leave the computer.
   27`, `(UTR)`, or `intron 3 of 26`. **Show whole gene** zooms to it; **Copy** copies the text.
 - The track shows only when the coordinates are GRCh38; it can be turned off in **View**.
 
-## 7a. Your own tracks: BED, bedGraph, VCF, GTF, GFF3, TDF
+## 7a. Your own tracks: BED, bedGraph, VCF, GTF, GFF3
 
 Annotation files open the same way as samples — **Open → From disk** (choose, drop, or together with
 samples), or **By link** — and are recognized by their name: `.bed` (also `.narrowPeak`,
 `.broadPeak`), `.bedgraph` / `.bg`, `.vcf`, `.gtf`, `.gff` / `.gff3`, each also as `.gz` (gzip or
-bgzip). No index is needed: the file is read whole (up to 512 MB unpacked). `.tdf` files (coverage
-at several zoom levels) are not read whole: only the parts for the region on screen, at the zoom
-that fits it.
+bgzip). No index is needed: the file is read whole (up to 512 MB unpacked).
 
 They appear as bands under the gene track, in the order opened, fixed while the samples scroll.
 Each band starts with a thin line holding its file name, and × at the right closes it. Contig
@@ -185,8 +181,8 @@ names match with or without `chr`.
   thick part as coding, a strand gives arrows (or a pointed end), `itemRgb` colors a feature.
 - **GTF / GFF3**: exons and CDS are grouped into transcripts (by `transcript_id` or `Parent`) and drawn
   like the gene track; lines without exons (repeats, regions) are drawn as they are.
-- **bedGraph** and **TDF**: a bar chart; the scale (largest visible value, `±` when there are
-  negative values) is on the name line. A TDF is shown at any scale, a whole chromosome included.
+- **bedGraph**: a bar chart; the scale (largest visible value, `±` when there are negative values) is
+  on the name line.
 - **VCF**: a mark per variant (red; gray when FILTER is not PASS), and under it a row per sample,
   up to 8 samples, with the sample name: light gray = homozygous reference, blue = heterozygous,
   cyan = homozygous alternative, outline only = no call. With more samples the name line says how
@@ -197,15 +193,6 @@ names match with or without `chr`.
   each sample's FORMAT fields (up to 30 samples).
 - Lines that cannot be read are skipped and counted: a message says how many.
 - Tracks stay open when another reference is loaded (they are positions, not reads).
-
-**Track type switches.** When an annotation track is open, the top bar holds a switch per open
-kind — `✓ BAM 3`, `✓ VCF`, `✓ BED`, `✓ GFF`, `✓ bedGraph`, `✓ TDF` (BAM covers CRAM; the number is
-how many samples). A click hides every track of that kind, in all panels, and a second click brings
-them back as they were. With BAM off no reads are read at all, so a whole chromosome opens at once
-and the other tracks — a BED of regions with loss of heterozygosity, say — can be looked at on
-that scale. Opening a new sample turns BAM back on.
-
-CNVpytor files (`.pytor`) are planned.
 
 ## 8. Coverage
 
