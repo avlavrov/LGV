@@ -53,9 +53,9 @@ body.bare .bar { display: none; }
 .mark { font: 700 13px/1 var(--mono); letter-spacing: .06em; color: var(--accent); flex: none; border: 0; background: none; padding: 4px 2px; cursor: pointer; }
 .about-ver { font-weight: 600; }
 .about-list { margin: 4px 0 8px; padding-left: 18px; font-size: 12.5px; line-height: 1.45; }
-.locus { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 390px; }
+.locus { display: flex; align-items: center; gap: 6px; min-width: 0; flex: none; }
 .locus input { min-width: 0; }
-#locus { width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#locus { flex: 0 1 300px; width: 300px; min-width: 140px; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 #span { color: var(--muted); font: 11.5px var(--mono); white-space: nowrap; }
 .btn { height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; white-space: nowrap; }
 .btn:hover { border-color: var(--muted); }
@@ -65,8 +65,8 @@ body.bare .bar { display: none; }
 select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .file { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
 .status { color: var(--muted); font: 11px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; font-variant-numeric: tabular-nums; }
-@media (max-width: 900px) { .status, .file { display: none; } }
-@media (max-width: 560px) { #span, #examples { display: none; } .locus { flex-basis: 200px; } }
+@media (max-width: 900px) { .status, .file { display: none; } .locus { flex: 0 1 auto; } }
+@media (max-width: 560px) { #span, #examples, #snapBtn, #copyLink, #navBack, #navFwd { display: none; } #locus { flex-basis: 180px; } }
 
 #stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; cursor: default; user-select: none; -webkit-user-select: none; }
 #stage.drop::after { content: attr(data-drop-text); position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: grid; place-items: center; color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--bg) 80%, transparent); }
@@ -7277,7 +7277,7 @@ function saveSnapshot() {
 $('snapBtn').onclick = saveSnapshot;
 
 // ======================= About =======================
-const LGV_INFO = { version: '0.9.0', build: '2026-11-02' };
+const LGV_INFO = { version: '0.9.0', build: '2026-11-03' };
 function showAbout() {
   const el = $('aboutBody'), v = LGV_INFO.build.startsWith('__') ? '' : ' · ' + LGV_INFO.build;
   el.replaceChildren();
