@@ -26,8 +26,11 @@ Ideas and agreed work for later. Items move to the user guide and README when do
 
 ## Annotation tracks, next steps
 
-- Large indexed files read in pieces: VCF / BED with tabix `.tbi` / `.csi`, bigBed, bigWig (now: whole
-  file in memory, up to 512 MB).
+- Large indexed files read in pieces: VCF / BED with tabix `.tbi` / `.csi`, bigBed (now: whole file in
+  memory, up to 512 MB). TDF and bigWig are read in pieces (done).
+- Signal tracks: a TDF whole-genome view (its `/All` datasets); bigWig settings from a track hub or a
+  track line given with the link; overlaying several rows in one (UCSC multiWig); a scale shared by
+  the rows of a file.
 - VCF: more than 8 genotype rows (scrolling), coloring by allele frequency.
 - Tracks in the display profile / share link.
 

@@ -88,6 +88,7 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .vthumb { position: absolute; left: 1px; right: 1px; border-radius: 4px; background: var(--muted); opacity: .45; cursor: grab; touch-action: none; }
 .vbar:hover .vthumb, .vthumb:active { opacity: .8; }
 .ctx .msep { border-top: 1px solid var(--line); margin: 3px 2px; }
+.ctx .ms:first-child { border-top: 0; margin-top: 0; }
 .mi { display: flex; align-items: center; gap: 6px; text-align: left; border: 0; background: none; padding: 2px 10px 2px 6px; line-height: 1.25; border-radius: 5px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
 .mi:disabled { opacity: .45; cursor: default; background: none; }
 .mi:hover:not(:disabled), .mi:focus-visible { background: color-mix(in srgb, var(--accent) 14%, transparent); outline: none; }
@@ -199,7 +200,7 @@ body.bare .side { top: 0; }
     <section>
       <h2 data-i18n="open.disk">From disk</h2>
       <label class="drop-zone" for="pickFiles"><strong data-i18n="open.pick">Choose .bam and .bai</strong><span data-i18n="open.pickSub">you can add .fa and .fai</span><span data-i18n="open.pickDrop">or drop files onto the screen</span></label>
-      <input id="pickFiles" type="file" multiple accept=".bam,.bai,.cram,.crai,.fa,.fasta,.fna,.gz,.fai,.gzi,.bed,.bedgraph,.bg,.vcf,.gtf,.gff,.gff3,.narrowpeak,.broadpeak" hidden>
+      <input id="pickFiles" type="file" multiple accept=".bam,.bai,.cram,.crai,.fa,.fasta,.fna,.gz,.fai,.gzi,.bed,.bedgraph,.bg,.vcf,.gtf,.gff,.gff3,.narrowpeak,.broadpeak,.tdf,.bw,.bigwig" hidden>
       <div class="row-actions"><label class="btn" for="pickFolder" data-i18n="open.folder">Choose a folder</label></div>
       <input id="pickFolder" type="file" webkitdirectory multiple hidden>
       <p class="hint" data-i18n="open.indexHint"></p>
@@ -330,7 +331,7 @@ const STRINGS = {
     'ex.del3k': '3 kb deletion', 'ex.repeat': 'Segmental duplication, MAPQ 0', 'ex.chim': 'Mates on another contig', 'ex.whole': 'Whole contig',
     'btn.go': 'Go', 'btn.open': 'Open', 'btn.view': 'View', 'btn.close': 'Close', 'btn.toolbar': 'Toolbar (H)',
     'open.title': 'Open data',
-    'open.disk': 'From disk', 'open.pick': 'Choose .bam / .cram with their indexes', 'open.pickSub': 'you can add a .fa / .fasta reference and tracks: BED, bedGraph, VCF, GTF, GFF3', 'open.pickDrop': 'or drop files onto the screen',
+    'open.disk': 'From disk', 'open.pick': 'Choose .bam / .cram with their indexes', 'open.pickSub': 'you can add a .fa / .fasta reference and tracks: BED, bedGraph, VCF, GTF, GFF3, TDF, bigWig', 'open.pickDrop': 'or drop files onto the screen',
     'open.diskHint': 'Files are read in pieces straight from disk and are never uploaded.',
     'open.url': 'By link', 'open.urlBai': 'Index (if not next to the BAM)',
     'open.folder': 'Choose a folder', 'open.indexHint': 'Each .bam or .cram is paired with its index by name (sample.bam.bai or sample.bai, sample.cram.crai or sample.crai). Choose several samples at once, or a whole folder: a web page can read only the files you choose, so for the index to be found it has to be chosen too.',
@@ -437,6 +438,15 @@ const STRINGS = {
     'err.headerCut': 'The BAM header is cut short — the file is incomplete', 'err.headerBig': 'The BAM header is too large',
     'err.fai': 'Empty or invalid FASTA index (.fai)', 'err.gzi': 'Invalid .gzi index', 'err.needGzi': 'A compressed .fa.gz needs its .gzi index',
     'err.faIrregular': 'Sequence {name} has lines of different lengths, so it cannot be indexed. Rewrap it to a fixed width, e.g. with seqkit seq -w 60.', 'err.faEmpty': 'No sequences found — is this a FASTA file?',
+    'tip.signal': 'Signal track: click for the values here; right-click to choose how it is drawn',
+    'sig.loading': 'loading…', 'sig.failed': 'could not be read', 'sig.noContig': 'no data for this contig', 'sig.tooMuch': 'zoom in: too much data at this scale',
+    'sig.summary': '{what} per {bp} window', 'sig.wf.max': 'maximum', 'sig.wf.min': 'minimum', 'sig.wf.mean': 'mean', 'sig.wf.whiskers': 'mean + whiskers', 'sig.wf.range': 'range',
+    'sig.mean': 'Mean', 'sig.min': 'Minimum', 'sig.max': 'Maximum', 'sig.bases': 'Bases with data', 'sig.nearest': 'Nearest value', 'sig.column': 'Pixel column',
+    'sig.graph': 'Draw as', 'sig.g.bar': 'Bars', 'sig.g.points': 'Points', 'sig.g.line': 'Line', 'sig.g.heatmap': 'Heatmap',
+    'sig.windowing': 'Windowing function', 'sig.scale': 'Scale', 'sig.s.auto': 'Auto (values in view)', 'sig.s.01': '0 – 1', 'sig.s.file': 'From the file ({lo} – {hi})',
+    'sig.zero': 'Always include zero', 'sig.log': 'Log scale: ln(1 + x)', 'sig.height': 'Row height', 'sig.h.less': 'Lower', 'sig.h.more': 'Higher', 'sig.reset': 'Back to the file’s settings',
+    'err.tdfBad': 'The TDF file is damaged or not TDF: {what}', 'err.bwBad': 'The bigWig file is damaged or not bigWig: {what}', 'err.bwBigBed': '{name} is a bigBed file (features); LGV reads bigWig (values) from this family',
+    'err.trackFormat': 'Unknown track format: {name}. LGV reads BED, bedGraph, VCF, GTF, GFF3, TDF and bigWig', 'err.trackEmpty': 'No features found in {name}', 'err.trackBig': '{name} is larger than LGV reads at once ({size})', 'err.trackMany': '{name} has more than {n} features',
   },
   ru: {
     'locus.aria': 'Локус: контиг:начало-конец',
@@ -445,7 +455,7 @@ const STRINGS = {
     'ex.del3k': 'Делеция 3 т.п.н.', 'ex.repeat': 'Сегментный повтор, MAPQ 0', 'ex.chim': 'Мейты на другом контиге', 'ex.whole': 'Весь контиг',
     'btn.go': 'Перейти', 'btn.open': 'Открыть', 'btn.view': 'Вид', 'btn.close': 'Закрыть', 'btn.toolbar': 'Панель (H)',
     'open.title': 'Открыть данные',
-    'open.disk': 'С диска', 'open.pick': 'Выберите .bam / .cram с индексами', 'open.pickSub': 'можно добавить референс .fa / .fasta и дорожки: BED, bedGraph, VCF, GTF, GFF3', 'open.pickDrop': 'или перетащите файлы на экран',
+    'open.disk': 'С диска', 'open.pick': 'Выберите .bam / .cram с индексами', 'open.pickSub': 'можно добавить референс .fa / .fasta и дорожки: BED, bedGraph, VCF, GTF, GFF3, TDF, bigWig', 'open.pickDrop': 'или перетащите файлы на экран',
     'open.diskHint': 'Файлы читаются кусками прямо с диска и никуда не отправляются.',
     'open.url': 'По ссылке', 'open.urlBai': 'Индекс (если не рядом с BAM)',
     'open.folder': 'Выбрать папку', 'open.indexHint': 'Каждый .bam или .cram сопоставляется со своим индексом по имени (sample.bam.bai или sample.bai, sample.cram.crai или sample.crai). Выберите сразу несколько образцов или целую папку: веб-страница может читать только выбранные вами файлы, поэтому индекс тоже нужно выбрать.',
@@ -553,6 +563,15 @@ const STRINGS = {
     'err.headerCut': 'Заголовок BAM обрывается — файл неполный', 'err.headerBig': 'Слишком большой заголовок BAM',
     'err.fai': 'Пустой или неверный индекс FASTA (.fai)', 'err.gzi': 'Неверный индекс .gzi', 'err.needGzi': 'Для сжатого .fa.gz нужен индекс .gzi',
     'err.faIrregular': 'В последовательности {name} строки разной длины, её нельзя проиндексировать. Переформатируйте файл на строки одной длины, например seqkit seq -w 60.', 'err.faEmpty': 'Последовательности не найдены — это точно FASTA?',
+    'tip.signal': 'Дорожка значений: клик — значения в этом месте; правый клик — как её рисовать',
+    'sig.loading': 'загрузка…', 'sig.failed': 'не удалось прочитать', 'sig.noContig': 'нет данных для этого контига', 'sig.tooMuch': 'приблизьте: на этом масштабе слишком много данных',
+    'sig.summary': '{what} по окнам {bp}', 'sig.wf.max': 'максимум', 'sig.wf.min': 'минимум', 'sig.wf.mean': 'среднее', 'sig.wf.whiskers': 'среднее с разбросом', 'sig.wf.range': 'диапазон',
+    'sig.mean': 'Среднее', 'sig.min': 'Минимум', 'sig.max': 'Максимум', 'sig.bases': 'Оснований с данными', 'sig.nearest': 'Ближайшее значение', 'sig.column': 'Столбец экрана',
+    'sig.graph': 'Рисовать', 'sig.g.bar': 'Столбиками', 'sig.g.points': 'Точками', 'sig.g.line': 'Линией', 'sig.g.heatmap': 'Тепловой картой',
+    'sig.windowing': 'Оконная функция', 'sig.scale': 'Шкала', 'sig.s.auto': 'Авто (по видимым значениям)', 'sig.s.01': '0 – 1', 'sig.s.file': 'Из файла ({lo} – {hi})',
+    'sig.zero': 'Всегда включать ноль', 'sig.log': 'Логарифмическая: ln(1 + x)', 'sig.height': 'Высота ряда', 'sig.h.less': 'Ниже', 'sig.h.more': 'Выше', 'sig.reset': 'Вернуть настройки файла',
+    'err.tdfBad': 'Файл TDF повреждён или это не TDF: {what}', 'err.bwBad': 'Файл bigWig повреждён или это не bigWig: {what}', 'err.bwBigBed': '{name} — файл bigBed (объекты); из этого семейства LGV читает bigWig (значения)',
+    'err.trackFormat': 'Неизвестный формат дорожки: {name}. LGV читает BED, bedGraph, VCF, GTF, GFF3, TDF и bigWig', 'err.trackEmpty': 'В {name} не найдено объектов', 'err.trackBig': '{name} больше, чем LGV читает за раз ({size})', 'err.trackMany': 'В {name} больше {n} объектов',
   },
 };
 const LANGS = [['en', 'English'], ['ru', 'Русский']];
@@ -563,7 +582,8 @@ function t(key, vars) {
   if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
   return s;
 }
-function errText(e) { return e && e.code ? t('err.' + e.code, e.vars) : (e && e.message) || String(e); }
+// a code without a translation shows the reader's own English text (it is never the bare key)
+function errText(e) { return e && e.code && ('err.' + e.code) in STRINGS.en ? t('err.' + e.code, e.vars) : (e && e.message) || String(e); }
 // Apply translations to static markup: data-i18n (text), -ph (placeholder), -aria (aria-label), -title.
 function applyI18n(root) {
   document.documentElement.lang = LANG;
@@ -4511,7 +4531,7 @@ if (typeof contigKey === 'undefined' && typeof require !== 'undefined') Object.a
 
 const TRACK_LIMITS = { bytes: 512 << 20, features: 5000000, blocks: 10000, samples: 100000 };
 Object.assign(CGV_ERR_EN, {
-  trackFormat: 'Unknown annotation format: {name}. LGV reads BED, bedGraph, VCF, GTF and GFF3',
+  trackFormat: 'Unknown track format: {name}. LGV reads BED, bedGraph, VCF, GTF, GFF3, TDF and bigWig',
   trackEmpty: 'No features found in {name}',
   trackBig: '{name} is larger than LGV reads at once ({size})',
   trackMany: '{name} has more than {n} features',
@@ -4527,7 +4547,7 @@ function trackKind(name) {
   if (/\.(gff|gff3)$/.test(n)) return 'gff';
   return null;
 }
-const isTrackFile = name => !!trackKind(name);
+const isTrackFile = name => !!trackKind(name) || /\.(tdf|bw|bigwig)$/i.test(String(name)); // signal files: src/signal.js
 
 // Whole, plain-number coordinate (no signs, decimals or exponents); -1 when it is not one.
 const intField = s => /^\d{1,12}$/.test(s) ? +s : -1;
@@ -4712,6 +4732,537 @@ async function loadTrack(src) {
 }
 
 if (typeof module !== 'undefined') module.exports = { gunzipTrack, TRACK_LIMITS, trackKind, isTrackFile, FeatureIndex, parseBed, parseBedGraph, parseVcf, vcfGenotype, vcfInfo, parseGtfGff, loadTrack };
+
+// LGV: signal tracks — numeric values along the genome, read by region with range reads:
+//  - TDF, the tiled format written by igvtools. There is no published specification; the layout here
+//    is the one IGV itself reads and writes (header, master index, datasets, groups, tiles).
+//  - bigWig, the UCSC format (Kent et al., Bioinformatics 2010; kent/src/inc/bbiFile.h): header, zoom
+//    levels of summaries, chromosome B+ tree, R tree index, data sections; either byte order.
+// How a track is drawn follows its UCSC track line (wiggle_0 settings) where the file has one: a TDF
+// keeps the line of the wiggle or bedGraph it was made from; a bigWig has none of its own.
+//
+// Safety (see SECURITY.md): every count, offset and size is checked against the bytes actually read
+// before use; blocks are capped before and after decompression; tree walks are capped in depth and
+// nodes; one view never reads more than a fixed number of bytes of full-resolution data, less over
+// a network (coarser data is used instead), so a large file cannot keep the page busy.
+'use strict';
+if (typeof contigKey === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./core.js'));
+
+const SIG_LIMITS = {
+  header: 16 << 20, index: 64 << 20, block: 64 << 20, string: 100000, items: 1e8, depth: 24, nodes: 100000,
+  chroms: 1000000, viewBytes: 16 << 20, viewBytesUrl: 4 << 20, viewBlocks: 3000, rawTiles: 400, cacheBytes: 192 << 20, queue: 64, parallel: 6, tracks: 10000,
+};
+Object.assign(CGV_ERR_EN, {
+  tdfBad: 'The TDF file is damaged or not TDF: {what}',
+  bwBad: 'The bigWig file is damaged or not bigWig: {what}',
+  bwBigBed: '{name} is a bigBed file (features); LGV reads bigWig (values) from this family',
+});
+
+// ---- binary reading with bounds checks ----
+class SigBin {
+  constructor(u8, le, code) { this.u8 = u8; this.dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength); this.p = 0; this.le = le !== false; this.code = code || 'tdfBad'; }
+  bad(what) { return new CgvError(this.code, { what }); }
+  need(n) { if (!(n >= 0) || this.p + n > this.u8.length) throw this.bad('cut short'); }
+  get left() { return this.u8.length - this.p; }
+  u8v() { this.need(1); return this.u8[this.p++]; }
+  u16() { this.need(2); const v = this.dv.getUint16(this.p, this.le); this.p += 2; return v; }
+  i32() { this.need(4); const v = this.dv.getInt32(this.p, this.le); this.p += 4; return v; }
+  u32() { this.need(4); const v = this.dv.getUint32(this.p, this.le); this.p += 4; return v; }
+  f32() { this.need(4); const v = this.dv.getFloat32(this.p, this.le); this.p += 4; return v; }
+  f64() { this.need(8); const v = this.dv.getFloat64(this.p, this.le); this.p += 8; return v; }
+  // 64-bit offset or count as a Number; -1 for a negative (TDF: an empty tile); larger than 2^53 is damage
+  i64() {
+    this.need(8);
+    const a = this.dv.getUint32(this.p, this.le), b = this.dv.getUint32(this.p + 4, this.le); this.p += 8;
+    const lo = this.le ? a : b, hi = this.le ? b : a;
+    if (hi & 0x80000000) return -1;
+    if (hi > 0x1fffff) throw this.bad('an offset is too large');
+    return hi * 4294967296 + lo;
+  }
+  str() {
+    let e = this.p; const L = this.u8.length, max = Math.min(L, this.p + SIG_LIMITS.string);
+    while (e < max && this.u8[e] !== 0) e++;
+    if (e >= max) throw this.bad('a text field does not end');
+    const s = new TextDecoder().decode(this.u8.subarray(this.p, e)); this.p = e + 1; return s;
+  }
+  fixedStr(n) { this.need(n); let e = this.p; while (e < this.p + n && this.u8[e] !== 0) e++; const s = new TextDecoder().decode(this.u8.subarray(this.p, e)); this.p += n; return s; }
+  // a count of items of `each` bytes that must fit in what is left
+  count(each, max, what, v) { const n = v === undefined ? this.i32() : v; if (!(n >= 0) || n > max || (each && n * each > this.left)) throw this.bad(what || 'a count is out of range'); return n; }
+}
+
+// ---- UCSC track line (wiggle_0 settings; https://genome.ucsc.edu/goldenpath/help/wiggle.html and
+// bigWig.html). Only known keys are kept, each checked; anything else is ignored. ----
+const onOff = v => /^on$/i.test(v) ? true : /^off$/i.test(v) ? false : undefined;
+function parseTrackLine(line) {
+  const out = {}, raw = {};
+  let s = String(line || '').slice(0, 20000).trim();
+  if (/^track\b/i.test(s)) s = s.slice(5);
+  const re = /([A-Za-z_][\w.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/g;
+  let m, n = 0;
+  while ((m = re.exec(s)) && n++ < 200) raw[m[1]] = (m[2] ?? m[3] ?? m[4] ?? '').slice(0, 1000);
+  const num = v => (v !== undefined && v !== '' && isFinite(+v) ? +v : undefined);
+  const range = v => { const p = String(v || '').split(':'); const a = num(p[0]), b = num(p[1]); return p.length === 2 && a !== undefined && b !== undefined && b > a ? [a, b] : undefined; };
+  const rgb = v => { if (!/^\d{1,3},\d{1,3},\d{1,3}$/.test(v || '')) return undefined; const c = v.split(',').map(Number); return c.every(x => x <= 255) ? c : undefined; };
+  if (raw.name) out.name = raw.name;
+  if (raw.description) out.description = raw.description;
+  const g = String(raw.graphType || '').toLowerCase();
+  if (['bar', 'points', 'line', 'heatmap'].includes(g)) out.graphType = g; // UCSC: bar, points; line and heatmap as IGV adds them
+  if (/^(full|dense|hide|pack|squish)$/i.test(raw.visibility || '')) out.visibility = raw.visibility.toLowerCase();
+  const vl = range(raw.viewLimits); if (vl) out.viewLimits = vl;
+  for (const k of ['autoScale', 'alwaysZero', 'gridDefault', 'yLineOnOff']) { const v = onOff(raw[k]); if (v !== undefined) out[k] = v; }
+  if (num(raw.yLineMark) !== undefined) out.yLineMark = num(raw.yLineMark);
+  if (raw.maxHeightPixels) { const p = raw.maxHeightPixels.split(':').map(Number); const d = p.length === 3 ? p[1] : p[0]; if (d >= 4 && d <= 1000) out.height = Math.round(d); }
+  const wf = String(raw.windowingFunction || '').toLowerCase();
+  if (['mean+whiskers', 'maximum', 'mean', 'minimum'].includes(wf)) out.windowing = wf;
+  const sw = String(raw.smoothingWindow || '').toLowerCase();
+  if (sw === 'off') out.smoothing = 0; else if (num(sw) >= 2 && num(sw) <= 16) out.smoothing = Math.round(num(sw));
+  const tf = String(raw.transformFunc || '').toUpperCase(); if (tf === 'LOG' || tf === 'NONE') out.log = tf === 'LOG';
+  const c = rgb(raw.color); if (c) out.color = c;
+  const a = rgb(raw.altColor); if (a) out.altColor = a;
+  return out;
+}
+
+// ---- a cache of decoded blocks shared by all signal files, limited by bytes ----
+const SIG_CACHE = { map: new Map(), bytes: 0 };
+function sigCacheGet(k) { const v = SIG_CACHE.map.get(k); if (v) { SIG_CACHE.map.delete(k); SIG_CACHE.map.set(k, v); } return v; }
+function sigCachePut(k, v, bytes) {
+  SIG_CACHE.map.set(k, v); v._bytes = bytes; SIG_CACHE.bytes += bytes;
+  for (const [key, old] of SIG_CACHE.map) { if (SIG_CACHE.bytes <= SIG_LIMITS.cacheBytes) break; SIG_CACHE.map.delete(key); SIG_CACHE.bytes -= old._bytes; }
+}
+
+// A decoded block: positions and per-track values, all typed arrays.
+//   raw:     { start, end, v: [Float32Array per track], names? }
+//   summary: { start, end, s: { mean?, min?, max?, sd?, n? } each [Float32Array per track] }
+const blockBytes = b => b.start.byteLength * 2 + (b.v ? b.v.length * b.start.length * 4 : Object.keys(b.s).length * b.start.length * 4 * (b.ntr || 1));
+
+// Background loading shared by both formats: at most a few reads at a time; when the view moves on,
+// requests still waiting are dropped (they are asked for again if still needed).
+class SigLoader {
+  constructor(file) { this.file = file; this.queue = []; this.active = 0; this.pending = new Set(); }
+  // keys: what the job fills (one key, or the blocks of one read)
+  want(keys, job) {
+    if (typeof keys === 'string') keys = [keys];
+    if (this.file.failed || keys.some(k => this.pending.has(k))) return;
+    for (const k of keys) this.pending.add(k);
+    this.queue.push({ keys, job });
+    while (this.queue.length > SIG_LIMITS.queue) for (const k of this.queue.shift().keys) this.pending.delete(k);
+    this.pump();
+  }
+  pump() {
+    while (this.active < SIG_LIMITS.parallel && this.queue.length) {
+      const { keys, job } = this.queue.pop(); // newest first: what the view shows now
+      this.active++;
+      job().then(() => { this.active--; for (const k of keys) this.pending.delete(k); this.pump(); if (this.file.onData) this.file.onData(); },
+        e => { this.active--; this.file.failed = e; this.queue = []; this.pending.clear(); if (this.file.onData) this.file.onData(e); });
+    }
+  }
+  get busy() { return this.active > 0 || this.queue.length > 0; }
+}
+// Reads blocks that are not in the cache yet: blocks next to each other in the file come in one read
+// (up to 2 MB), so a view needs few reads, also over a network. items: { key, pos, size, decode(u8) }
+function sigFetch(file, items) {
+  items = items.filter(it => !file.loader.pending.has(it.key)).sort((x, y) => x.pos - y.pos);
+  let run = [];
+  const flush = () => {
+    if (!run.length) return;
+    const r = run; run = [];
+    const p0 = r[0].pos, p1 = r[r.length - 1].pos + r[r.length - 1].size;
+    file.loader.want(r.map(x => x.key), async () => {
+      const buf = await sigRead(file.src, p0, p1 - p0, Math.max(SIG_LIMITS.block, 2 << 20), file.code);
+      for (const it of r) { const blk = await it.decode(buf.subarray(it.pos - p0, it.pos - p0 + it.size)); sigCachePut(it.key, blk, blockBytes(blk)); }
+    });
+  };
+  for (const it of items) {
+    if (!(it.size > 0) || it.size > SIG_LIMITS.block) { file.failed = new CgvError(file.code, { what: 'a block is too large' }); return; }
+    const last = run[run.length - 1];
+    if (last && (it.pos < last.pos + last.size || it.pos - (last.pos + last.size) > 65536 || it.pos + it.size - run[0].pos > (2 << 20))) flush();
+    run.push(it);
+  }
+  flush();
+}
+
+const sigBudget = f => (f.src.url ? SIG_LIMITS.viewBytesUrl : SIG_LIMITS.viewBytes); // bytes of full-resolution data per view
+async function sigRead(src, pos, size, max, code, what) {
+  if (!(pos >= 0) || !(size >= 0) || size > max) throw new CgvError(code, { what: what || 'a block is too large' });
+  if (size === 0) return new Uint8Array(0);
+  const b = await src.read(pos, size);
+  if (b.length < size) throw new CgvError(code, { what: 'cut short' });
+  return b.length > size ? b.subarray(0, size) : b;
+}
+
+// ======================= TDF =======================
+// Header (little-endian): magic "TDF" (or "IBF"), version, index position (8), index size, header
+// size; then (version 2+) window functions; track type; track line; track names; (version 3+) genome
+// and flags (bit 0: tiles compressed with zlib). The master index lists datasets
+// ("/chr1/raw", "/chr1/z3/mean"; version 1 without the function) and groups ("/" holds chromosomes,
+// maxZoom and more). A dataset lists tiles; a tile is fixedStep, variableStep, bed or bedWithName
+// with one row of values per track. Zoom z of a contig has 2^z tiles of 700 bins.
+class TdfFile {
+  constructor(src) { this.src = src; this.name = src.name; this.format = 'tdf'; this.code = 'tdfBad'; this.ds = new Map(); this.loader = new SigLoader(this); this.id = ++TdfFile.seq; }
+  bad(what) { return new CgvError('tdfBad', { what }); }
+  async open() {
+    const h = await this.src.read(0, 24);
+    if (h.length < 24) throw this.bad('cut short');
+    const magic = String.fromCharCode(h[0], h[1], h[2]);
+    if (magic !== 'TDF' && magic !== 'IBF') throw this.bad('no TDF signature');
+    const r = new SigBin(h); r.p = 4;
+    this.version = r.i32();
+    const indexPos = r.i64(), indexSize = r.i32(), headerSize = r.i32();
+    if (this.version < 1 || this.version > 100) throw this.bad('version ' + this.version);
+    const hb = new SigBin(await sigRead(this.src, 24, headerSize, SIG_LIMITS.header, 'tdfBad', 'the header is too large'));
+    if (this.version >= 2) { const n = hb.count(1, 1000, 'window functions'); this.windowFunctions = []; for (let i = 0; i < n; i++) this.windowFunctions.push(hb.str()); }
+    else this.windowFunctions = ['mean'];
+    this.trackType = hb.str(); this.trackLine = hb.str().trim();
+    const nt = hb.count(1, SIG_LIMITS.tracks, 'track names'); this.trackNames = [];
+    for (let i = 0; i < nt; i++) this.trackNames.push(hb.str());
+    if (!nt) throw this.bad('no tracks');
+    if (this.version > 2) { this.genomeId = hb.str(); this.compressed = (hb.i32() & 1) !== 0; } else this.compressed = false;
+    const ix = new SigBin(await sigRead(this.src, indexPos, indexSize, SIG_LIMITS.index, 'tdfBad', 'the index is too large'));
+    this.dsIndex = new Map(); this.grIndex = new Map();
+    for (const map of [this.dsIndex, this.grIndex]) {
+      const n = ix.count(13, SIG_LIMITS.items, 'index');
+      for (let i = 0; i < n; i++) { const k = ix.str(); map.set(k, { pos: ix.i64(), size: ix.i32() }); }
+    }
+    this.root = (await this.group('/')) || {};
+    this.maxZoom = /^-?\d+$/.test(this.root.maxZoom || '') ? +this.root.maxZoom : -1;
+    // contigs: from the root group and from dataset names, matched as LGV matches names (chr7 = 7)
+    this.chrs = new Map();
+    const addChr = c => { if (c && c.toLowerCase() !== 'all' && !this.chrs.has(contigKey(c))) this.chrs.set(contigKey(c), c); };
+    for (const c of String(this.root.chromosomes || '').split(',')) addChr(c);
+    for (const k of this.dsIndex.keys()) addChr(k.split('/')[1]);
+    this.props = parseTrackLine(this.trackLine);
+    this.tracks = this.trackNames.slice();
+    return this;
+  }
+  async group(name) {
+    const e = this.grIndex.get(name); if (!e) return null;
+    const r = new SigBin(await sigRead(this.src, e.pos, e.size, SIG_LIMITS.header, 'tdfBad'));
+    const g = Object.create(null), n = r.count(2, 100000, 'group');
+    for (let i = 0; i < n; i++) { const k = r.str(); g[k] = r.str(); }
+    return g;
+  }
+  // dataset: attributes, data type, tile width, tile positions and sizes; null when there is none
+  dataset(name) {
+    if (this.ds.has(name)) return this.ds.get(name);
+    const e = this.dsIndex.get(name);
+    if (!e) { this.ds.set(name, null); return null; }
+    this.loader.want('ds:' + name, async () => {
+      const r = new SigBin(await sigRead(this.src, e.pos, e.size, SIG_LIMITS.index, 'tdfBad'));
+      const na = r.count(2, 100000, 'dataset'); const attrs = Object.create(null);
+      for (let i = 0; i < na; i++) { const k = r.str(); attrs[k] = r.str(); }
+      r.str(); const tileWidth = r.f32(), n = r.count(12, SIG_LIMITS.items, 'tiles');
+      if (!(tileWidth >= 1 && tileWidth < 1e10)) throw this.bad('tile width');
+      const pos = new Float64Array(n), size = new Int32Array(n);
+      for (let i = 0; i < n; i++) { pos[i] = r.i64(); size[i] = r.i32(); }
+      this.ds.set(name, { name, attrs, tileWidth, pos, size });
+    });
+    return undefined; // being read
+  }
+  async readTile(d, i) { return this.decodeTile(await sigRead(this.src, d.pos[i], d.size[i], SIG_LIMITS.block, 'tdfBad')); }
+  async decodeTile(u8) {
+    if (this.compressed) u8 = await inflateStream(u8, 'deflate', SIG_LIMITS.block, 'tdfBad', { what: 'a tile does not decompress' });
+    return decodeTdfTile(u8, this.tracks.length);
+  }
+  // Which dataset a view uses. zoom: what igvtools precomputed for a 700 px wide view of the contig.
+  // For values one by one (points, or a function the file did not precompute) the raw dataset is used
+  // if the view needs no more than SIG_LIMITS.viewBytes of it; otherwise the precomputed summaries.
+  plan(contig, a, b, bpp, chrLen, want) {
+    const c = this.chrs.get(contigKey(contig)); if (!c) return { none: true };
+    let z = Math.ceil(Math.log2(Math.max(1, chrLen / (bpp * 700)))); if (!(z >= 0)) z = 0;
+    const wfs = this.windowFunctions, has = f => wfs.includes(f);
+    const zname = f => `/${c}/z${z}` + (this.version >= 2 ? '/' + f : '');
+    const summary = () => {
+      // fields to read: what the drawing wants, from what the file has
+      const fields = {};
+      for (const f of ['mean', 'min', 'max']) if ((this.version >= 2 ? has(f) : f === 'mean') && this.dsIndex.has(zname(f))) fields[f] = zname(f);
+      if (!Object.keys(fields).length && this.version >= 2) for (const f of wfs) if (this.dsIndex.has(zname(f))) { fields.mean = zname(f); break; }
+      return Object.keys(fields).length ? { mode: 'summary', fields, z } : null;
+    };
+    const raw = `/${c}/raw`;
+    if (z > this.maxZoom || want === 'raw') {
+      if (this.dsIndex.has(raw)) {
+        const d = this.dataset(raw); if (d === undefined) return { wait: true };
+        if (d) {
+          const t0 = Math.max(0, Math.floor(a / d.tileWidth)), t1 = Math.min(d.pos.length - 1, Math.floor(b / d.tileWidth));
+          let bytes = 0; for (let i = t0; i <= t1; i++) if (d.pos[i] >= 0) bytes += d.size[i];
+          if (bytes <= sigBudget(this) && t1 - t0 < SIG_LIMITS.rawTiles) return { mode: 'raw', fields: { v: raw }, z };
+          if (z > this.maxZoom) return { tooMuch: true };
+        }
+      }
+    }
+    return summary() || (this.dsIndex.has(raw) ? { tooMuch: true } : { none: true });
+  }
+  // Blocks over [a, b) for a plan; tiles not read yet are asked for and arrive through onData.
+  blocks(plan, a, b) {
+    const out = []; let missing = 0;
+    const fields = Object.entries(plan.fields), ds = fields.map(([, n]) => this.dataset(n));
+    if (ds.some(d => d === undefined)) return { blocks: out, missing: 1 };
+    const d0 = ds.find(Boolean); if (!d0) return { blocks: out, missing: 0 };
+    const t0 = Math.max(0, Math.floor(a / d0.tileWidth)), t1 = Math.min(d0.pos.length - 1, Math.floor(b / d0.tileWidth));
+    if (t1 - t0 >= SIG_LIMITS.viewBlocks) return { blocks: out, missing: 0, tooMuch: true };
+    const need = [];
+    for (let i = t0; i <= t1; i++) {
+      const parts = {}; let ready = true;
+      fields.forEach(([f, n], k) => {
+        const d = ds[k]; if (!d || i >= d.pos.length || d.pos[i] < 0 || d.size[i] <= 0) return;
+        const key = `${this.id}|${n}|${i}`, got = sigCacheGet(key);
+        if (got) parts[f] = got;
+        else { ready = false; need.push({ key, pos: d.pos[i], size: d.size[i], decode: u8 => this.decodeTile(u8) }); }
+      });
+      if (!ready) { missing++; continue; }
+      const ks = Object.keys(parts); if (!ks.length) continue;
+      if (plan.mode === 'raw') out.push(parts.v);
+      else { // several summary tiles of one zoom share positions
+        const base = parts[ks[0]], s = {};
+        for (const f of ks) if (parts[f].start.length === base.start.length) s[f] = parts[f].v;
+        out.push({ start: base.start, end: base.end, s });
+      }
+    }
+    if (need.length) sigFetch(this, need);
+    return { blocks: out, missing };
+  }
+}
+TdfFile.seq = 0;
+
+function decodeTdfTile(u8, nTracks) {
+  const r = new SigBin(u8, true, 'tdfBad'), type = r.str();
+  const rows = (n, nS) => { const v = []; for (let t = 0; t < nS; t++) { r.need(n * 4); const a = new Float32Array(n); for (let k = 0; k < n; k++) a[k] = r.f32(); if (t < nTracks) v.push(a); } while (v.length < nTracks) v.push(new Float32Array(n).fill(NaN)); return v; };
+  if (type === 'fixedStep') {
+    const n = r.count(4, SIG_LIMITS.items, 'tile'), start = r.i32(), span = r.f32();
+    if (!(span > 0 && span < 1e10)) throw r.bad('tile step');
+    if (n * 4 * nTracks > r.left) throw r.bad('tile cut short');
+    const st = new Int32Array(n), en = new Int32Array(n);
+    for (let k = 0; k < n; k++) { st[k] = start + Math.floor(k * span); en[k] = start + Math.floor((k + 1) * span); }
+    return { start: st, end: en, v: rows(n, nTracks) };
+  }
+  if (type === 'variableStep') {
+    r.i32(); const span = r.f32(), n = r.count(4, SIG_LIMITS.items, 'tile');
+    if (!(span > 0 && span < 1e10)) throw r.bad('tile span');
+    const st = new Int32Array(n), en = new Int32Array(n);
+    for (let k = 0; k < n; k++) { st[k] = r.i32(); en[k] = st[k] + Math.max(1, Math.floor(span)); }
+    const nS = r.count(0, SIG_LIMITS.tracks, 'tracks in a tile');
+    if (n * 4 * nS > r.left) throw r.bad('tile cut short');
+    return { start: st, end: en, v: rows(n, nS) };
+  }
+  if (type === 'bed' || type === 'bedWithName') {
+    const n = r.count(8, SIG_LIMITS.items, 'tile'), st = new Int32Array(n), en = new Int32Array(n);
+    for (let k = 0; k < n; k++) st[k] = r.i32();
+    for (let k = 0; k < n; k++) { en[k] = r.i32(); if (en[k] <= st[k]) en[k] = st[k] + 1; }
+    const nS = r.count(0, SIG_LIMITS.tracks, 'tracks in a tile');
+    if (n * 4 * nS > r.left) throw r.bad('tile cut short');
+    const out = { start: st, end: en, v: rows(n, nS) };
+    if (type === 'bedWithName') { out.names = []; for (let k = 0; k < n; k++) out.names.push(r.str().slice(0, 200)); }
+    return out;
+  }
+  throw r.bad('unknown tile type');
+}
+
+// ======================= bigWig =======================
+const BW_MAGIC = 0x888FFC26, BB_MAGIC = 0x8789F2EB, BPT_MAGIC = 0x78CA8C91, CIR_MAGIC = 0x2468ACE0;
+class BigWigFile {
+  constructor(src) { this.src = src; this.name = src.name; this.format = 'bigwig'; this.code = 'bwBad'; this.loader = new SigLoader(this); this.nodes = new Map(); this.leafCache = new Map(); this.id = ++TdfFile.seq; }
+  bad(what) { return new CgvError('bwBad', { what }); }
+  bin(u8) { return new SigBin(u8, this.le, 'bwBad'); }
+  async open() {
+    const h = await this.src.read(0, 64);
+    if (h.length < 64) throw this.bad('cut short');
+    const dv = new DataView(h.buffer, h.byteOffset, 64);
+    if (dv.getUint32(0, true) === BW_MAGIC) this.le = true;
+    else if (dv.getUint32(0, false) === BW_MAGIC) this.le = false;
+    else if (dv.getUint32(0, true) === BB_MAGIC || dv.getUint32(0, false) === BB_MAGIC) throw new CgvError('bwBigBed', { name: this.name });
+    else throw this.bad('no bigWig signature');
+    const r = this.bin(h); r.p = 4;
+    this.version = r.u16(); const nZoom = r.u16();
+    this.chromTreeOffset = r.i64(); this.fullDataOffset = r.i64(); this.fullIndexOffset = r.i64();
+    r.u16(); r.u16(); r.i64(); this.totalSummaryOffset = r.i64(); this.uncompressBufSize = r.u32();
+    if (nZoom > 64) throw this.bad('zoom levels');
+    if (this.uncompressBufSize > SIG_LIMITS.block) throw this.bad('the block size is too large');
+    const zr = this.bin(await sigRead(this.src, 64, nZoom * 24, SIG_LIMITS.header, 'bwBad'));
+    this.zooms = [];
+    for (let i = 0; i < nZoom; i++) { const reduction = zr.u32(); zr.u32(); const dataOffset = zr.i64(), indexOffset = zr.i64(); if (reduction > 0 && indexOffset > 0) this.zooms.push({ reduction, indexOffset }); }
+    this.zooms.sort((x, y) => x.reduction - y.reduction);
+    if (this.totalSummaryOffset > 0) {
+      const s = this.bin(await sigRead(this.src, this.totalSummaryOffset, 40, 40, 'bwBad'));
+      const n = s.i64(), mn = s.f64(), mx = s.f64(), sum = s.f64(), sq = s.f64();
+      if (n > 0 && isFinite(mn) && isFinite(mx)) this.total = { n, min: mn, max: mx, mean: sum / n, sd: Math.sqrt(Math.max(0, sq / n - (sum / n) ** 2)) };
+    }
+    await this.readChromTree();
+    this.trackLine = ''; this.props = {}; this.trackType = '';
+    this.tracks = [this.name.replace(/\.(bw|bigwig)$/i, '')];
+    return this;
+  }
+  // chromosome B+ tree: header (magic, block size, key size, value size, item count), then nodes
+  // (leaf: key, chromId, chromSize; inner: key, child offset), read whole
+  async readChromTree() {
+    const hr = this.bin(await sigRead(this.src, this.chromTreeOffset, 32, 32, 'bwBad'));
+    if (hr.u32() !== BPT_MAGIC) throw this.bad('chromosome tree');
+    const blockSize = hr.u32(), keySize = hr.u32(), valSize = hr.u32(), itemCount = hr.i64();
+    if (!(keySize >= 1 && keySize <= 255) || valSize !== 8 || !(blockSize >= 1 && blockSize <= 65536) || itemCount > SIG_LIMITS.chroms) throw this.bad('chromosome tree');
+    this.chrById = new Map(); this.chrs = new Map(); let nodes = 0;
+    const walk = async (off, depth) => {
+      if (depth > SIG_LIMITS.depth || ++nodes > SIG_LIMITS.nodes) throw this.bad('chromosome tree');
+      const head = this.bin(await sigRead(this.src, off, 4, 4, 'bwBad'));
+      const leaf = head.u8v(); head.u8v(); const n = head.u16();
+      if (n > blockSize) throw this.bad('chromosome tree');
+      const r = this.bin(await sigRead(this.src, off + 4, n * (keySize + 8), SIG_LIMITS.header, 'bwBad'));
+      const kids = [];
+      for (let i = 0; i < n; i++) {
+        const key = r.fixedStr(keySize);
+        if (leaf) { const id = r.u32(), size = r.u32(); if (this.chrById.size >= SIG_LIMITS.chroms) throw this.bad('too many contigs'); this.chrById.set(id, key); if (!this.chrs.has(contigKey(key))) this.chrs.set(contigKey(key), { id, size, name: key }); }
+        else kids.push(r.i64());
+      }
+      for (const k of kids) await walk(k, depth + 1);
+    };
+    await walk(this.chromTreeOffset + 32, 0);
+  }
+  // R tree (cirTree) node at an offset: leaves give data blocks (offset, size); read on demand, kept
+  async node(off) {
+    const k = off; if (this.nodes.has(k)) return this.nodes.get(k);
+    if (this.nodes.size > SIG_LIMITS.nodes) throw this.bad('index tree');
+    const head = this.bin(await sigRead(this.src, off, 4, 4, 'bwBad'));
+    const leaf = head.u8v(); head.u8v(); const n = head.u16();
+    const r = this.bin(await sigRead(this.src, off + 4, n * (leaf ? 32 : 24), SIG_LIMITS.header, 'bwBad'));
+    const items = [];
+    for (let i = 0; i < n; i++) {
+      const it = { c0: r.u32(), s0: r.u32(), c1: r.u32(), s1: r.u32(), off: r.i64() };
+      if (leaf) it.size = r.i64();
+      items.push(it);
+    }
+    const nd = { leaf: !!leaf, items }; this.nodes.set(k, nd); return nd;
+  }
+  // data blocks of an index (the full one or a zoom level's) overlapping [a, b) of contig id
+  async leaves(indexOffset, id, a, b) {
+    const key = `${indexOffset}|${id}|${a}|${b}`; if (this.leafCache.has(key)) return this.leafCache.get(key);
+    const hr = this.bin(await sigRead(this.src, indexOffset, 48, 48, 'bwBad'));
+    if (hr.u32() !== CIR_MAGIC) throw this.bad('index tree');
+    const out = [];
+    const over = it => (it.c0 < id || (it.c0 === id && it.s0 < b)) && (it.c1 > id || (it.c1 === id && it.s1 > a));
+    const walk = async (off, depth) => {
+      if (depth > SIG_LIMITS.depth) throw this.bad('index tree');
+      const nd = await this.node(off);
+      for (const it of nd.items) if (over(it)) { if (nd.leaf) { if (out.length < SIG_LIMITS.viewBlocks + 1) out.push({ off: it.off, size: it.size }); } else await walk(it.off, depth + 1); }
+    };
+    await walk(indexOffset + 48, 0);
+    if (this.leafCache.size > 2000) this.leafCache.clear();
+    this.leafCache.set(key, out); return out;
+  }
+  async readBlock(lf, zoom, id) { return this.decodeBlock(await sigRead(this.src, lf.off, lf.size, SIG_LIMITS.block, 'bwBad'), zoom, id); }
+  async decodeBlock(u8, zoom, id) {
+    if (this.uncompressBufSize > 0) u8 = await inflateStream(u8, 'deflate', Math.max(this.uncompressBufSize, 1 << 20), 'bwBad', { what: 'a block does not decompress' });
+    return zoom ? decodeBwZoom(u8, this.le, id) : decodeBwData(u8, this.le, id);
+  }
+  plan(contig, a, b, bpp, chrLen, want) {
+    const c = this.chrs.get(contigKey(contig)); if (!c) return { none: true };
+    const lk = `L|${c.id}|${Math.floor(a)}|${Math.ceil(b)}`;
+    // full-resolution data when the view needs little of it (or the file has no summaries)
+    const zl = this.zooms.filter(z => z.reduction <= bpp).pop();
+    const tryRaw = want === 'raw' || !zl;
+    if (tryRaw) {
+      const L = this.leafList(this.fullIndexOffset, c.id, a, b, lk + '|full'); if (!L) return { wait: true };
+      let bytes = 0; for (const x of L) bytes += x.size;
+      if (bytes <= sigBudget(this) && L.length <= SIG_LIMITS.viewBlocks) return { mode: 'raw', id: c.id, leaves: L };
+      if (!zl && !this.zooms.length) return { tooMuch: true };
+    }
+    // summaries: the coarsest level that still gives a value per pixel (the finest one when zoomed in)
+    const z = zl || this.zooms[0]; if (!z) return { tooMuch: true };
+    const L = this.leafList(z.indexOffset, c.id, a, b, lk + '|' + z.reduction); if (!L) return { wait: true };
+    if (L.length > SIG_LIMITS.viewBlocks) return { tooMuch: true };
+    return { mode: 'summary', id: c.id, leaves: L, zoom: z.reduction };
+  }
+  leafList(indexOffset, id, a, b, key) {
+    const hit = this.leafCache.get(key); if (hit) return hit;
+    this.loader.want(key, async () => { const L = await this.leaves(indexOffset, id, Math.floor(a), Math.ceil(b)); this.leafCache.set(key, L); });
+    return null;
+  }
+  blocks(plan) {
+    const out = [], need = [];
+    for (const lf of plan.leaves) {
+      const key = `${this.id}|${lf.off}|${plan.id}`, got = sigCacheGet(key); // a block can hold several contigs: decoded per contig
+      if (got) { out.push(got); continue; }
+      need.push({ key, pos: lf.off, size: lf.size, decode: u8 => this.decodeBlock(u8, plan.mode === 'summary', plan.id) });
+    }
+    if (need.length) sigFetch(this, need);
+    return { blocks: out, missing: need.length };
+  }
+}
+
+// bigWig data section: chromId, start, end, step, span, type (1 bedGraph, 2 variableStep, 3 fixedStep),
+// reserved, item count; then the items. A block may hold several sections; only contig id is kept.
+function decodeBwData(u8, le, id) {
+  const r = new SigBin(u8, le, 'bwBad'), S = [], E = [], V = [];
+  while (r.left >= 24) {
+    const cid = r.u32(), start = r.u32(); r.u32(); const step = r.u32(), span = r.u32(), type = r.u8v(); r.u8v(); const n = r.u16();
+    const each = type === 1 ? 12 : type === 2 ? 8 : type === 3 ? 4 : 0;
+    if (!each) throw r.bad('unknown section type');
+    if (n * each > r.left) throw r.bad('section cut short');
+    for (let i = 0; i < n; i++) {
+      let s, e, v;
+      if (type === 1) { s = r.u32(); e = r.u32(); v = r.f32(); }
+      else if (type === 2) { s = r.u32(); v = r.f32(); e = s + span; }
+      else { v = r.f32(); s = start + i * step; e = s + span; }
+      if (cid !== id || !Number.isFinite(v) || e <= s) continue;
+      S.push(s); E.push(e); V.push(v);
+    }
+  }
+  return { start: Int32Array.from(S), end: Int32Array.from(E), v: [Float32Array.from(V)] };
+}
+// bigWig zoom records: chromId, start, end, validCount, min, max, sum, sum of squares (per base)
+function decodeBwZoom(u8, le, id) {
+  const r = new SigBin(u8, le, 'bwBad'), n = Math.floor(u8.length / 32);
+  const S = new Int32Array(n), E = new Int32Array(n), mean = new Float32Array(n), mn = new Float32Array(n), mx = new Float32Array(n), sd = new Float32Array(n), cnt = new Float32Array(n);
+  let k = 0;
+  for (let i = 0; i < n; i++) {
+    const cid = r.u32(), s = r.u32(), e = r.u32(), c = r.u32(), a = r.f32(), b = r.f32(), sum = r.f32(), sq = r.f32();
+    if (cid !== id || !c || e <= s) continue;
+    S[k] = s; E[k] = e; mn[k] = a; mx[k] = b; mean[k] = sum / c; cnt[k] = c;
+    sd[k] = c > 1 ? Math.sqrt(Math.max(0, (sq - sum * sum / c) / (c - 1))) : 0; // as UCSC's calcStdFromSums
+    k++;
+  }
+  const cut = a => a.subarray(0, k);
+  return { start: cut(S), end: cut(E), s: { mean: [cut(mean)], min: [cut(mn)], max: [cut(mx)], sd: [cut(sd)], n: [cut(cnt)] } };
+}
+
+// Opens a signal file by name: .tdf or .bw / .bigwig.
+function signalKind(name) { const n = String(name).toLowerCase(); return /\.tdf$/.test(n) ? 'tdf' : /\.(bw|bigwig)$/.test(n) ? 'bigwig' : null; }
+async function openSignal(src) {
+  const k = signalKind(src.name);
+  const f = k === 'tdf' ? new TdfFile(src) : new BigWigFile(src);
+  await f.open();
+  f.kind = 'signal';
+  return f;
+}
+
+// ---- the default way to draw a file that does not say ----
+// A track line's graphType wins. A TDF of type ALLELE_FREQUENCY is drawn as points. Otherwise a TDF
+// whose values all lie in 0–1 and cover less than half of the stretch they span (separate positions,
+// as variant allele frequencies are) is drawn as points on a 0–1 scale; everything else as bars, the
+// UCSC default. The sample is the first non-empty tile of the first raw dataset: one small read.
+async function signalDefaults(f) {
+  const p = f.props || {}, d = { graph: p.graphType || 'bar', why: p.graphType ? 'trackLine' : 'ucsc' };
+  if (p.graphType) return d;
+  if (f.format === 'tdf' && /^ALLELE_FREQUENCY$/i.test(f.trackType)) return { graph: 'points', why: 'type', fixed01: true };
+  if (f.format !== 'tdf') return d;
+  try {
+    const name = [...f.dsIndex.keys()].find(k => /\/raw$/.test(k)); if (!name) return d;
+    const e = f.dsIndex.get(name);
+    const r = new SigBin(await sigRead(f.src, e.pos, e.size, SIG_LIMITS.index, 'tdfBad'));
+    const na = r.count(2, 100000); for (let i = 0; i < na; i++) { r.str(); r.str(); }
+    r.str(); r.f32(); const n = r.count(12, SIG_LIMITS.items);
+    for (let i = 0; i < n; i++) {
+      const pos = r.i64(), size = r.i32(); if (pos < 0 || size <= 0) continue;
+      const t = await f.readTile({ pos: [pos], size: [size] }, 0);
+      const m = t.start.length; if (m < 2) continue;
+      let cov = 0, lo = Infinity, hi = -Infinity, ok = 0;
+      for (let k = 0; k < m; k++) { cov += t.end[k] - t.start[k]; for (const v of t.v) { const x = v[k]; if (Number.isNaN(x)) continue; ok++; if (x < lo) lo = x; if (x > hi) hi = x; } }
+      const spanBp = t.end[m - 1] - t.start[0];
+      if (ok && lo >= 0 && hi <= 1 && spanBp > 0 && cov / spanBp < 0.5) return { graph: 'points', why: 'rule', fixed01: true };
+      return d;
+    }
+  } catch (e) { /* the tracks still open; a damaged tile shows when it is drawn */ }
+  return d;
+}
+
+if (typeof module !== 'undefined') module.exports = { SIG_LIMITS, SigBin, parseTrackLine, TdfFile, BigWigFile, decodeTdfTile, decodeBwData, decodeBwZoom, signalKind, openSignal, signalDefaults, SIG_CACHE };
 
 // CGV app: state, loading, WebGL read rendering, Canvas2D for ruler/coverage, UI.
 'use strict';
@@ -5908,7 +6459,7 @@ function zoneOf(L) {
   if (L.y < panelHdr()) return '';
   if (inRuler(L.y)) return 'tip.ruler';
   if (inGenes(L.y)) return 'tip.genes';
-  { const a = annAt(L.y); if (a) return a.lbl && L.x > W - 24 && CUR === S.panels[S.panels.length - 1] ? 'tip.closeTrack' : 'tip.ann'; }
+  { const a = annAt(L.y); if (a) return a.lbl && L.x > W - 24 && CUR === S.panels[S.panels.length - 1] ? 'tip.closeTrack' : a.kind === 'signal' ? 'tip.signal' : 'tip.ann'; }
   const ti = trackAtY(L.y); if (ti < 0) return '';
   const g = trackGeom(ti);
   if (L.y >= g.covTop && L.y < g.covTop + g.covH + 4) return 'tip.cov';
@@ -6712,6 +7263,8 @@ function copyReadSeq(rec, T, act) {
   navigator.clipboard.writeText(txt).then(() => toast(t('copied.seq', { n: fmtInt(txt.replace(/^>.*$/gm, '').replace(/\s/g, '').length) })), () => toast(t('copyFail')));
 }
 $('ctx').addEventListener('click', e => {
+  const sb = e.target.closest('[data-sig]');
+  if (sb) { const a = menuState && menuState.sig; closeMenu(); if (a && ANN.tracks.includes(a)) signalMenuAct(a, sb.dataset.sig, sb.dataset.val); return; }
   const b = e.target.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act, val = b.dataset.val, pos = +$('ctx').dataset.pos; let reloadNeeded = false;
   if (!menuState || !S.panels.includes(menuState.pn)) { closeMenu(); return; }
@@ -6733,8 +7286,10 @@ $('ctx').addEventListener('keydown', e => {
 stage.addEventListener('contextmenu', e => {
   if (!onCanvas(e)) return;
   e.preventDefault();
-  if (!S.tracks.length || !S.contigs) return;
+  if (!S.contigs) return;
   const L = local(e); if (L.y < panelHdr()) return;
+  { const a = annAt(L.y); if (a && a.kind === 'signal') { setActive(L.pn); hideCard(); openSignalMenu(a, e.offsetX, L.y); return; } } // a signal track: how to draw it
+  if (!S.tracks.length) return;
   setActive(L.pn);
   hideCard(); openMenu(L.x, e.offsetX, L.y, hitTest(L.x, L.y));
 });
@@ -6763,7 +7318,7 @@ async function pickFiles(fallback) {
 // Files LGV can open in a folder handle and its subfolders (a few levels), each with its handle.
 // Only names are looked at for everything else, and the walk stops after a fixed number of
 // entries, so choosing a large folder (Documents, a whole disk) cannot keep the page busy.
-const DATA_EXT = /\.(bam|bai|cram|crai|csi|fa|fasta|fna|fai|gzi|bed|bedgraph|bg|vcf|gtf|gff|gff3|narrowpeak|broadpeak)(\.gz)?$|\.(gz|gzi)$/i;
+const DATA_EXT = /\.(bam|bai|cram|crai|csi|fa|fasta|fna|fai|gzi|bed|bedgraph|bg|vcf|gtf|gff|gff3|narrowpeak|broadpeak)(\.gz)?$|\.(gz|gzi|tdf|bw|bigwig)$/i;
 async function dirFiles(dir, depth, budget) {
   budget = budget || { n: 20000 };
   const out = [];
@@ -6994,6 +7549,7 @@ const ANN = { tracks: [], seq: 0 };
 const ANN_ROW = 16, ANN_HDR = 12, VCF_SITE = 9, VCF_GT = 9, VCF_GT_MAX = 8, BG_H = 24;
 // each track: a 12 px name line (with × on the right), then its features
 function annHeight(a) {
+  if (a.kind === 'signal') return sigHeight(a);
   if (a.kind === 'bedgraph') return ANN_HDR + BG_H;
   if (a.kind === 'vcf') return ANN_HDR + VCF_SITE + 2 + Math.min(VCF_GT_MAX, a.ix.samples.length) * VCF_GT;
   return ANN_HDR + 2 * ANN_ROW;
@@ -7006,6 +7562,7 @@ async function openTracks(srcs) {
     const key = sourceKey(src);
     if (ANN.tracks.some(a => a.key === key)) { toast(t('sample.already', { name: src.name })); continue; }
     try {
+      if (signalKind(src.name)) { ANN.tracks.push(await openSignalTrack(src, key)); continue; } // TDF, bigWig: read by region
       const ix = await loadTrack(src);
       ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix, src });
       if (ix.skipped) toast(t('track.skipped', { name: src.name, n: fmtInt(ix.skipped), ok: fmtInt(ix.count) }), true);
@@ -7013,7 +7570,7 @@ async function openTracks(srcs) {
   }
   clampScroll(); draw();
 }
-function closeAnn(a) { ANN.tracks = ANN.tracks.filter(x => x !== a); if (cardState && cardState.ann === a) hideCard(); clampScroll(); draw(); }
+function closeAnn(a) { ANN.tracks = ANN.tracks.filter(x => x !== a); if (a.ix && a.ix.loader) a.ix.onData = null; if (cardState && cardState.ann === a) hideCard(); clampScroll(); draw(); }
 const GT_COL = ['', '#c3c8cf', '#2a5fd6', '#14a3b8'];
 function drawAnnTracks(pn) {
   if (!ANN.tracks.length || !S.contigs) return;
@@ -7024,9 +7581,10 @@ function drawAnnTracks(pn) {
   for (const a of ANN.tracks) {
     const h = annHeight(a), hits = [];
     ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, h); ctx.clip();
-    const list = a.ix.query(name, Math.floor(vs), Math.ceil(ve)), fy = y0 + ANN_HDR, fh = h - ANN_HDR;
+    const fy = y0 + ANN_HDR, fh = h - ANN_HDR, list = a.kind === 'signal' ? null : a.ix.query(name, Math.floor(vs), Math.ceil(ve));
     let extra = '';
-    if (a.kind === 'bedgraph') {
+    if (a.kind === 'signal') extra = drawSignal(a, fy, fh);
+    else if (a.kind === 'bedgraph') {
       // one bar per pixel column: the largest value under it; scale from the visible values
       let mx = 0; for (const f of list) mx = Math.max(mx, Math.abs(f.value));
       const neg = a.ix.min < 0, base = neg ? fy + fh / 2 : fy + fh - 1, sc = mx ? (neg ? fh / 2 - 1 : fh - 2) / mx : 0;
@@ -7090,6 +7648,7 @@ function drawFeatRows(list, y0, hits, colorOf) {
 }
 function annClick(a, x, y, gx) {
   if (a.lbl && x > W - 24 && CUR === S.panels[S.panels.length - 1]) { closeAnn(a); return; }
+  if (a.kind === 'signal') { sigClick(a, x, y, gx); return; }
   const hits = (CUR.annHits && CUR.annHits.get(a.id)) || [];
   const row = a.kind === 'bed' || a.kind === 'gtf' || a.kind === 'gff' ? Math.floor((y - a.y0 - ANN_HDR) / ANN_ROW) : -1;
   const h = hits.find(k => (k.row === row || k.row === -1) && x >= k.x0 - 2 && x <= k.x1 + 2) || hits.find(k => x >= k.x0 - 2 && x <= k.x1 + 2);
@@ -7307,7 +7866,7 @@ function saveSnapshot() {
 $('snapBtn').onclick = saveSnapshot;
 
 // ======================= About =======================
-const LGV_INFO = { version: '0.9.0', build: '2026-11-03' };
+const LGV_INFO = { version: '0.9.0', build: '2026-11-05' };
 function showAbout() {
   const el = $('aboutBody'), v = LGV_INFO.build.startsWith('__') ? '' : ' · ' + LGV_INFO.build;
   el.replaceChildren();
@@ -7323,6 +7882,292 @@ function showAbout() {
 }
 $('aboutBtn').onclick = () => { if ($('aboutPanel').hidden) showAbout(); else $('aboutPanel').hidden = true; };
 startup();
+
+// LGV: drawing signal tracks (TDF, bigWig) — part of the page script, after app.js's helpers.
+// The drawing follows UCSC's wiggle rules (kent/src/hg/hgTracks/wigTrack.c): values are gathered per
+// pixel column (bases with data, sum, sum of squares, minimum, maximum); the windowing function picks
+// the column's value (maximum: the one of min and max farther from zero; minimum: the nearer one;
+// mean); "mean+whiskers" draws the mean dark, mean + 1 SD medium and the maximum light; points are
+// 3 px marks; negative values take altColor; the log transform is ln(1 + x) (−ln(1 − x) below zero);
+// auto-scale spans the values in view, alwaysZero keeps 0 in the range.
+// One extension: points drawn from full-resolution data show every value as its own mark, also when
+// several fall into one pixel column, so a distribution (allele frequencies) stays visible.
+'use strict';
+
+const SIG_ROWS_MAX = 40, SIG_PREF_KEY = 'lgv.signal.v1';
+const WF_UCSC = { maximum: 'max', minimum: 'min', mean: 'mean', 'mean+whiskers': 'whiskers' };
+function sigPrefs() { try { const o = JSON.parse(localStorage.getItem(SIG_PREF_KEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
+function sigPrefKey(a) { return a.name + '|' + (a.src.blob ? a.src.blob.size : a.src.url || ''); }
+function saveSigPref(a) {
+  const all = sigPrefs(), u = a.sig.user; const k = sigPrefKey(a);
+  if (Object.keys(u).length) all[k] = u; else delete all[k];
+  const keys = Object.keys(all); for (const x of keys.slice(0, Math.max(0, keys.length - 100))) delete all[x];
+  try { localStorage.setItem(SIG_PREF_KEY, JSON.stringify(all)); } catch (e) { /* kept until reload */ }
+}
+
+// Settings: the file's track line first (UCSC defaults for what it leaves out), then LGV's rule for a
+// file that declares nothing, then what the user chose in the track's menu (remembered per file).
+function sigSettings(a) {
+  const p = a.ix.props || {}, d = a.def, u = a.sig ? a.sig.user : (sigPrefs()[sigPrefKey(a)] || {});
+  const s = {
+    graph: p.visibility === 'dense' && !p.graphType ? 'heatmap' : d.graph,
+    wf: WF_UCSC[p.windowing] || 'max',
+    auto: p.autoScale !== false, lo: p.viewLimits ? p.viewLimits[0] : 0, hi: p.viewLimits ? p.viewLimits[1] : 1,
+    zero: !!p.alwaysZero, log: !!p.log, smooth: p.smoothing || 0,
+    yLine: p.yLineOnOff ? (p.yLineMark ?? 0) : null,
+    color: p.color ? `rgb(${p.color.join(' ')})` : COL.css.gene, alt: p.altColor ? `rgb(${p.altColor.join(' ')})` : COL.css.muted,
+    height: p.height || 0, why: d.why, user: Object.assign({}, u),
+  };
+  if (d.fixed01 && p.autoScale === undefined && !p.viewLimits) { s.auto = false; s.lo = 0; s.hi = 1; }
+  if (['bar', 'points', 'line', 'heatmap'].includes(u.graph)) s.graph = u.graph;
+  if (['max', 'mean', 'min', 'whiskers'].includes(u.wf)) s.wf = u.wf;
+  if (u.scale === 'auto') s.auto = true; else if (u.scale === '01') { s.auto = false; s.lo = 0; s.hi = 1; } else if (u.scale === 'file' && p.viewLimits) { s.auto = false; s.lo = p.viewLimits[0]; s.hi = p.viewLimits[1]; }
+  if (typeof u.zero === 'boolean') s.zero = u.zero;
+  if (typeof u.log === 'boolean') s.log = u.log;
+  if (u.h >= 12 && u.h <= 200) s.height = u.h;
+  return s;
+}
+async function openSignalTrack(src, key) {
+  const f = await openSignal(src);
+  const a = { id: ++ANN.seq, key, name: src.name, kind: 'signal', ix: f, src, def: await signalDefaults(f), cache: new WeakMap() };
+  a.sig = sigSettings(a);
+  f.onData = e => { if (e && !a.err) { a.err = e; toast(t('track.failed', { name: src.name, msg: errText(e) }), true); } draw(); };
+  return a;
+}
+function sigRowH(a) {
+  const s = a.sig;
+  if (s.height) return s.height;
+  if (s.graph === 'heatmap') return 12;
+  return a.ix.tracks.length > 3 ? 24 : 40;
+}
+function sigRows(a) { return Math.min(SIG_ROWS_MAX, a.ix.tracks.length); }
+function sigHeight(a) { return ANN_HDR + sigRows(a) * (sigRowH(a) + 1); }
+
+// ---- per pixel column statistics for one panel's view ----
+// raw: values one by one; summary: values precomputed per window (zoom levels).
+function sigView(a) {
+  const f = a.ix, name = S.contigs[S.view.refId].name, vs = S.view.start, bpp = S.view.bpPerPx, ve = vs + W * bpp;
+  // values one by one for points, and for a function the file has no summaries of (TDF); the reader
+  // falls back to summaries when that would be too much to read for this view
+  const wf = a.sig.wf === 'whiskers' ? 'max' : a.sig.wf;
+  const needRaw = a.sig.graph === 'points' || (f.format === 'tdf' && wf !== 'mean' && !f.windowFunctions.includes(wf));
+  const plan = f.failed ? { failed: true } : f.plan(name, Math.max(0, vs), ve, bpp, refLen(), needRaw ? 'raw' : 'mean');
+  if (plan.failed || plan.none || plan.tooMuch || plan.wait) return { plan, cols: null };
+  const got = f.blocks(plan, Math.max(0, vs), ve);
+  const key = [vs, bpp, W, a.sig.graph, a.sig.wf, a.sig.log, a.sig.smooth, got.blocks.length, got.missing, plan.mode, plan.z ?? plan.zoom].join('|');
+  const memo = CUR.sigMemo && CUR.sigMemo.get(a.id);
+  if (memo && memo.key === key) return memo.v;
+  const nt = sigRows(a), cols = [], pts = [];
+  for (let t = 0; t < nt; t++) {
+    const C = { n: new Float64Array(W), sum: new Float64Array(W), sq: new Float64Array(W), mn: new Float64Array(W).fill(Infinity), mx: new Float64Array(W).fill(-Infinity) };
+    const P = plan.mode === 'raw' && a.sig.graph === 'points' ? [] : null;
+    for (const bl of got.blocks) {
+      const S0 = bl.start, E0 = bl.end, m = S0.length; if (!m || S0[0] >= ve) continue;
+      const raw = !!bl.v, v = raw ? bl.v[t] : null, sm = raw ? null : bl.s;
+      const mean = sm && sm.mean ? sm.mean[t] : null, mnA = sm && sm.min ? sm.min[t] : null, mxA = sm && sm.max ? sm.max[t] : null, sdA = sm && sm.sd ? sm.sd[t] : null;
+      if (!raw && !mean && !mnA && !mxA) continue;
+      // first item that may reach the view (positions are in order within a block)
+      let lo = 0, hi = m; while (lo < hi) { const md = (lo + hi) >> 1; if (E0[md] <= vs) lo = md + 1; else hi = md; }
+      for (let k = lo; k < m; k++) {
+        const s = S0[k], e = E0[k]; if (s >= ve) break; if (e <= vs) continue;
+        let x; const val = raw ? v[k] : (mean ? mean[k] : (mxA || mnA)[k]);
+        if (Number.isNaN(val)) continue;
+        const vmin = raw ? val : (mnA ? mnA[k] : val), vmax = raw ? val : (mxA ? mxA[k] : val);
+        if (P) P.push((s + e) / 2, val);
+        const x0 = Math.max(0, Math.floor((s - vs) / bpp)), x1 = Math.min(W - 1, Math.floor((e - 1 - vs) / bpp));
+        const sd = sdA ? sdA[k] : 0;
+        for (x = x0; x <= x1; x++) {
+          const cs = vs + x * bpp, ce = cs + bpp, w = Math.max(1e-9, Math.min(e, ce) - Math.max(s, cs));
+          C.n[x] += w; C.sum[x] += val * w; C.sq[x] += (val * val + sd * sd) * w;
+          if (vmin < C.mn[x]) C.mn[x] = vmin; if (vmax > C.mx[x]) C.mx[x] = vmax;
+        }
+      }
+    }
+    cols.push(C); pts.push(P);
+  }
+  const v = { plan, cols, pts, missing: got.missing };
+  (CUR.sigMemo || (CUR.sigMemo = new Map())).set(a.id, { key, v });
+  return v;
+}
+// one image buffer and canvas for painting rows, reused
+const SIG_OFF = document.createElement('canvas'); let SIG_IMG = null;
+function sigImage(w, h) {
+  if (SIG_OFF.width < w || SIG_OFF.height < h) { SIG_OFF.width = Math.max(SIG_OFF.width, w); SIG_OFF.height = Math.max(SIG_OFF.height, h); }
+  if (!SIG_IMG || SIG_IMG.width !== w || SIG_IMG.height !== h) SIG_IMG = new ImageData(w, h); else SIG_IMG.data.fill(0);
+  return SIG_IMG;
+}
+const RGB_CACHE = new Map();
+function cssRGB(c) {
+  let v = RGB_CACHE.get(c); if (v) return v;
+  const g = document.createElement('canvas').getContext('2d'); g.fillStyle = '#000'; g.fillStyle = c; g.fillRect(0, 0, 1, 1);
+  const p = g.getImageData(0, 0, 1, 1).data; v = [p[0], p[1], p[2]]; RGB_CACHE.set(c, v); return v;
+}
+const logish = x => x >= 0 ? Math.log1p(x) : -Math.log1p(-x);
+// the value a column shows, by the windowing function (UCSC's rules)
+function colValue(C, x, wf) {
+  if (!C.n[x]) return NaN;
+  if (wf === 'max') return Math.abs(C.mn[x]) > Math.abs(C.mx[x]) ? C.mn[x] : C.mx[x];
+  if (wf === 'min') return Math.abs(C.mn[x]) < Math.abs(C.mx[x]) ? C.mn[x] : C.mx[x];
+  return C.sum[x] / C.n[x];
+}
+
+// Draws the rows of a signal track in [y, y + h); returns the text for the name line.
+function drawSignal(a, y, h) {
+  const s = a.sig, f = a.ix, rh = sigRowH(a), nt = sigRows(a);
+  const V = sigView(a), tf = s.log ? logish : (x => x);
+  const note = V.plan.failed ? t('sig.failed') : V.plan.none ? t('sig.noContig') : V.plan.tooMuch ? t('sig.tooMuch') : V.plan.wait || (V.missing && !V.cols) ? t('sig.loading') : '';
+  let scaleTxt = '';
+  for (let r = 0; r < nt; r++) {
+    const top = y + r * (rh + 1), C = V.cols && V.cols[r], P = V.pts && V.pts[r];
+    if (r > 0) { ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, top - 0.5); ctx.lineTo(W, top - 0.5); ctx.stroke(); }
+    if (!C) continue;
+    // values per column, smoothed (UCSC: a moving mean over the window, weighted by bases)
+    const val = new Float64Array(W).fill(NaN);
+    for (let x = 0; x < W; x++) val[x] = tf(colValue(C, x, s.wf === 'whiskers' ? 'mean' : s.wf));
+    if (s.smooth > 1) {
+      const out = new Float64Array(W).fill(NaN), half = s.smooth >> 1;
+      for (let x = 0; x < W; x++) { if (Number.isNaN(val[x])) continue; let sw = 0, sv = 0; for (let k = Math.max(0, x - half); k <= Math.min(W - 1, x + half); k++) if (!Number.isNaN(val[k])) { sw += C.n[k]; sv += val[k] * C.n[k]; } out[x] = sv / sw; }
+      val.set(out);
+    }
+    // the scale
+    let lo = Infinity, hi = -Infinity;
+    if (s.auto) {
+      if (P && P.length) for (let k = 1; k < P.length; k += 2) { const v = tf(P[k]); if (v < lo) lo = v; if (v > hi) hi = v; }
+      else for (let x = 0; x < W; x++) { if (Number.isNaN(val[x])) continue; const a1 = s.wf === 'whiskers' ? tf(C.mx[x]) : val[x], a0 = s.wf === 'whiskers' ? tf(C.mn[x]) : val[x]; if (a1 > hi) hi = a1; if (a0 < lo) lo = a0; }
+      if (s.zero) { if (hi < 0) hi = 0; else if (lo > 0) lo = 0; }
+      if (!(hi > lo)) { if (hi > 0) lo = 0; else if (hi < 0) { lo = hi; hi = 0; } else { lo = -1; hi = 1; } }
+    } else { lo = tf(s.lo); hi = tf(s.hi); }
+    if (!isFinite(lo) || !isFinite(hi) || !(hi > lo)) { lo = 0; hi = 1; }
+    const sc = (+lo.toPrecision(3)) + '–' + (+hi.toPrecision(3)) + (s.log ? ' ln' : '');
+    if (nt === 1) scaleTxt = sc;
+    // the row is painted into an image, one column per screen pixel and the rows at device pixels,
+    // then drawn in one go: the cost does not grow with the number of values or columns drawn
+    const R = Math.max(2, Math.round((rh - 2) * DPR)), img = sigImage(W, R), d = img.data, cPos = cssRGB(s.color), cNeg = cssRGB(s.alt);
+    const ry = v => Math.round((R - 1) - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * (R - 1));
+    const span = (x, ya, yb, c, al) => {
+      const a0 = Math.max(0, Math.min(ya, yb)), a1 = Math.min(R - 1, Math.max(ya, yb)), A = Math.round(al * 255);
+      for (let yy = a0, i = (a0 * W + x) * 4; yy <= a1; yy++, i += W * 4) { d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = A; }
+    };
+    const zr = ry(0), mark = Math.max(1, Math.round(DPR)); // a point: 3 px high (UCSC), in device pixels
+    if (s.graph === 'heatmap') {
+      for (let x = 0; x < W; x++) { const v = val[x]; if (Number.isNaN(v)) continue; span(x, 0, R - 1, v < 0 ? cNeg : cPos, 0.12 + 0.88 * (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)); }
+    } else if (P) {
+      // every value its own mark, 2 px wide; a spot already marked is skipped (most are, zoomed out)
+      const vs = S.view.start, bpp = S.view.bpPerPx, seen = new Uint8Array(W * R), k1 = (R - 1) / (hi - lo);
+      for (let k = 0; k < P.length; k += 2) {
+        const x = Math.floor((P[k] - vs) / bpp); if (x < 0 || x >= W) continue;
+        const v = s.log ? tf(P[k + 1]) : P[k + 1], y0 = Math.round((R - 1) - (Math.max(lo, Math.min(hi, v)) - lo) * k1), cell = y0 * W + x;
+        if (seen[cell]) continue; seen[cell] = 1;
+        const c = v < 0 ? cNeg : cPos;
+        span(x, y0 - mark, y0 + mark, c, 1); if (x + 1 < W) span(x + 1, y0 - mark, y0 + mark, c, 1);
+      }
+    } else if (s.graph === 'line') {
+      let prev = null;
+      for (let x = 0; x < W; x++) { const v = val[x]; if (Number.isNaN(v)) { prev = null; continue; } const y0 = ry(v); span(x, prev === null ? y0 : prev, y0, v < 0 ? cNeg : cPos, 1); prev = y0; }
+    } else {
+      const wh = s.wf === 'whiskers', summ = V.plan.mode === 'summary';
+      for (let x = 0; x < W; x++) {
+        const v = val[x]; if (Number.isNaN(v)) continue;
+        const c = v < 0 ? cNeg : cPos;
+        if (wh) {
+          const mean = C.sum[x] / C.n[x], sd = Math.sqrt(Math.max(0, C.sq[x] / C.n[x] - mean * mean));
+          if (s.graph === 'points') { // light: minimum to maximum; medium: mean ± 1 SD; dark: the mean
+            span(x, ry(tf(C.mx[x])), ry(tf(C.mn[x])), c, 0.3); span(x, ry(tf(mean + sd)), ry(tf(mean - sd)), c, 0.55); span(x, ry(v), ry(v), c, 1);
+          } else { // light: zero to the maximum (minimum below zero); medium: to mean ± 1 SD; dark: to the mean
+            span(x, zr, ry(v < 0 ? tf(C.mn[x]) : tf(C.mx[x])), c, 0.3); span(x, zr, ry(tf(v < 0 ? mean - sd : mean + sd)), c, 0.55); span(x, zr, ry(v), c, 1);
+          }
+        } else if (s.graph === 'points') {
+          if (summ && C.mx[x] > C.mn[x]) span(x, ry(tf(C.mx[x])), ry(tf(C.mn[x])), c, 0.3); // the window's range
+          const y0 = ry(v); span(x, y0 - mark, y0 + mark, c, 1);
+        } else span(x, zr, ry(v), c, 1);
+      }
+    }
+    if (s.yLine !== null && s.graph !== 'heatmap') { const v = tf(s.yLine); if (v >= lo && v <= hi) { const yl = ry(v), cm = cssRGB(COL.css.muted); for (let x = 0; x < W; x++) if (x % 6 < 3 && !d[(yl * W + x) * 4 + 3]) span(x, yl, yl, cm, 1); } }
+    SIG_OFF.getContext('2d').putImageData(img, 0, 0);
+    ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(SIG_OFF, 0, 0, W, R, 0, top + 1, W, rh - 2); ctx.restore();
+    ctx.save();
+    // the row's name (several tracks) and scale, on a light backing at the top left
+    if (nt > 1 || s.graph !== 'heatmap') {
+      ctx.font = '8px ' + SANS; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+      const lbl = (nt > 1 ? f.tracks[r] + '  ' : '') + (nt > 1 && s.graph !== 'heatmap' ? sc : '');
+      if (lbl) { const tw = ctx.measureText(lbl).width; ctx.globalAlpha = 0.8; ctx.fillStyle = COL.css.panel; ctx.fillRect(2, top + 1, tw + 6, 9); ctx.globalAlpha = 1; ctx.fillStyle = COL.css.muted; ctx.fillText(lbl, 5, top + 2); }
+    }
+    ctx.restore();
+  }
+  const extra = [];
+  if (scaleTxt) extra.push(scaleTxt);
+  if (f.tracks.length > nt) extra.push(t('track.nSamples', { n: fmtInt(f.tracks.length), shown: nt }));
+  if (V.plan.mode === 'summary') {
+    const win = f.format === 'tdf' ? refLen() / (2 ** V.plan.z) / 700 : V.plan.zoom;
+    const fields = f.format === 'tdf' ? Object.keys(V.plan.fields) : ['mean', 'min', 'max'];
+    // what is shown when the file has no summary for the chosen function
+    const used = s.graph === 'points' && fields.includes('min') && fields.includes('max') ? 'range' : s.wf === 'max' && fields.includes('max') ? 'max' : s.wf === 'min' && fields.includes('min') ? 'min' : 'mean';
+    extra.push(t('sig.summary', { what: t('sig.wf.' + used), bp: fmtBp(win) }));
+  }
+  if (note) extra.push(note);
+  return extra.join('  ·  ');
+}
+
+// row under y in a signal track
+function sigRowAt(a, y) { const r = Math.floor((y - a.y0 - ANN_HDR) / (sigRowH(a) + 1)); return r >= 0 && r < sigRows(a) ? r : -1; }
+function sigClick(a, x, y, gx) {
+  const r = sigRowAt(a, y); S.selected = null; S.hl = null;
+  const V = CUR.sigMemo && CUR.sigMemo.get(a.id); const C = V && V.v.cols && V.v.cols[r];
+  if (r < 0 || !C) { hideCard(); draw(); return; }
+  const xi = Math.max(0, Math.min(W - 1, Math.floor(x))), bpp = S.view.bpPerPx;
+  const pos = Math.floor(S.view.start + x * bpp), attrs = {};
+  // the value at the position itself when the data are one value per position (zoomed in)
+  let near = null;
+  const P = V.v.pts && V.v.pts[r];
+  if (P) { let best = 6 * bpp; for (let k = 0; k < P.length; k += 2) { const d = Math.abs(P[k] - pos); if (d < best) { best = d; near = { at: Math.floor(P[k]), v: P[k + 1] }; } } }
+  if (!C.n[xi] && !near) { hideCard(); draw(); return; }
+  const fmt = v => String(+v.toPrecision(6));
+  const f = { start: Math.floor(S.view.start + xi * bpp), end: Math.max(Math.floor(S.view.start + (xi + 1) * bpp), Math.floor(S.view.start + xi * bpp) + 1), name: a.ix.tracks[r], attrs };
+  // one value: the card is about its position; several in the pixel column: their statistics too
+  const several = C.n[xi] && (V.v.plan.mode === 'summary' || C.mx[xi] > C.mn[xi] || C.n[xi] > (near ? 1 : 0) && !near);
+  if (near) { f.start = near.at; f.end = near.at + 1; f.value = fmt(near.v); }
+  if (several) {
+    if (near) attrs[t('sig.column')] = `${fmtInt(Math.floor(S.view.start + xi * bpp) + 1)}-${fmtInt(Math.floor(S.view.start + (xi + 1) * bpp))}`;
+    attrs[t('sig.mean')] = fmt(C.sum[xi] / C.n[xi]); attrs[t('sig.min')] = fmt(C.mn[xi]); attrs[t('sig.max')] = fmt(C.mx[xi]);
+    if (V.v.plan.mode === 'raw') attrs[t('sig.bases')] = fmtInt(Math.round(C.n[xi]));
+  } else if (!near) f.value = fmt(C.sum[xi] / C.n[xi]);
+  showAnnCard(a, f, gx, y); draw();
+}
+
+// ---- the track's menu (right click): how to draw it ----
+function openSignalMenu(a, gx, y) {
+  const m = $('ctx'), s = a.sig, u = s.user, p = a.ix.props || {};
+  const item = (act, val, on, label) => `<button class="mi" role="menuitemradio" aria-checked="${on}" data-sig="${act}" data-val="${val}"><span class="mk" aria-hidden="true">${on ? '●' : ''}</span>${esc(label)}</button>`;
+  const chk = (act, on, label) => `<button class="mi" role="menuitemcheckbox" aria-checked="${on}" data-sig="${act}" data-val=""><span class="mk" aria-hidden="true">${on ? '✓' : ''}</span>${esc(label)}</button>`;
+  const scale = s.auto ? 'auto' : s.lo === 0 && s.hi === 1 ? '01' : 'file';
+  menuState = { pn: CUR, sig: a };
+  m.innerHTML = `<div class="ms">${esc(t('sig.graph'))}</div>` + ['bar', 'points', 'line', 'heatmap'].map(g => item('graph', g, s.graph === g, t('sig.g.' + g))).join('') +
+    `<div class="ms">${esc(t('sig.windowing'))}</div>` + ['max', 'mean', 'min', 'whiskers'].map(w => item('wf', w, s.wf === w, t('sig.wf.' + w))).join('') +
+    `<div class="ms">${esc(t('sig.scale'))}</div>` + item('scale', 'auto', scale === 'auto', t('sig.s.auto')) + item('scale', '01', scale === '01', t('sig.s.01')) +
+    (p.viewLimits ? item('scale', 'file', scale === 'file', t('sig.s.file', { lo: p.viewLimits[0], hi: p.viewLimits[1] })) : '') +
+    chk('zero', s.zero, t('sig.zero')) + chk('log', s.log, t('sig.log')) +
+    `<div class="ms">${esc(t('sig.height'))}</div>` + item('h', 'less', false, t('sig.h.less')) + item('h', 'more', false, t('sig.h.more')) +
+    (Object.keys(u).length ? '<div class="msep"></div>' + `<button class="mi" role="menuitem" data-sig="reset" data-val=""><span class="mk" aria-hidden="true"></span>${esc(t('sig.reset'))}</button>` : '');
+  m.hidden = false;
+  const r = stage.getBoundingClientRect(), w = m.offsetWidth, hh = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.width - w - 8, gx + 2)) + 'px';
+  m.style.top = Math.max(8, Math.min(r.height - hh - 8, y + 2)) + 'px';
+  (m.querySelector('[aria-checked="true"]') || m.querySelector('.mi')).focus({ preventScroll: true });
+}
+function signalMenuAct(a, act, val) {
+  const u = a.sig.user;
+  if (act === 'graph') u.graph = val;
+  else if (act === 'wf') u.wf = val;
+  else if (act === 'scale') u.scale = val;
+  else if (act === 'zero') u.zero = !a.sig.zero;
+  else if (act === 'log') u.log = !a.sig.log;
+  else if (act === 'h') u.h = Math.max(12, Math.min(200, sigRowH(a) + (val === 'more' ? 12 : -12)));
+  else if (act === 'reset') for (const k of Object.keys(u)) delete u[k];
+  a.sig = sigSettings(a); a.sig.user = u;
+  saveSigPref(a);
+  for (const pn of S.panels) if (pn.sigMemo) pn.sigMemo.delete(a.id);
+  clampScroll(); draw();
+}
 
 </script>
 

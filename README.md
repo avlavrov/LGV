@@ -52,6 +52,7 @@ More languages are one dictionary in `src/i18n.js`.
 | Chromosome map | across the top: the chromosome of each panel with GRCh38 bands and centromere (plain bar for other genomes), a red box where each panel is (numbered like the panel headers); click or drag to move the active panel |
 | Strand | the 3' end of every read is pointed, as in IGV, so the strand shows under any coloring |
 | Annotation tracks | BED, bedGraph, VCF, GTF, GFF3 (plain, gzip or bgzip) from disk or a link: bands under the gene track; click a feature for its details |
+| Signal tracks | TDF and bigWig, read by region (only what a view needs); every track of a TDF as its own row; drawn by the file's UCSC track line (bars, points, windowing function, scale, log, smoothing, colors); a TDF that says nothing is drawn as points when its values are 0–1 at separate positions (allele fractions), else as bars; right click to change |
 | Genes | **MANE track** (GRCh38): MANE Select and Plus Clinical transcripts under the reference — coding exons thick, UTRs thin, strand arrows, exon numbers when zoomed in; click a transcript for its ids, span and the exon or intron at that position. Bundled with LGV (MANE v1.2), works offline |
 | Start | GRCh38 opens by default (View → "At start open": hg38, hg19, T2T, demo or nothing); without a connection the demo opens instead |
 | F6 No hard window limit | windows load on their own up to 64 MB of compressed data, larger on request; downsampling keeps deep regions fast; isolated sequencing errors fade when zoomed out |
@@ -94,6 +95,8 @@ node tools/gen-demo.js                      # demo data in demo/
 node tools/test-core.js                     # core checks on the demo data
 node tools/test-cram.js                     # CRAM checks against the same data as BAM, with fuzzing
 node tools/test-fuzz.js                     # fuzzing of BGZF, BAM, BAI, FASTA/.fai/.gzi, locus field, profile
+node tools/test-signal.js                   # TDF and bigWig on files from IGV, igvtools, UCSC tools, bigtools; fuzzing
+python3 tools/make-signal-tests.py [big]    # synthetic TDF / bigWig test files (big: large ones for speed)
 node tools/audit.js                         # security audit of our own code (see SECURITY.md)
 node tools/build.js                         # dist/lgv.html and dist/artifact.html
 CGV_L=1000000 node tools/gen-demo.js big    # 1 Mb at 30× for speed tests

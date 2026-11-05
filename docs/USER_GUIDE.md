@@ -18,6 +18,7 @@ This guide describes LGV as it is now and is updated with every change. Russian 
 6. [Chromosome map](#6-chromosome-map)
 7. [Genes (MANE)](#7-genes-mane)
 7a. [Your own tracks: BED, bedGraph, VCF, GTF, GFF3](#7a-your-own-tracks-bed-bedgraph-vcf-gtf-gff3)
+7b. [Signal tracks: TDF and bigWig](#7b-signal-tracks-tdf-and-bigwig)
 8. [Coverage](#8-coverage)
 9. [Reads: how they are drawn](#9-reads-how-they-are-drawn)
 10. [Read details](#10-read-details)
@@ -196,6 +197,65 @@ names match with or without `chr`.
   each sample's FORMAT fields (up to 30 samples).
 - Lines that cannot be read are skipped and counted: a message says how many.
 - Tracks stay open when another reference is loaded (they are positions, not reads).
+
+## 7b. Signal tracks: TDF and bigWig
+
+Files of values along the genome — coverage, allele fractions, scores — open like the other tracks
+(**Open → From disk** or **By link**) by their name: `.tdf` (made by igvtools) and `.bw` / `.bigwig`.
+They are not read whole: only the part of the file a view needs is read, so a file of any size
+opens at once. Over a link the server must allow Range requests.
+
+**Several tracks in one file** (a TDF can hold several, for example one per sample) are shown as
+separate rows, each with its name at the top left; up to 40 rows, the name line says if there are
+more.
+
+**What is read for a view.** Both formats keep the values themselves and precomputed summaries for
+coarser scales. Zoomed in, LGV draws the values themselves. Zoomed out it reads the values
+themselves as long as the view needs no more than 16 MB of them (4 MB over a link); beyond that it
+uses the summaries, and the name line says so: for example `mean per 114 kb window`. If the file has
+no summary of what is asked for (a TDF made with the mean only, while the windowing function is
+maximum), the name line names what is shown instead. When neither fits, the line says `zoom in`.
+
+**How a track is drawn.** The settings of a TDF come from its track line (the `track ...` line of the
+wiggle or bedGraph it was made from; a bigWig has none). Every setting of the UCSC wiggle track line
+is followed:
+
+| Setting | Meaning | When the file does not say |
+| --- | --- | --- |
+| `graphType=bar\|points` | bars or points (`line` and `heatmap` are also read) | see below |
+| `windowingFunction=maximum\|mean\|minimum\|mean+whiskers` | which value a screen column shows when several fall into it | maximum |
+| `autoScale=on\|off`, `viewLimits=lo:hi` | scale from the values in view, or fixed | auto |
+| `alwaysZero=on` | the auto scale always includes 0 | off |
+| `transformFunc=LOG` | log scale: ln(1 + x), −ln(1 − x) below zero | off |
+| `smoothingWindow=2…16` | a moving mean over that many screen columns | off |
+| `yLineMark=v`, `yLineOnOff=on` | a dashed line at value v | off |
+| `color=r,g,b`, `altColor=r,g,b` | color of values ≥ 0 and of negative values | theme colors |
+| `maxHeightPixels=max:default:min` | row height (the default) | 40 px (24 px with more than 3 rows) |
+| `visibility=dense` | a heatmap: shade by value | — |
+
+Windowing functions, as UCSC draws them: **maximum** shows the value of the column farthest from zero,
+**minimum** the nearest one, **mean** the mean over the bases with data; **mean + whiskers** draws
+the mean dark, mean ± 1 SD medium and the extreme value light. Points are 3 px marks.
+
+**When a TDF says nothing about how to draw it**: a file of type `ALLELE_FREQUENCY` is drawn as
+points; so is a file whose values all lie in 0–1 at separate positions (they cover less than half
+of the stretch they span, as variant allele fractions do), on a fixed 0–1 scale. Everything else is
+drawn as bars, the UCSC default. A bigWig without settings is drawn by the UCSC defaults (bars,
+maximum, auto scale).
+
+**Points from the values themselves show every value**, also when several fall into one screen
+column, so a distribution (for example allele fractions around 0.5 and 1) stays visible at any
+scale. Points drawn from summaries show each window's range light and its value dark.
+
+- **Right click** on a signal track: draw as bars, points, line or heatmap; windowing function;
+  scale (auto, 0–1, the file's `viewLimits`); always include zero; log scale; row height. The choice
+  is remembered for that file in this browser; **Back to the file's settings** forgets it.
+- **Click** on a row: a card with the track name and the value at that position (the nearest value
+  within a few pixels), and for a screen column with several values or a summary also their mean,
+  minimum, maximum and the number of bases with data.
+- The name line shows the scale of a single-track file (`0–1`); with several rows each row shows its
+  own.
+- Contig names match with or without `chr`, as everywhere in LGV.
 
 ## 8. Coverage
 

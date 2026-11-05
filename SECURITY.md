@@ -117,6 +117,21 @@ whole number with end ≥ start; BED blocks must be in order and inside the feat
 cut to a fixed length. A line that does not parse is skipped and counted. Text from the file is
 drawn on the canvas or shown through esc(). Fuzzed in tools/test-fuzz.js.
 
+## Signal tracks (TDF, bigWig)
+
+`src/signal.js` (reading) and `src/signalview.js` (drawing), own code; the layouts were taken from
+IGV's TDF reader and writer and from UCSC's bbiFile.h, the drawing rules from UCSC's wigTrack.c, no
+code copied. The file is read by region, never whole. Every count, offset and size is checked against
+the bytes actually read before it is used; a block is capped at 64 MB before and after
+decompression; tree walks are capped in depth (24) and nodes (100,000); contig and track counts are
+capped. One view reads at most 16 MB of full-resolution data (4 MB over a link) and at most 400 TDF
+tiles; beyond that the file's summaries are used. Reads run a few at a time; requests the view no
+longer needs are dropped. A track line is parsed by a fixed list of known keys, each value checked;
+everything else is ignored. Rows are painted into an image buffer, so drawing time does not grow with
+the number of values. The drawing choices a user makes are kept in `localStorage` per file name
+(`lgv.signal.v1`, at most 100 files). `tools/test-signal.js` checks the readers against files made by
+igvtools, UCSC tools and bigtools and fuzzes both.
+
 ## Code from others
 
 | Code | From | Version | License | Status |

@@ -1193,7 +1193,7 @@ function zoneOf(L) {
   if (L.y < panelHdr()) return '';
   if (inRuler(L.y)) return 'tip.ruler';
   if (inGenes(L.y)) return 'tip.genes';
-  { const a = annAt(L.y); if (a) return a.lbl && L.x > W - 24 && CUR === S.panels[S.panels.length - 1] ? 'tip.closeTrack' : 'tip.ann'; }
+  { const a = annAt(L.y); if (a) return a.lbl && L.x > W - 24 && CUR === S.panels[S.panels.length - 1] ? 'tip.closeTrack' : a.kind === 'signal' ? 'tip.signal' : 'tip.ann'; }
   const ti = trackAtY(L.y); if (ti < 0) return '';
   const g = trackGeom(ti);
   if (L.y >= g.covTop && L.y < g.covTop + g.covH + 4) return 'tip.cov';
@@ -1997,6 +1997,8 @@ function copyReadSeq(rec, T, act) {
   navigator.clipboard.writeText(txt).then(() => toast(t('copied.seq', { n: fmtInt(txt.replace(/^>.*$/gm, '').replace(/\s/g, '').length) })), () => toast(t('copyFail')));
 }
 $('ctx').addEventListener('click', e => {
+  const sb = e.target.closest('[data-sig]');
+  if (sb) { const a = menuState && menuState.sig; closeMenu(); if (a && ANN.tracks.includes(a)) signalMenuAct(a, sb.dataset.sig, sb.dataset.val); return; }
   const b = e.target.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act, val = b.dataset.val, pos = +$('ctx').dataset.pos; let reloadNeeded = false;
   if (!menuState || !S.panels.includes(menuState.pn)) { closeMenu(); return; }
@@ -2018,8 +2020,10 @@ $('ctx').addEventListener('keydown', e => {
 stage.addEventListener('contextmenu', e => {
   if (!onCanvas(e)) return;
   e.preventDefault();
-  if (!S.tracks.length || !S.contigs) return;
+  if (!S.contigs) return;
   const L = local(e); if (L.y < panelHdr()) return;
+  { const a = annAt(L.y); if (a && a.kind === 'signal') { setActive(L.pn); hideCard(); openSignalMenu(a, e.offsetX, L.y); return; } } // a signal track: how to draw it
+  if (!S.tracks.length) return;
   setActive(L.pn);
   hideCard(); openMenu(L.x, e.offsetX, L.y, hitTest(L.x, L.y));
 });
@@ -2048,7 +2052,7 @@ async function pickFiles(fallback) {
 // Files LGV can open in a folder handle and its subfolders (a few levels), each with its handle.
 // Only names are looked at for everything else, and the walk stops after a fixed number of
 // entries, so choosing a large folder (Documents, a whole disk) cannot keep the page busy.
-const DATA_EXT = /\.(bam|bai|cram|crai|csi|fa|fasta|fna|fai|gzi|bed|bedgraph|bg|vcf|gtf|gff|gff3|narrowpeak|broadpeak)(\.gz)?$|\.(gz|gzi)$/i;
+const DATA_EXT = /\.(bam|bai|cram|crai|csi|fa|fasta|fna|fai|gzi|bed|bedgraph|bg|vcf|gtf|gff|gff3|narrowpeak|broadpeak)(\.gz)?$|\.(gz|gzi|tdf|bw|bigwig)$/i;
 async function dirFiles(dir, depth, budget) {
   budget = budget || { n: 20000 };
   const out = [];
@@ -2279,6 +2283,7 @@ const ANN = { tracks: [], seq: 0 };
 const ANN_ROW = 16, ANN_HDR = 12, VCF_SITE = 9, VCF_GT = 9, VCF_GT_MAX = 8, BG_H = 24;
 // each track: a 12 px name line (with × on the right), then its features
 function annHeight(a) {
+  if (a.kind === 'signal') return sigHeight(a);
   if (a.kind === 'bedgraph') return ANN_HDR + BG_H;
   if (a.kind === 'vcf') return ANN_HDR + VCF_SITE + 2 + Math.min(VCF_GT_MAX, a.ix.samples.length) * VCF_GT;
   return ANN_HDR + 2 * ANN_ROW;
@@ -2291,6 +2296,7 @@ async function openTracks(srcs) {
     const key = sourceKey(src);
     if (ANN.tracks.some(a => a.key === key)) { toast(t('sample.already', { name: src.name })); continue; }
     try {
+      if (signalKind(src.name)) { ANN.tracks.push(await openSignalTrack(src, key)); continue; } // TDF, bigWig: read by region
       const ix = await loadTrack(src);
       ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix, src });
       if (ix.skipped) toast(t('track.skipped', { name: src.name, n: fmtInt(ix.skipped), ok: fmtInt(ix.count) }), true);
@@ -2298,7 +2304,7 @@ async function openTracks(srcs) {
   }
   clampScroll(); draw();
 }
-function closeAnn(a) { ANN.tracks = ANN.tracks.filter(x => x !== a); if (cardState && cardState.ann === a) hideCard(); clampScroll(); draw(); }
+function closeAnn(a) { ANN.tracks = ANN.tracks.filter(x => x !== a); if (a.ix && a.ix.loader) a.ix.onData = null; if (cardState && cardState.ann === a) hideCard(); clampScroll(); draw(); }
 const GT_COL = ['', '#c3c8cf', '#2a5fd6', '#14a3b8'];
 function drawAnnTracks(pn) {
   if (!ANN.tracks.length || !S.contigs) return;
@@ -2309,9 +2315,10 @@ function drawAnnTracks(pn) {
   for (const a of ANN.tracks) {
     const h = annHeight(a), hits = [];
     ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, h); ctx.clip();
-    const list = a.ix.query(name, Math.floor(vs), Math.ceil(ve)), fy = y0 + ANN_HDR, fh = h - ANN_HDR;
+    const fy = y0 + ANN_HDR, fh = h - ANN_HDR, list = a.kind === 'signal' ? null : a.ix.query(name, Math.floor(vs), Math.ceil(ve));
     let extra = '';
-    if (a.kind === 'bedgraph') {
+    if (a.kind === 'signal') extra = drawSignal(a, fy, fh);
+    else if (a.kind === 'bedgraph') {
       // one bar per pixel column: the largest value under it; scale from the visible values
       let mx = 0; for (const f of list) mx = Math.max(mx, Math.abs(f.value));
       const neg = a.ix.min < 0, base = neg ? fy + fh / 2 : fy + fh - 1, sc = mx ? (neg ? fh / 2 - 1 : fh - 2) / mx : 0;
@@ -2375,6 +2382,7 @@ function drawFeatRows(list, y0, hits, colorOf) {
 }
 function annClick(a, x, y, gx) {
   if (a.lbl && x > W - 24 && CUR === S.panels[S.panels.length - 1]) { closeAnn(a); return; }
+  if (a.kind === 'signal') { sigClick(a, x, y, gx); return; }
   const hits = (CUR.annHits && CUR.annHits.get(a.id)) || [];
   const row = a.kind === 'bed' || a.kind === 'gtf' || a.kind === 'gff' ? Math.floor((y - a.y0 - ANN_HDR) / ANN_ROW) : -1;
   const h = hits.find(k => (k.row === row || k.row === -1) && x >= k.x0 - 2 && x <= k.x1 + 2) || hits.find(k => x >= k.x0 - 2 && x <= k.x1 + 2);

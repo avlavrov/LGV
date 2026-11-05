@@ -10,7 +10,7 @@ const STRINGS = {
     'ex.del3k': '3 kb deletion', 'ex.repeat': 'Segmental duplication, MAPQ 0', 'ex.chim': 'Mates on another contig', 'ex.whole': 'Whole contig',
     'btn.go': 'Go', 'btn.open': 'Open', 'btn.view': 'View', 'btn.close': 'Close', 'btn.toolbar': 'Toolbar (H)',
     'open.title': 'Open data',
-    'open.disk': 'From disk', 'open.pick': 'Choose .bam / .cram with their indexes', 'open.pickSub': 'you can add a .fa / .fasta reference and tracks: BED, bedGraph, VCF, GTF, GFF3', 'open.pickDrop': 'or drop files onto the screen',
+    'open.disk': 'From disk', 'open.pick': 'Choose .bam / .cram with their indexes', 'open.pickSub': 'you can add a .fa / .fasta reference and tracks: BED, bedGraph, VCF, GTF, GFF3, TDF, bigWig', 'open.pickDrop': 'or drop files onto the screen',
     'open.diskHint': 'Files are read in pieces straight from disk and are never uploaded.',
     'open.url': 'By link', 'open.urlBai': 'Index (if not next to the BAM)',
     'open.folder': 'Choose a folder', 'open.indexHint': 'Each .bam or .cram is paired with its index by name (sample.bam.bai or sample.bai, sample.cram.crai or sample.crai). Choose several samples at once, or a whole folder: a web page can read only the files you choose, so for the index to be found it has to be chosen too.',
@@ -117,6 +117,15 @@ const STRINGS = {
     'err.headerCut': 'The BAM header is cut short — the file is incomplete', 'err.headerBig': 'The BAM header is too large',
     'err.fai': 'Empty or invalid FASTA index (.fai)', 'err.gzi': 'Invalid .gzi index', 'err.needGzi': 'A compressed .fa.gz needs its .gzi index',
     'err.faIrregular': 'Sequence {name} has lines of different lengths, so it cannot be indexed. Rewrap it to a fixed width, e.g. with seqkit seq -w 60.', 'err.faEmpty': 'No sequences found — is this a FASTA file?',
+    'tip.signal': 'Signal track: click for the values here; right-click to choose how it is drawn',
+    'sig.loading': 'loading…', 'sig.failed': 'could not be read', 'sig.noContig': 'no data for this contig', 'sig.tooMuch': 'zoom in: too much data at this scale',
+    'sig.summary': '{what} per {bp} window', 'sig.wf.max': 'maximum', 'sig.wf.min': 'minimum', 'sig.wf.mean': 'mean', 'sig.wf.whiskers': 'mean + whiskers', 'sig.wf.range': 'range',
+    'sig.mean': 'Mean', 'sig.min': 'Minimum', 'sig.max': 'Maximum', 'sig.bases': 'Bases with data', 'sig.nearest': 'Nearest value', 'sig.column': 'Pixel column',
+    'sig.graph': 'Draw as', 'sig.g.bar': 'Bars', 'sig.g.points': 'Points', 'sig.g.line': 'Line', 'sig.g.heatmap': 'Heatmap',
+    'sig.windowing': 'Windowing function', 'sig.scale': 'Scale', 'sig.s.auto': 'Auto (values in view)', 'sig.s.01': '0 – 1', 'sig.s.file': 'From the file ({lo} – {hi})',
+    'sig.zero': 'Always include zero', 'sig.log': 'Log scale: ln(1 + x)', 'sig.height': 'Row height', 'sig.h.less': 'Lower', 'sig.h.more': 'Higher', 'sig.reset': 'Back to the file’s settings',
+    'err.tdfBad': 'The TDF file is damaged or not TDF: {what}', 'err.bwBad': 'The bigWig file is damaged or not bigWig: {what}', 'err.bwBigBed': '{name} is a bigBed file (features); LGV reads bigWig (values) from this family',
+    'err.trackFormat': 'Unknown track format: {name}. LGV reads BED, bedGraph, VCF, GTF, GFF3, TDF and bigWig', 'err.trackEmpty': 'No features found in {name}', 'err.trackBig': '{name} is larger than LGV reads at once ({size})', 'err.trackMany': '{name} has more than {n} features',
   },
   ru: {
     'locus.aria': 'Локус: контиг:начало-конец',
@@ -125,7 +134,7 @@ const STRINGS = {
     'ex.del3k': 'Делеция 3 т.п.н.', 'ex.repeat': 'Сегментный повтор, MAPQ 0', 'ex.chim': 'Мейты на другом контиге', 'ex.whole': 'Весь контиг',
     'btn.go': 'Перейти', 'btn.open': 'Открыть', 'btn.view': 'Вид', 'btn.close': 'Закрыть', 'btn.toolbar': 'Панель (H)',
     'open.title': 'Открыть данные',
-    'open.disk': 'С диска', 'open.pick': 'Выберите .bam / .cram с индексами', 'open.pickSub': 'можно добавить референс .fa / .fasta и дорожки: BED, bedGraph, VCF, GTF, GFF3', 'open.pickDrop': 'или перетащите файлы на экран',
+    'open.disk': 'С диска', 'open.pick': 'Выберите .bam / .cram с индексами', 'open.pickSub': 'можно добавить референс .fa / .fasta и дорожки: BED, bedGraph, VCF, GTF, GFF3, TDF, bigWig', 'open.pickDrop': 'или перетащите файлы на экран',
     'open.diskHint': 'Файлы читаются кусками прямо с диска и никуда не отправляются.',
     'open.url': 'По ссылке', 'open.urlBai': 'Индекс (если не рядом с BAM)',
     'open.folder': 'Выбрать папку', 'open.indexHint': 'Каждый .bam или .cram сопоставляется со своим индексом по имени (sample.bam.bai или sample.bai, sample.cram.crai или sample.crai). Выберите сразу несколько образцов или целую папку: веб-страница может читать только выбранные вами файлы, поэтому индекс тоже нужно выбрать.',
@@ -233,6 +242,15 @@ const STRINGS = {
     'err.headerCut': 'Заголовок BAM обрывается — файл неполный', 'err.headerBig': 'Слишком большой заголовок BAM',
     'err.fai': 'Пустой или неверный индекс FASTA (.fai)', 'err.gzi': 'Неверный индекс .gzi', 'err.needGzi': 'Для сжатого .fa.gz нужен индекс .gzi',
     'err.faIrregular': 'В последовательности {name} строки разной длины, её нельзя проиндексировать. Переформатируйте файл на строки одной длины, например seqkit seq -w 60.', 'err.faEmpty': 'Последовательности не найдены — это точно FASTA?',
+    'tip.signal': 'Дорожка значений: клик — значения в этом месте; правый клик — как её рисовать',
+    'sig.loading': 'загрузка…', 'sig.failed': 'не удалось прочитать', 'sig.noContig': 'нет данных для этого контига', 'sig.tooMuch': 'приблизьте: на этом масштабе слишком много данных',
+    'sig.summary': '{what} по окнам {bp}', 'sig.wf.max': 'максимум', 'sig.wf.min': 'минимум', 'sig.wf.mean': 'среднее', 'sig.wf.whiskers': 'среднее с разбросом', 'sig.wf.range': 'диапазон',
+    'sig.mean': 'Среднее', 'sig.min': 'Минимум', 'sig.max': 'Максимум', 'sig.bases': 'Оснований с данными', 'sig.nearest': 'Ближайшее значение', 'sig.column': 'Столбец экрана',
+    'sig.graph': 'Рисовать', 'sig.g.bar': 'Столбиками', 'sig.g.points': 'Точками', 'sig.g.line': 'Линией', 'sig.g.heatmap': 'Тепловой картой',
+    'sig.windowing': 'Оконная функция', 'sig.scale': 'Шкала', 'sig.s.auto': 'Авто (по видимым значениям)', 'sig.s.01': '0 – 1', 'sig.s.file': 'Из файла ({lo} – {hi})',
+    'sig.zero': 'Всегда включать ноль', 'sig.log': 'Логарифмическая: ln(1 + x)', 'sig.height': 'Высота ряда', 'sig.h.less': 'Ниже', 'sig.h.more': 'Выше', 'sig.reset': 'Вернуть настройки файла',
+    'err.tdfBad': 'Файл TDF повреждён или это не TDF: {what}', 'err.bwBad': 'Файл bigWig повреждён или это не bigWig: {what}', 'err.bwBigBed': '{name} — файл bigBed (объекты); из этого семейства LGV читает bigWig (значения)',
+    'err.trackFormat': 'Неизвестный формат дорожки: {name}. LGV читает BED, bedGraph, VCF, GTF, GFF3, TDF и bigWig', 'err.trackEmpty': 'В {name} не найдено объектов', 'err.trackBig': '{name} больше, чем LGV читает за раз ({size})', 'err.trackMany': 'В {name} больше {n} объектов',
   },
 };
 const LANGS = [['en', 'English'], ['ru', 'Русский']];
@@ -243,7 +261,8 @@ function t(key, vars) {
   if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
   return s;
 }
-function errText(e) { return e && e.code ? t('err.' + e.code, e.vars) : (e && e.message) || String(e); }
+// a code without a translation shows the reader's own English text (it is never the bare key)
+function errText(e) { return e && e.code && ('err.' + e.code) in STRINGS.en ? t('err.' + e.code, e.vars) : (e && e.message) || String(e); }
 // Apply translations to static markup: data-i18n (text), -ph (placeholder), -aria (aria-label), -title.
 function applyI18n(root) {
   document.documentElement.lang = LANG;

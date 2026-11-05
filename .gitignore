@@ -3,3 +3,4 @@ big/
 *.log
 deep/
 sparse/
+test/signal/big/

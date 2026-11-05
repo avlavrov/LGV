@@ -10,7 +10,7 @@ if (typeof contigKey === 'undefined' && typeof require !== 'undefined') Object.a
 
 const TRACK_LIMITS = { bytes: 512 << 20, features: 5000000, blocks: 10000, samples: 100000 };
 Object.assign(CGV_ERR_EN, {
-  trackFormat: 'Unknown annotation format: {name}. LGV reads BED, bedGraph, VCF, GTF and GFF3',
+  trackFormat: 'Unknown track format: {name}. LGV reads BED, bedGraph, VCF, GTF, GFF3, TDF and bigWig',
   trackEmpty: 'No features found in {name}',
   trackBig: '{name} is larger than LGV reads at once ({size})',
   trackMany: '{name} has more than {n} features',
@@ -26,7 +26,7 @@ function trackKind(name) {
   if (/\.(gff|gff3)$/.test(n)) return 'gff';
   return null;
 }
-const isTrackFile = name => !!trackKind(name);
+const isTrackFile = name => !!trackKind(name) || /\.(tdf|bw|bigwig)$/i.test(String(name)); // signal files: src/signal.js
 
 // Whole, plain-number coordinate (no signs, decimals or exponents); -1 when it is not one.
 const intField = s => /^\d{1,12}$/.test(s) ? +s : -1;
