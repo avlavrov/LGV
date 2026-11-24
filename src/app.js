@@ -713,7 +713,11 @@ async function ensureData() {
     const all = results.flatMap(r => r.res ? r.res.reads : []);
     // Reference bases only where they are used: under reads (mismatches, allele highlight) and the
     // view itself when it is narrow enough to show bases. A 46 Mb window with a few reads reads a few kb.
-    const want = all.map(r => { const [a, b] = readExtent(r, P.showSoftClips); return [Math.max(ls, a), Math.min(le, b)]; }).filter(x => x[1] > x[0]);
+    // Each read gets the reference along all of it, soft clips included, also where it sticks out of
+    // the window: its mismatches are found once and kept, so a part without reference would never
+    // show them (letters and colors missing on reads at the window's edges).
+    const L = refLen();
+    const want = all.map(r => { const [a, b] = readExtent(r, true); return [Math.max(0, a), Math.min(L, b)]; }).filter(x => x[1] > x[0]);
     if (span <= REF_VIEW_BP) want.push([ls, le]);
     const parts = mergeIntervals(want, 2000), ref = new SparseRef(), name = S.contigs[refId].name;
     let fromMD = false, ri = 0, sorted = null;

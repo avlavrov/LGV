@@ -57,12 +57,12 @@ def bed_tile(starts, ends, vals):  # vals: (ntracks, n)
 def fixed_tile(start, span, vals):
     return cstr('fixedStep') + struct.pack('<iif', vals.shape[1], int(start), float(span)) + vals.astype('<f4').tobytes()
 
-def write_tdf(path, chroms, data, track_type='OTHER', track_line='', names=('track',), raw_tile=1000000, wfs=('mean',)):
+def write_tdf(path, chroms, data, track_type='OTHER', track_line='', names=('track',), raw_tile=1000000, wfs=('mean',), max_zoom=7):
     """data: {chr: (starts, ends, vals[ntracks, n])}, sorted by start"""
     t = Tdf(path, track_type, track_line, list(names), wfs)
     allv = np.concatenate([v[2].ravel() for v in data.values()]) if data else np.zeros(1)
     allv = allv[~np.isnan(allv)]
-    t.groups['/'] = {'genome': 'hg38', 'maxZoom': '7', 'chromosomes': ','.join(data.keys()),
+    t.groups['/'] = {'genome': 'hg38', 'maxZoom': str(max_zoom), 'chromosomes': ','.join(data.keys()),
                      'Maximum': '%g' % allv.max(), 'Minimum': '%g' % allv.min(), 'Mean': '%g' % allv.mean()}
     for chr_, (s, e, v) in data.items():
         L = chroms[chr_]
@@ -71,7 +71,7 @@ def write_tdf(path, chroms, data, track_type='OTHER', track_line='', names=('tra
         for i in np.unique(ti):
             m = ti == i; t.tile(f'/{chr_}/raw', int(i), bed_tile(s[m], e[m], v[:, m]))
         mid = (s + e) // 2
-        for z in range(8):
+        for z in range(max_zoom + 1):
             ntz = 2 ** z; tw = L / ntz; bw = tw / 700
             for wf in wfs:
                 t.dataset(f'/{chr_}/z{z}/{wf}', tw, ntz)
@@ -204,6 +204,9 @@ if __name__ == '__main__':
             d[c] = (s, e, np.vstack([v, v2, v3]))
         write_tdf(os.path.join(B, 'genome_af_3tracks.tdf'), HG38, d, names=('proband', 'mother', 'father'), wfs=('mean', 'min', 'max'))
         print('genome_af_3tracks.tdf')
+        # whole-genome allele fractions with summaries only down to zoom 1 and small raw tiles
+        write_tdf(os.path.join(B, 'genome_af_lowzoom.tdf'), HG38, {c: (v[0], v[1], v[2][:1]) for c, v in d.items()}, raw_tile=50000, max_zoom=1)
+        print('genome_af_lowzoom.tdf')
         # coverage of chr1 at 25 bp windows (~10 million values) as TDF and bigWig
         s, e, v = coverage(HG38['chr1'], 0, HG38['chr1'] // 25)
         write_tdf(os.path.join(B, 'chr1_coverage.tdf'), {'chr1': HG38['chr1']}, {'chr1': (s, e, v[None, :])}, track_type='COVERAGE', raw_tile=500000)

@@ -15,7 +15,7 @@ if (typeof contigKey === 'undefined' && typeof require !== 'undefined') Object.a
 
 const SIG_LIMITS = {
   header: 16 << 20, index: 64 << 20, block: 64 << 20, string: 100000, items: 1e8, depth: 24, nodes: 100000,
-  chroms: 1000000, viewBytes: 16 << 20, viewBytesUrl: 4 << 20, viewBlocks: 3000, rawTiles: 400, cacheBytes: 192 << 20, queue: 64, parallel: 6, tracks: 10000,
+  chroms: 1000000, viewBytes: 16 << 20, viewBytesUrl: 4 << 20, viewBlocks: 3000, rawTiles: 3000, cacheBytes: 192 << 20, queue: 64, parallel: 6, tracks: 10000,
 };
 Object.assign(CGV_ERR_EN, {
   tdfBad: 'The TDF file is damaged or not TDF: {what}',
@@ -235,13 +235,17 @@ class TdfFile {
     const c = this.chrs.get(contigKey(contig)); if (!c) return { none: true };
     let z = Math.ceil(Math.log2(Math.max(1, chrLen / (bpp * 700)))); if (!(z >= 0)) z = 0;
     const wfs = this.windowFunctions, has = f => wfs.includes(f);
-    const zname = f => `/${c}/z${z}` + (this.version >= 2 ? '/' + f : '');
+    const zname = (f, zz) => `/${c}/z${zz}` + (this.version >= 2 ? '/' + f : '');
+    // summaries of zoom level zz, or of the finest coarser level the file has (a file may stop at a
+    // low maxZoom: its coarsest summaries are then still better than nothing)
     const summary = () => {
-      // fields to read: what the drawing wants, from what the file has
-      const fields = {};
-      for (const f of ['mean', 'min', 'max']) if ((this.version >= 2 ? has(f) : f === 'mean') && this.dsIndex.has(zname(f))) fields[f] = zname(f);
-      if (!Object.keys(fields).length && this.version >= 2) for (const f of wfs) if (this.dsIndex.has(zname(f))) { fields.mean = zname(f); break; }
-      return Object.keys(fields).length ? { mode: 'summary', fields, z } : null;
+      for (let zz = Math.min(z, Math.max(0, this.maxZoom)); zz >= 0; zz--) {
+        const fields = {};
+        for (const f of ['mean', 'min', 'max']) if ((this.version >= 2 ? has(f) : f === 'mean') && this.dsIndex.has(zname(f, zz))) fields[f] = zname(f, zz);
+        if (!Object.keys(fields).length && this.version >= 2) for (const f of wfs) if (this.dsIndex.has(zname(f, zz))) { fields.mean = zname(f, zz); break; }
+        if (Object.keys(fields).length) return { mode: 'summary', fields, z: zz };
+      }
+      return null;
     };
     const raw = `/${c}/raw`;
     if (z > this.maxZoom || want === 'raw') {
@@ -250,8 +254,8 @@ class TdfFile {
         if (d) {
           const t0 = Math.max(0, Math.floor(a / d.tileWidth)), t1 = Math.min(d.pos.length - 1, Math.floor(b / d.tileWidth));
           let bytes = 0; for (let i = t0; i <= t1; i++) if (d.pos[i] >= 0) bytes += d.size[i];
+          // neighbouring tiles come in one read, so the limit is on bytes; the tile count only bounds the work
           if (bytes <= sigBudget(this) && t1 - t0 < SIG_LIMITS.rawTiles) return { mode: 'raw', fields: { v: raw }, z };
-          if (z > this.maxZoom) return { tooMuch: true };
         }
       }
     }

@@ -124,7 +124,7 @@ IGV's TDF reader and writer and from UCSC's bbiFile.h, the drawing rules from UC
 code copied. The file is read by region, never whole. Every count, offset and size is checked against
 the bytes actually read before it is used; a block is capped at 64 MB before and after
 decompression; tree walks are capped in depth (24) and nodes (100,000); contig and track counts are
-capped. One view reads at most 16 MB of full-resolution data (4 MB over a link) and at most 400 TDF
+capped. One view reads at most 16 MB of full-resolution data (4 MB over a link) and at most 3,000 TDF
 tiles; beyond that the file's summaries are used. Reads run a few at a time; requests the view no
 longer needs are dropped. A track line is parsed by a fixed list of known keys, each value checked;
 everything else is ignored. Rows are painted into an image buffer, so drawing time does not grow with

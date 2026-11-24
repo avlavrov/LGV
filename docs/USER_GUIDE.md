@@ -212,7 +212,9 @@ more.
 **What is read for a view.** Both formats keep the values themselves and precomputed summaries for
 coarser scales. Zoomed in, LGV draws the values themselves. Zoomed out it reads the values
 themselves as long as the view needs no more than 16 MB of them (4 MB over a link); beyond that it
-uses the summaries, and the name line says so: for example `mean per 114 kb window`. If the file has
+uses the summaries, and the name line says so: for example `mean per 114 kb window`. A file may have
+summaries only for the coarsest scales (igvtools can be told to stop early); between them and the
+values themselves the coarsest summaries the file has are used. If the file has
 no summary of what is asked for (a TDF made with the mean only, while the windowing function is
 maximum), the name line names what is shown instead. When neither fits, the line says `zoom in`.
 
@@ -235,7 +237,7 @@ is followed:
 
 Windowing functions, as UCSC draws them: **maximum** shows the value of the column farthest from zero,
 **minimum** the nearest one, **mean** the mean over the bases with data; **mean + whiskers** draws
-the mean dark, mean ± 1 SD medium and the extreme value light. Points are 3 px marks.
+the mean dark, mean ± 1 SD medium and the extreme value light. A point is one screen pixel.
 
 **When a TDF says nothing about how to draw it**: a file of type `ALLELE_FREQUENCY` is drawn as
 points; so is a file whose values all lie in 0–1 at separate positions (they cover less than half
@@ -245,7 +247,7 @@ maximum, auto scale).
 
 **Points from the values themselves show every value**, also when several fall into one screen
 column, so a distribution (for example allele fractions around 0.5 and 1) stays visible at any
-scale. Points drawn from summaries show each window's range light and its value dark.
+scale. Points drawn from summaries show one point per window, at its value.
 
 - **Right click** on a signal track: draw as bars, points, line or heatmap; windowing function;
   scale (auto, 0–1, the file's `viewLimits`); always include zero; log scale; row height. The choice

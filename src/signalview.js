@@ -2,11 +2,12 @@
 // The drawing follows UCSC's wiggle rules (kent/src/hg/hgTracks/wigTrack.c): values are gathered per
 // pixel column (bases with data, sum, sum of squares, minimum, maximum); the windowing function picks
 // the column's value (maximum: the one of min and max farther from zero; minimum: the nearer one;
-// mean); "mean+whiskers" draws the mean dark, mean + 1 SD medium and the maximum light; points are
-// 3 px marks; negative values take altColor; the log transform is ln(1 + x) (−ln(1 − x) below zero);
+// mean); "mean+whiskers" draws the mean dark, mean + 1 SD medium and the maximum light; negative
+// values take altColor; the log transform is ln(1 + x) (−ln(1 − x) below zero);
 // auto-scale spans the values in view, alwaysZero keeps 0 in the range.
-// One extension: points drawn from full-resolution data show every value as its own mark, also when
-// several fall into one pixel column, so a distribution (allele frequencies) stays visible.
+// Two departures: a point is one screen pixel (UCSC: 3 px); points drawn from full-resolution data
+// show every value, also when several fall into one pixel column, so a distribution (allele
+// frequencies) stays visible.
 'use strict';
 
 const SIG_ROWS_MAX = 40, SIG_PREF_KEY = 'lgv.signal.v1';
@@ -163,24 +164,24 @@ function drawSignal(a, y, h) {
       const a0 = Math.max(0, Math.min(ya, yb)), a1 = Math.min(R - 1, Math.max(ya, yb)), A = Math.round(al * 255);
       for (let yy = a0, i = (a0 * W + x) * 4; yy <= a1; yy++, i += W * 4) { d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = A; }
     };
-    const zr = ry(0), mark = Math.max(1, Math.round(DPR)); // a point: 3 px high (UCSC), in device pixels
+    const zr = ry(0), dot = Math.max(1, Math.round(DPR)) - 1; // a point: one screen pixel
     if (s.graph === 'heatmap') {
       for (let x = 0; x < W; x++) { const v = val[x]; if (Number.isNaN(v)) continue; span(x, 0, R - 1, v < 0 ? cNeg : cPos, 0.12 + 0.88 * (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)); }
     } else if (P) {
-      // every value its own mark, 2 px wide; a spot already marked is skipped (most are, zoomed out)
+      // every value its own point of one screen pixel; a spot already marked is skipped (most are, zoomed out)
       const vs = S.view.start, bpp = S.view.bpPerPx, seen = new Uint8Array(W * R), k1 = (R - 1) / (hi - lo);
       for (let k = 0; k < P.length; k += 2) {
         const x = Math.floor((P[k] - vs) / bpp); if (x < 0 || x >= W) continue;
         const v = s.log ? tf(P[k + 1]) : P[k + 1], y0 = Math.round((R - 1) - (Math.max(lo, Math.min(hi, v)) - lo) * k1), cell = y0 * W + x;
         if (seen[cell]) continue; seen[cell] = 1;
         const c = v < 0 ? cNeg : cPos;
-        span(x, y0 - mark, y0 + mark, c, 1); if (x + 1 < W) span(x + 1, y0 - mark, y0 + mark, c, 1);
+        span(x, y0, y0 + dot, c, 1);
       }
     } else if (s.graph === 'line') {
       let prev = null;
       for (let x = 0; x < W; x++) { const v = val[x]; if (Number.isNaN(v)) { prev = null; continue; } const y0 = ry(v); span(x, prev === null ? y0 : prev, y0, v < 0 ? cNeg : cPos, 1); prev = y0; }
     } else {
-      const wh = s.wf === 'whiskers', summ = V.plan.mode === 'summary';
+      const wh = s.wf === 'whiskers';
       for (let x = 0; x < W; x++) {
         const v = val[x]; if (Number.isNaN(v)) continue;
         const c = v < 0 ? cNeg : cPos;
@@ -192,8 +193,7 @@ function drawSignal(a, y, h) {
             span(x, zr, ry(v < 0 ? tf(C.mn[x]) : tf(C.mx[x])), c, 0.3); span(x, zr, ry(tf(v < 0 ? mean - sd : mean + sd)), c, 0.55); span(x, zr, ry(v), c, 1);
           }
         } else if (s.graph === 'points') {
-          if (summ && C.mx[x] > C.mn[x]) span(x, ry(tf(C.mx[x])), ry(tf(C.mn[x])), c, 0.3); // the window's range
-          const y0 = ry(v); span(x, y0 - mark, y0 + mark, c, 1);
+          const y0 = ry(v); span(x, y0, y0 + dot, c, 1);
         } else span(x, zr, ry(v), c, 1);
       }
     }
@@ -216,7 +216,7 @@ function drawSignal(a, y, h) {
     const win = f.format === 'tdf' ? refLen() / (2 ** V.plan.z) / 700 : V.plan.zoom;
     const fields = f.format === 'tdf' ? Object.keys(V.plan.fields) : ['mean', 'min', 'max'];
     // what is shown when the file has no summary for the chosen function
-    const used = s.graph === 'points' && fields.includes('min') && fields.includes('max') ? 'range' : s.wf === 'max' && fields.includes('max') ? 'max' : s.wf === 'min' && fields.includes('min') ? 'min' : 'mean';
+    const used = s.wf === 'max' && fields.includes('max') ? 'max' : s.wf === 'min' && fields.includes('min') ? 'min' : 'mean';
     extra.push(t('sig.summary', { what: t('sig.wf.' + used), bp: fmtBp(win) }));
   }
   if (note) extra.push(note);

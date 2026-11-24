@@ -4741,7 +4741,7 @@ if (typeof contigKey === 'undefined' && typeof require !== 'undefined') Object.a
 
 const SIG_LIMITS = {
   header: 16 << 20, index: 64 << 20, block: 64 << 20, string: 100000, items: 1e8, depth: 24, nodes: 100000,
-  chroms: 1000000, viewBytes: 16 << 20, viewBytesUrl: 4 << 20, viewBlocks: 3000, rawTiles: 400, cacheBytes: 192 << 20, queue: 64, parallel: 6, tracks: 10000,
+  chroms: 1000000, viewBytes: 16 << 20, viewBytesUrl: 4 << 20, viewBlocks: 3000, rawTiles: 3000, cacheBytes: 192 << 20, queue: 64, parallel: 6, tracks: 10000,
 };
 Object.assign(CGV_ERR_EN, {
   tdfBad: 'The TDF file is damaged or not TDF: {what}',
@@ -4961,13 +4961,17 @@ class TdfFile {
     const c = this.chrs.get(contigKey(contig)); if (!c) return { none: true };
     let z = Math.ceil(Math.log2(Math.max(1, chrLen / (bpp * 700)))); if (!(z >= 0)) z = 0;
     const wfs = this.windowFunctions, has = f => wfs.includes(f);
-    const zname = f => `/${c}/z${z}` + (this.version >= 2 ? '/' + f : '');
+    const zname = (f, zz) => `/${c}/z${zz}` + (this.version >= 2 ? '/' + f : '');
+    // summaries of zoom level zz, or of the finest coarser level the file has (a file may stop at a
+    // low maxZoom: its coarsest summaries are then still better than nothing)
     const summary = () => {
-      // fields to read: what the drawing wants, from what the file has
-      const fields = {};
-      for (const f of ['mean', 'min', 'max']) if ((this.version >= 2 ? has(f) : f === 'mean') && this.dsIndex.has(zname(f))) fields[f] = zname(f);
-      if (!Object.keys(fields).length && this.version >= 2) for (const f of wfs) if (this.dsIndex.has(zname(f))) { fields.mean = zname(f); break; }
-      return Object.keys(fields).length ? { mode: 'summary', fields, z } : null;
+      for (let zz = Math.min(z, Math.max(0, this.maxZoom)); zz >= 0; zz--) {
+        const fields = {};
+        for (const f of ['mean', 'min', 'max']) if ((this.version >= 2 ? has(f) : f === 'mean') && this.dsIndex.has(zname(f, zz))) fields[f] = zname(f, zz);
+        if (!Object.keys(fields).length && this.version >= 2) for (const f of wfs) if (this.dsIndex.has(zname(f, zz))) { fields.mean = zname(f, zz); break; }
+        if (Object.keys(fields).length) return { mode: 'summary', fields, z: zz };
+      }
+      return null;
     };
     const raw = `/${c}/raw`;
     if (z > this.maxZoom || want === 'raw') {
@@ -4976,8 +4980,8 @@ class TdfFile {
         if (d) {
           const t0 = Math.max(0, Math.floor(a / d.tileWidth)), t1 = Math.min(d.pos.length - 1, Math.floor(b / d.tileWidth));
           let bytes = 0; for (let i = t0; i <= t1; i++) if (d.pos[i] >= 0) bytes += d.size[i];
+          // neighbouring tiles come in one read, so the limit is on bytes; the tile count only bounds the work
           if (bytes <= sigBudget(this) && t1 - t0 < SIG_LIMITS.rawTiles) return { mode: 'raw', fields: { v: raw }, z };
-          if (z > this.maxZoom) return { tooMuch: true };
         }
       }
     }
@@ -5970,7 +5974,11 @@ async function ensureData() {
     const all = results.flatMap(r => r.res ? r.res.reads : []);
     // Reference bases only where they are used: under reads (mismatches, allele highlight) and the
     // view itself when it is narrow enough to show bases. A 46 Mb window with a few reads reads a few kb.
-    const want = all.map(r => { const [a, b] = readExtent(r, P.showSoftClips); return [Math.max(ls, a), Math.min(le, b)]; }).filter(x => x[1] > x[0]);
+    // Each read gets the reference along all of it, soft clips included, also where it sticks out of
+    // the window: its mismatches are found once and kept, so a part without reference would never
+    // show them (letters and colors missing on reads at the window's edges).
+    const L = refLen();
+    const want = all.map(r => { const [a, b] = readExtent(r, true); return [Math.max(0, a), Math.min(L, b)]; }).filter(x => x[1] > x[0]);
     if (span <= REF_VIEW_BP) want.push([ls, le]);
     const parts = mergeIntervals(want, 2000), ref = new SparseRef(), name = S.contigs[refId].name;
     let fromMD = false, ri = 0, sorted = null;
@@ -7857,7 +7865,7 @@ function saveSnapshot() {
 $('snapBtn').onclick = saveSnapshot;
 
 // ======================= About =======================
-const LGV_INFO = { version: '0.9.0', build: '2026-11-05' };
+const LGV_INFO = { version: '0.9.0', build: '2026-11-24' };
 function showAbout() {
   const el = $('aboutBody'), v = LGV_INFO.build.startsWith('__') ? '' : ' · ' + LGV_INFO.build;
   el.replaceChildren();
@@ -7878,11 +7886,12 @@ startup();
 // The drawing follows UCSC's wiggle rules (kent/src/hg/hgTracks/wigTrack.c): values are gathered per
 // pixel column (bases with data, sum, sum of squares, minimum, maximum); the windowing function picks
 // the column's value (maximum: the one of min and max farther from zero; minimum: the nearer one;
-// mean); "mean+whiskers" draws the mean dark, mean + 1 SD medium and the maximum light; points are
-// 3 px marks; negative values take altColor; the log transform is ln(1 + x) (−ln(1 − x) below zero);
+// mean); "mean+whiskers" draws the mean dark, mean + 1 SD medium and the maximum light; negative
+// values take altColor; the log transform is ln(1 + x) (−ln(1 − x) below zero);
 // auto-scale spans the values in view, alwaysZero keeps 0 in the range.
-// One extension: points drawn from full-resolution data show every value as its own mark, also when
-// several fall into one pixel column, so a distribution (allele frequencies) stays visible.
+// Two departures: a point is one screen pixel (UCSC: 3 px); points drawn from full-resolution data
+// show every value, also when several fall into one pixel column, so a distribution (allele
+// frequencies) stays visible.
 'use strict';
 
 const SIG_ROWS_MAX = 40, SIG_PREF_KEY = 'lgv.signal.v1';
@@ -8039,24 +8048,24 @@ function drawSignal(a, y, h) {
       const a0 = Math.max(0, Math.min(ya, yb)), a1 = Math.min(R - 1, Math.max(ya, yb)), A = Math.round(al * 255);
       for (let yy = a0, i = (a0 * W + x) * 4; yy <= a1; yy++, i += W * 4) { d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = A; }
     };
-    const zr = ry(0), mark = Math.max(1, Math.round(DPR)); // a point: 3 px high (UCSC), in device pixels
+    const zr = ry(0), dot = Math.max(1, Math.round(DPR)) - 1; // a point: one screen pixel
     if (s.graph === 'heatmap') {
       for (let x = 0; x < W; x++) { const v = val[x]; if (Number.isNaN(v)) continue; span(x, 0, R - 1, v < 0 ? cNeg : cPos, 0.12 + 0.88 * (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)); }
     } else if (P) {
-      // every value its own mark, 2 px wide; a spot already marked is skipped (most are, zoomed out)
+      // every value its own point of one screen pixel; a spot already marked is skipped (most are, zoomed out)
       const vs = S.view.start, bpp = S.view.bpPerPx, seen = new Uint8Array(W * R), k1 = (R - 1) / (hi - lo);
       for (let k = 0; k < P.length; k += 2) {
         const x = Math.floor((P[k] - vs) / bpp); if (x < 0 || x >= W) continue;
         const v = s.log ? tf(P[k + 1]) : P[k + 1], y0 = Math.round((R - 1) - (Math.max(lo, Math.min(hi, v)) - lo) * k1), cell = y0 * W + x;
         if (seen[cell]) continue; seen[cell] = 1;
         const c = v < 0 ? cNeg : cPos;
-        span(x, y0 - mark, y0 + mark, c, 1); if (x + 1 < W) span(x + 1, y0 - mark, y0 + mark, c, 1);
+        span(x, y0, y0 + dot, c, 1);
       }
     } else if (s.graph === 'line') {
       let prev = null;
       for (let x = 0; x < W; x++) { const v = val[x]; if (Number.isNaN(v)) { prev = null; continue; } const y0 = ry(v); span(x, prev === null ? y0 : prev, y0, v < 0 ? cNeg : cPos, 1); prev = y0; }
     } else {
-      const wh = s.wf === 'whiskers', summ = V.plan.mode === 'summary';
+      const wh = s.wf === 'whiskers';
       for (let x = 0; x < W; x++) {
         const v = val[x]; if (Number.isNaN(v)) continue;
         const c = v < 0 ? cNeg : cPos;
@@ -8068,8 +8077,7 @@ function drawSignal(a, y, h) {
             span(x, zr, ry(v < 0 ? tf(C.mn[x]) : tf(C.mx[x])), c, 0.3); span(x, zr, ry(tf(v < 0 ? mean - sd : mean + sd)), c, 0.55); span(x, zr, ry(v), c, 1);
           }
         } else if (s.graph === 'points') {
-          if (summ && C.mx[x] > C.mn[x]) span(x, ry(tf(C.mx[x])), ry(tf(C.mn[x])), c, 0.3); // the window's range
-          const y0 = ry(v); span(x, y0 - mark, y0 + mark, c, 1);
+          const y0 = ry(v); span(x, y0, y0 + dot, c, 1);
         } else span(x, zr, ry(v), c, 1);
       }
     }
@@ -8092,7 +8100,7 @@ function drawSignal(a, y, h) {
     const win = f.format === 'tdf' ? refLen() / (2 ** V.plan.z) / 700 : V.plan.zoom;
     const fields = f.format === 'tdf' ? Object.keys(V.plan.fields) : ['mean', 'min', 'max'];
     // what is shown when the file has no summary for the chosen function
-    const used = s.graph === 'points' && fields.includes('min') && fields.includes('max') ? 'range' : s.wf === 'max' && fields.includes('max') ? 'max' : s.wf === 'min' && fields.includes('min') ? 'min' : 'mean';
+    const used = s.wf === 'max' && fields.includes('max') ? 'max' : s.wf === 'min' && fields.includes('min') ? 'min' : 'mean';
     extra.push(t('sig.summary', { what: t('sig.wf.' + used), bp: fmtBp(win) }));
   }
   if (note) extra.push(note);
