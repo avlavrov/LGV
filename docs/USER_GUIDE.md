@@ -424,8 +424,13 @@ copied as JSON, pasted from someone else and applied, or reset.
 
 ## 15. Messages and limits
 
-- Windows that would read more than 64 MB of compressed data ask first, with the size; **load
-  anyway** reads it.
+- Windows that would read more than 64 MB of compressed data from links, or 512 MB from files on
+  disk (they read much faster), ask first, with the size; **load anyway** reads it. After that, the
+  same contig is not asked about again in this panel for windows up to 1.5 times as large. With long
+  reads (nanopore, PacBio) every window of a short contig, such as a plasmid, needs about the same
+  data, because the reads span it whole: zooming in does not make the size smaller.
+- With long reads that overlap, the reads stack thousands of rows deep; only the rows around the
+  visible ones are prepared for drawing, the rest as you scroll to them.
 - A damaged file gives a clear message saying what is wrong (for example a checksum mismatch in a
   block) instead of showing wrong data.
 - Reading that takes longer than 60 s is stopped with a message; the file may be damaged. Each

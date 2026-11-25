@@ -5421,12 +5421,12 @@ const S = {
 // layout, scroll and GPU buffers (T.data, T.shown, T.layout, T.scroll, T.vao ...) are the current
 // panel's. usePanel(pn) makes a panel current; every entry point (an event, a frame, a load that
 // resumes after an await) chooses its panel first.
-const PANEL_KEYS = ['view', 'data', 'msg', 'loading', 'loadToken', 'forceLoad', 'sortPos', 'rubber'];
-const TRACK_PANEL_KEYS = ['data', 'shown', 'layout', 'scroll', 'vao', 'fbuf', 'cbuf', 'n', 'msg'];
+const PANEL_KEYS = ['view', 'data', 'msg', 'loading', 'loadToken', 'forceLoad', 'approved', 'sortPos', 'rubber'];
+const TRACK_PANEL_KEYS = ['data', 'shown', 'layout', 'scroll', 'vao', 'fbuf', 'cbuf', 'n', 'msg', 'built'];
 const PANEL_GAP = 6, PANEL_HDR = 20, PANEL_MIN_W = 60;
 let panelSeq = 0;
 function newPanel(view) {
-  return { id: ++panelSeq, view: view || { refId: 0, start: 0, bpPerPx: 1 }, data: null, msg: null, loading: false, loadToken: 0, forceLoad: false,
+  return { id: ++panelSeq, view: view || { refId: 0, start: 0, bpPerPx: 1 }, data: null, msg: null, loading: false, loadToken: 0, forceLoad: false, approved: null,
     sortPos: null, rubber: null, x0: 0, w: 0, ts: new Map(), focusName: null };
 }
 let CUR = newPanel();
@@ -5442,7 +5442,7 @@ function forEachPanel(f) {
 // A track's state in the current panel.
 function trackState(T) {
   let x = CUR.ts.get(T.id);
-  if (!x) CUR.ts.set(T.id, x = { data: null, shown: null, layout: null, scroll: 0, vao: null, fbuf: null, cbuf: null, n: 0, msg: null });
+  if (!x) CUR.ts.set(T.id, x = { data: null, shown: null, layout: null, scroll: 0, vao: null, fbuf: null, cbuf: null, n: 0, msg: null, built: null });
   return x;
 }
 function makeTrack(o) {
@@ -5690,15 +5690,17 @@ function warmUpGL() {
 }
 
 // ======================= Instance buffer =======================
+// Sized once from a count of what will go in (long reads give millions of instances: growing by
+// copying, and a property lookup per value, cost seconds there); grows only if the count was short.
 class InstBuf {
-  constructor(cap) { this.f = new Float32Array(cap * 7); this.c = new Uint8Array(cap * 4); this.n = 0; }
-  grow() { const f = new Float32Array(this.f.length * 2); f.set(this.f); this.f = f; const c = new Uint8Array(this.c.length * 2); c.set(this.c); this.c = c; }
+  constructor(cap) { this.f = new Float32Array(cap * 7); this.c = new Uint8Array(cap * 4); this.n = 0; this.cap = cap; }
+  grow() { this.cap *= 2; const f = new Float32Array(this.cap * 7); f.set(this.f); this.f = f; const c = new Uint8Array(this.cap * 4); c.set(this.c); this.c = c; }
   add(x0, x1, row, grp, yA, yB, minpx, rgb, a) {
-    if ((this.n + 1) * 7 > this.f.length) this.grow();
-    const i = this.n * 7, j = this.n * 4;
-    this.f[i] = x0; this.f[i + 1] = x1; this.f[i + 2] = row; this.f[i + 3] = grp; this.f[i + 4] = yA; this.f[i + 5] = yB; this.f[i + 6] = minpx;
-    this.c[j] = rgb[0]; this.c[j + 1] = rgb[1]; this.c[j + 2] = rgb[2]; this.c[j + 3] = Math.round(a * 255);
-    this.n++;
+    if (this.n >= this.cap) this.grow();
+    const f = this.f, c = this.c, n = this.n, i = n * 7, j = n * 4;
+    f[i] = x0; f[i + 1] = x1; f[i + 2] = row; f[i + 3] = grp; f[i + 4] = yA; f[i + 5] = yB; f[i + 6] = minpx;
+    c[j] = rgb[0]; c[j + 1] = rgb[1]; c[j + 2] = rgb[2]; c[j + 3] = (a * 255 + 0.5) | 0;
+    this.n = n + 1;
   }
 }
 
@@ -5761,6 +5763,19 @@ function rebuildPanel() {
   S.stats.buildMs = performance.now() - t0;
   S.tracks.forEach(clampTrackScroll);
 }
+// The rows to build for a track at its scroll: the visible ones and a screenful above and below.
+function rowsWanted(T, nGroups) {
+  const i = S.tracks.indexOf(T), g = trackGeom(Math.max(0, i)), H = Math.max(1, g.bottom - g.readsTop), rh = Math.max(0.5, P.readHeight);
+  const vis = Math.ceil(H / rh) + 1, sc = T.scroll || 0;
+  return [Math.floor((sc - nGroups * groupGap()) / rh) - vis, Math.ceil((sc + H) / rh) + vis];
+}
+// true when the rows now in view go past what was built
+function rowsBuiltFor(T, i) {
+  if (!T.shown || !T.built) return true;
+  const g = trackGeom(i), H = Math.max(1, g.bottom - g.readsTop), rh = Math.max(0.5, P.readHeight), sc = T.scroll || 0;
+  const a = Math.floor((sc - T.shown.groups.length * groupGap()) / rh), b = Math.ceil((sc + H) / rh);
+  return a >= T.built[0] && b <= T.built[1];
+}
 // Rebuild of one track: layout → sort → instances. Filters and downsampling acted while loading.
 function rebuildTrack(T) {
   const d = S.data, td = T.data;
@@ -5791,15 +5806,27 @@ function rebuildTrack(T) {
   }
   const { groups, totalRows: rowCursor } = T.layout.update(items, it => groupKey(firstRead(it)), prio, keyOf);
   // instances: bodies → lines → features on top
-  const ib = new InstBuf(Math.max(1024, reads.length * 3));
+  // Instances only for the rows near the visible ones (a screen above and below): long reads that all
+  // overlap stack thousands of rows deep, of which a screenful is seen; render rebuilds when the
+  // scroll leaves this range (see rowsBuiltFor).
+  const [r0, r1] = rowsWanted(T, groups.length);
+  T.built = [r0, r1];
   const bodies = [], marks = [], links = [];
   groups.forEach((g, gi) => g.rows.forEach((row, ri) => {
     const R = g.start + ri;
+    if (R < r0 || R > r1) return;
     for (const it of row) {
       for (const rec of readsOf(it)) bodies.push([rec, R, gi]);
       if (it.reads && (it.reads.length === 2 || it.mate)) links.push([it, R, gi]);
     }
   }));
+  // how many instances: per read its blocks, deletion / skip marks, features, clips and two arrows
+  let need = links.length * 2 + 16;
+  for (const [rec] of bodies) {
+    let gaps = 0; for (const c of rec.cigar) { const op = c & 15; if (op === 2 || op === 3) gaps++; }
+    need += 2 * gaps + 1 + feats(rec).length + 4;
+  }
+  const ib = new InstBuf(need);
   // pair view: a line between mates (to the mate's place when it is not loaded); overlap of mates shaded
   for (const [u, R, gi] of links) {
     const a = mapqAlpha(Math.min(...u.reads.map(r => r.mapq)));
@@ -6003,8 +6030,9 @@ function trackFetch(T, br, ls, le, opts, slot) {
   const q = T.fq, old = q.wait.get(pn);
   if (old) old.reject(new CgvError('superseded'));
   // the read in progress is for a view this panel has left: stop it if it is a long one (a wide
-  // window) and its worker serves nobody else at the moment — the new view need not wait for it
-  if (q.cur && q.cur.pn === pn && performance.now() - q.cur.t0 > 300 && T.worker) {
+  // window, over 2 s so far: shorter ones are cheaper to finish than a restart) and its worker serves
+  // nobody else at the moment — the new view need not wait for it
+  if (q.cur && q.cur.pn === pn && performance.now() - q.cur.t0 > 2000 && T.worker) {
     const w = T.worker; let n = 0; for (const x of POOL.wait.values()) if (x.w === w) n++;
     if (n === 1) failWorker(w, 'superseded', performance.now() - q.cur.t0);
   }
@@ -6065,10 +6093,16 @@ async function ensureData() {
   if (!tracks.length && span > REF_VIEW_BP) { clear(); S.msg = null; draw(); return; } // reference only: bases are drawn when zoomed in
   // decide by the amount of data the index points to, not by window length: 30x WGS and a
   // 3000x panel differ a hundredfold for the same window
-  const est = tracks.reduce((a, T) => a + (T.map[refId] >= 0 ? T.bam.estimateBytes(T.map[refId], ls, le) : 0), 0);
-  if (est > P.maxLoadMB * 1048576 && !S.forceLoad) {
+  // The limit is for data over links (it is downloaded); files on disk read quickly, so for them it
+  // is 8 times higher. Once a contig was loaded anyway, it is not asked about again in this panel for
+  // windows up to 1.5 times as large (with long reads every window of a short contig needs the
+  // same data, and asking again at each zoom helped no one).
+  const est = tracks.reduce((a, T) => a + (T.map[refId] >= 0 ? T.bam.estimateBytes(T.map[refId], ls, le) * (T.remote ? 1 : 1 / 8) : 0), 0);
+  const ok = S.approved && S.approved.refId === refId && est <= S.approved.bytes * 1.5;
+  if (S.forceLoad) S.approved = { refId, bytes: est };
+  if (est > P.maxLoadMB * 1048576 && !S.forceLoad && !ok) {
     clear();
-    const size = fmtBytes(est);
+    const size = fmtBytes(tracks.reduce((a, T) => a + (T.map[refId] >= 0 ? T.bam.estimateBytes(T.map[refId], ls, le) : 0), 0));
     S.msg = { text: t('wide', { span: fmtBp(span), size }), action: t('wide.btn', { size }) };
     draw(); return;
   }
@@ -6195,6 +6229,7 @@ function renderPanel(pn, tp) {
   let tl = performance.now();
   const add = (k, v) => { tp[k] = (tp[k] || 0) + v; };
   if (!drag) S.tracks.forEach(clampTrackScroll);
+  S.tracks.forEach((T, i) => { if (T.shown && !rowsBuiltFor(T, i)) rebuildTrack(T); });
   if (GL_OK && S.data && S.tracks.some(T => T.shown && T.n)) {
     const vx = Math.round(pn.x0 * DPR), vw = Math.max(1, Math.round((pn.x0 + pn.w) * DPR) - vx);
     gl.viewport(vx, 0, vw, glCanvas.height);
@@ -7072,7 +7107,7 @@ async function openBam(bamSrc, baiSrc, opts) {
     usePanel(S.active);
     const keepView = !own && S.viewSet && S.panels.every(pn => map[pn.view.refId] >= 0);
     if (!opts.demo) for (const x of S.tracks.filter(x => x.demo)) closeTrack(x); // own data replaces the demo sample
-    const T = makeTrack({ id: ++S.trackSeq, key, bam, name: bamSrc.name, demo: !!opts.demo, map, back });
+    const T = makeTrack({ id: ++S.trackSeq, key, bam, name: bamSrc.name, demo: !!opts.demo, map, back, remote: bamSrc instanceof UrlSource });
     // CRAM keeps reads as differences from the reference: its bases come from the loaded reference
     if (bam.isCram) bam.refProvider = async (id, a, b) => { const v = T.back[id]; return v >= 0 && S.fasta ? S.fasta.fetch(S.contigs[v].name, a, b) : null; };
     await attachWorker(T);

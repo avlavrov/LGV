@@ -97,6 +97,7 @@ node tools/test-cram.js                     # CRAM checks against the same data 
 node tools/test-fuzz.js                     # fuzzing of BGZF, BAM, BAI, FASTA/.fai/.gzi, locus field, profile
 node tools/test-signal.js                   # TDF and bigWig on files from IGV, igvtools, UCSC tools, bigtools; fuzzing
 python3 tools/make-signal-tests.py [big]    # synthetic TDF / bigWig test files (big: large ones for speed)
+node tools/gen-longreads.js DIR [n] [len]   # long-read test set (a plasmid, nanopore-like reads) for speed checks
 node tools/audit.js                         # security audit of our own code (see SECURITY.md)
 node tools/build.js                         # dist/lgv.html and dist/artifact.html
 CGV_L=1000000 node tools/gen-demo.js big    # 1 Mb at 30× for speed tests
