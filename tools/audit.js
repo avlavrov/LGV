@@ -29,8 +29,8 @@ const PLACES = [
     'network request outside UrlSource (only links the user gave are read)'],
   [code => /localStorage/.test(code), (f, code) => (f === 'src/app.js' && /PROFILE_KEY/.test(code)) || (f === 'src/signalview.js' && /SIG_PREF_KEY/.test(code)), 'browser storage other than the display profile and the signal tracks\' drawing choices'],
   [code => /https?:\/\/[^\s'"`)…]/.test(code),
-    (f, code, line) => (f === 'src/app.js' && /^\s*(hg38|hg19|chm13):/.test(line)) || (f === 'src/app.js' && /^const BLAT_PAGE = 'https:\/\/genome\.ucsc\.edu\/cgi-bin\/hgBlat';$/.test(line)) || (f === 'src/i18n.js') || (f === 'src/index.html' && /placeholder=/.test(line)),
-    'a fixed web address (allowed: the public reference presets and UCSC BLAT only)'],
+    (f, code, line) => (f === 'src/app.js' && /^\s*(hg38|hg19|chm13):/.test(line)) || (f === 'src/i18n.js') || (f === 'src/index.html' && /placeholder=/.test(line)),
+    'a fixed web address (allowed: the public reference presets only)'],
 ];
 const reviewed = []; // innerHTML lines: each must pass every value through esc()
 
@@ -44,7 +44,7 @@ for (const f of files) {
     if (/innerHTML\s*=/.test(code)) {
       // every ${...} on the line is esc(...), a number/boolean we built, or an already-escaped fragment
       const parts = [...code.matchAll(/\$\{([^}]*)\}/g)].map(m => m[1].trim());
-      const loose = parts.filter(x => !/^esc\(/.test(x) && !/^(cols\.length|rows|code|i|kind|on|act|val|link|\(?on \?|P\.cardPair|!P\.cardPair|cls \?|P\.cardPair \?)/.test(x) && !/^col\.title \?|^goMate \?|^linesHtml\(/.test(x));
+      const loose = parts.filter(x => !/^esc\(/.test(x) && !/^(cols\.length|rows|code|i|kind|on|act|val|\(?on \?|P\.cardPair|!P\.cardPair|cls \?|P\.cardPair \?)/.test(x) && !/^col\.title \?|^goMate \?|^linesHtml\(/.test(x));
       reviewed.push(`${f}:${n}`);
       if (loose.length) fail(f, n, line, 'innerHTML with a value not passed through esc(): ' + loose.join(', '));
     }

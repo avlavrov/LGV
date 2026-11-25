@@ -21,11 +21,12 @@ Ideas and agreed work for later. Items move to the user guide and README when do
 - Markers at the panel edge for reads (mates) off screen.
 - Share link: a link that opens the same loci (and public data links).
 - Check how IGV desktop (htsjdk) handles damaged CRAM files (igv.js does not check CRC by default).
-- BLAT results inside LGV (table, click → split panel) need a server that answers web pages: UCSC
-  does not (no CORS; its API needs a personal key). Options awaiting a decision: a small own proxy
-  holding a UCSC API key (as JBrowse does), or the user's own key. Now: the UCSC BLAT page opens.
-- BLAT: let the user choose another UCSC assembly when the reference is not recognized by chr1's
-  length (now: hg38, hg19, hs1, mm39, mm10 only); BLAT of a selected region of the reference.
+- BLAT (removed 2026-11-26: this version sends nothing anywhere). From a web page UCSC's hgBlat
+  cannot be read (no CORS); igv.js (IGV-Web) sends BLAT to its own proxy, igv.org/services/
+  blatUCSC.php, which forwards to UCSC (companies can point it at their own); JBrowse 2 uses its own
+  proxy holding a UCSC API key. Options if it comes back: an own proxy (a company's server or a small
+  cloud function), the user's UCSC API key, or the desktop version (no CORS there). Each sends read
+  bases outside the computer: needs the user's decision and a Privacy note.
 - Wide windows on a slow link: read depth-only windows from the index's own statistics or a
   coverage file (bigWig / TDF next to the BAM) instead of the reads.
 - Report to htscodecs upstream: its JavaScript decoders hang or return wrong data on cut-off

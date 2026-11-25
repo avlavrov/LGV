@@ -65,7 +65,6 @@ More languages are one dictionary in `src/i18n.js`.
 | Navigation | ← → back / forward between places jumped to; − + zoom all panels at once |
 | F13 Mate | view as pairs (right click), read details + go to mate; **split screen** as in IGV: right click on a read → "View mate region in split screen" (or the button in the read details) opens a panel centered on the mate, the read and its mate outlined in every panel; several loci typed in the locus field separated by spaces open one panel each; each panel has its own ruler, scroll and zoom, × in its header closes it; at least 6 panels, more as the width allows (60 px each) |
 | F14 Read details | IGV-style popup: read, mapping, clipping, mate and tags, then Location and `Base = A @ QV 14` for the clicked base; one read or read + mate side by side; copy; dragged by its top row, then opens where it was left (until the page is closed). Right click on a read: copy its sequence, left or right soft clip, or the pair as FASTA |
-| F15 BLAT | right click on a read: BLAT the read or a soft clip — opens the UCSC BLAT page in a new tab with the bases filled in (on request only) |
 | F18 Display profile as JSON | kept in the browser, copied and applied as JSON |
 | F23 Screen space for data | one bar of controls, hidden with H |
 
@@ -124,6 +123,8 @@ Targeted panels reach thousands of reads per base. LGV handles them the way IGV 
   Such a window is read in parts by several workers at once and kept only as the highest depth
   per bin (16–64 bp, at most ~1M bins), so a whole chromosome never holds a counter per base and a
   frame draws from bins instead of every base (a 21 Mb view: from about 0.6–1.6 s to a few ms).
+- **Read window** (View → Load reads up to, default 200 kb): wider windows read the depth only and
+  offer to load the reads with the expected count and time (learned from the last loads).
 - **Depth from the index for very wide views** (the idea of goleft indexcov): the BAI linear index /
   CRAI slice sizes give the bytes of reads per 16 kb, scaled to depth by windows of the same file
   read in detail; shown at once above 1 Mb, replaced by exact depth up to 10 Mb.

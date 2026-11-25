@@ -21,6 +21,7 @@ const DEFAULT_PROFILE = {
   downsample: { enabled: true, maxReads: 100, window: 50 }, // like IGV: reads kept per window; coverage counts all
   maxReads: 300000,
   maxLoadMB: 64,                 // windows with more compressed alignment data ask before loading
+  readWindowKb: 200,             // reads are loaded in windows up to this wide; wider: coverage only, reads on request
   hideToolbar: false,
   viewPairs: false,              // show mates joined in one row
   cardPair: true,                // read details: the read and its mate side by side
@@ -47,7 +48,7 @@ const PROFILE_RULES = {
   readHeight: [1, 24], 'mapqAlpha.low': [0, 255], 'mapqAlpha.high': [0, 255], 'mapqAlpha.transparency': [0, 1],
   'filters.minMapq': [0, 255], 'coverage.height': [14, 400], 'coverage.alleleThreshold': [0, 1],
   'downsample.maxReads': [1, 100000], 'downsample.window': [1, 1000000], maxReads: [1000, 5000000],
-  maxLoadMB: [1, 4096], trackMinHeight: [80, 2000], startReference: ['hg38', 'hg19', 'chm13', 'demo', 'none'], 'pairs.maxSpan': [0, 10000000], version: [0, 1000],
+  maxLoadMB: [1, 4096], readWindowKb: [1, 1000], trackMinHeight: [80, 2000], startReference: ['hg38', 'hg19', 'chm13', 'demo', 'none'], 'pairs.maxSpan': [0, 10000000], version: [0, 1000],
   colorBy: ['none', 'strand', 'pair', 'tag'], groupBy: ['none', 'strand', 'pair', 'tag', 'firstOfPair'],
   sortBy: ['start', 'base', 'mapq', 'strand', 'insert'], language: ['en', 'ru'],
   colorTag: /^[A-Za-z][A-Za-z0-9]$/, groupTag: /^[A-Za-z][A-Za-z0-9]$/,
@@ -91,12 +92,12 @@ const S = {
 // layout, scroll and GPU buffers (T.data, T.shown, T.layout, T.scroll, T.vao ...) are the current
 // panel's. usePanel(pn) makes a panel current; every entry point (an event, a frame, a load that
 // resumes after an await) chooses its panel first.
-const PANEL_KEYS = ['view', 'data', 'msg', 'loading', 'loadToken', 'forceLoad', 'approved', 'sortPos', 'rubber'];
+const PANEL_KEYS = ['view', 'data', 'msg', 'loading', 'loadToken', 'forceLoad', 'approved', 'forceReads', 'readsOk', 'sortPos', 'rubber'];
 const TRACK_PANEL_KEYS = ['data', 'shown', 'layout', 'scroll', 'vao', 'fbuf', 'cbuf', 'n', 'msg', 'built'];
 const PANEL_GAP = 6, PANEL_HDR = 20, PANEL_MIN_W = 60;
 let panelSeq = 0;
 function newPanel(view) {
-  return { id: ++panelSeq, view: view || { refId: 0, start: 0, bpPerPx: 1 }, data: null, msg: null, loading: false, loadToken: 0, forceLoad: false, approved: null,
+  return { id: ++panelSeq, view: view || { refId: 0, start: 0, bpPerPx: 1 }, data: null, msg: null, loading: false, loadToken: 0, forceLoad: false, approved: null, forceReads: false, readsOk: null,
     sortPos: null, rubber: null, x0: 0, w: 0, ts: new Map(), focusName: null };
 }
 let CUR = newPanel();
@@ -336,11 +337,14 @@ function initGL() {
     } else if (v_out.y > 0.0) {
       // one device pixel at the edges of the box at the outline's opacity (thin rows: a mix of both)
       float e = 1.0 / u_dpr, h = v_box.z, w = v_out.x;
-      bool edge = v_box.x < e || v_box.x > w - e || v_box.y < e || v_box.y > h - e;
       // the fill is the read's color over the background at its opacity (never lighter than the
-      // background); thin boxes: the fill over the outline gray, so empty reads still show
-      if (h * u_dpr < 4.0 || w * u_dpr < 4.0) o = vec4(mix(u_outline, v_color.rgb, v_color.a), 1.0);
-      else if (edge) o = vec4(u_outline, 1.0);
+      // background) at every scale. The outline on the sides that are 3 device pixels or more apart:
+      // a read narrower than that keeps only its top and bottom lines, a thinner row only the sides;
+      // a box too small for any keeps its fill, at least faintly
+      bool sx = w * u_dpr >= 3.0, sy = h * u_dpr >= 3.0;
+      bool ex = sx && (v_box.x < e || v_box.x > w - e), ey = sy && (v_box.y < e || v_box.y > h - e);
+      if (ex || ey) o = vec4(u_outline, 1.0);
+      else if (!sx && !sy) o = vec4(v_color.rgb, max(v_color.a, 0.35));
     }
   }`;
   const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
@@ -825,6 +829,12 @@ let loadTimer = 0;
 function requestLoad() { clearTimeout(loadTimer); loadTimer = setTimeout(loadAll, 120); }
 // Every panel checks its window; panels whose data still covers their view return at once.
 function loadAll() { forEachPanel(() => { ensureData(); }); }
+// Time a window with reads takes, from the start of loading to the first frame drawn (reading in
+// the workers, reference, layout and drawing on the page): ms per byte of index-estimated data over
+// the open samples, a running mean of the last loads with reads (LOAD_RATE).
+let LOAD_RATE = 0;
+function windowBytes(tracks, refId, ls, le) { return tracks.reduce((a, T) => a + (T.map[refId] >= 0 ? T.bam.estimateBytes(T.map[refId], ls, le) : 0), 0); }
+function noteLoad(bytes, ms) { if (bytes < 262144 || ms < 100) return; const r = ms / bytes; LOAD_RATE = LOAD_RATE ? LOAD_RATE * 0.6 + r * 0.4 : r; }
 async function ensureData() {
   if (!S.contigs || !W) return;
   const pn = CUR, back = () => { if (!S.panels.includes(pn)) return false; usePanel(pn); return true; }; // after each await
@@ -832,7 +842,10 @@ async function ensureData() {
   const d = S.data;
   const span0 = ve - vs;
   // a window loaded with depth-only coverage is loaded again in detail when zoomed in below COV_DETAIL_BP
-  if (d && d.refId === S.view.refId && vs >= d.start && ve <= d.end && !(d.depthOnly && span0 <= COV_DETAIL_BP) && !(d.estimate && !S.loading && span0 <= DEPTH_EXACT_BP)) return;
+  // reads are loaded up to the read window (View), wider only when asked for this contig (up to 1.5x)
+  const readsWanted = sp => sp <= P.readWindowKb * 1000 || S.forceReads || (S.readsOk && S.readsOk.refId === S.view.refId && sp <= S.readsOk.span * 1.5);
+  const needReads = span0 <= COV_DETAIL_BP && readsWanted(span0);
+  if (d && d.refId === S.view.refId && vs >= d.start && ve <= d.end && !(d.depthOnly && needReads) && !(d.estimate && !S.loading && span0 <= DEPTH_EXACT_BP)) return;
   const span = span0, margin = Math.round(Math.min(span, 20000) / 2);
   let ls = Math.max(0, vs - margin); const le = Math.min(refLen(), ve + margin);
   const tracks = S.tracks.slice(), refId = S.view.refId;
@@ -875,10 +888,14 @@ async function ensureData() {
     draw(); return;
   }
   S.forceLoad = false;
+  // a window wider than the read window: exact depth only (fast), and an offer to load the reads
+  const noReads = span <= COV_DETAIL_BP && tracks.length && !readsWanted(span0);
+  if (S.forceReads) S.readsOk = { refId, span: span0 };
+  S.forceReads = false;
   const token = ++S.loadToken; S.loading = true; S.msg = null; draw();
   const t0 = performance.now();
   try {
-    const depthOnly = span > COV_DETAIL_BP;
+    const depthOnly = span > COV_DETAIL_BP || noReads;
     const opts = { depthOnly, maxReads: P.maxReads, filters: P.filters, downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null };
     // samples load side by side; one that fails shows its error in its own track
     const results = await Promise.all(tracks.map(async T => {
@@ -914,22 +931,32 @@ async function ensureData() {
     }
     if (token !== S.loadToken) return;
     S.refFromMD = fromMD && tracks.length > 0;
-    S.data = { refId, start: ls, end: le, ref, depthOnly };
+    S.data = { refId, start: ls, end: le, ref, depthOnly, noReads };
     for (const { T, res, msg, error } of results) {
       T.data = { reads: res ? res.reads : [], insert: insertSizeBounds(res ? res.reads : []),
         cov: res ? res.cov : new SparseCoverage(ls, le), total: res ? res.total : 0, sampled: res ? res.sampled : [] };
       // no reads in wide windows (coverage only), nor past the read limit: say why in the reads area
-      T.msg = msg ? { text: msg, error: !!error } : res && depthOnly && res.total ? { text: t('reads.wide', { span: fmtBp(COV_DETAIL_BP) }) }
+      T.msg = msg ? { text: msg, error: !!error } : res && noReads && res.total ? { text: t('reads.limit', { span: fmtBp(P.readWindowKb * 1000) }) }
+        : res && depthOnly && res.total ? { text: t('reads.wide', { span: fmtBp(COV_DETAIL_BP) }) }
         : res && res.tooMany ? { text: t('reads.tooMany', { n: fmtInt(P.maxReads) }) } : null;
     }
     if (!depthOnly) for (const { T, res } of results) if (res && T.map[refId] >= 0) calibrateIdx(T, T.map[refId], res.cov, ls, le);
     S.stats.loadMs = performance.now() - t0;
+    if (noReads && results.some(r => r.res && r.res.total)) {
+      // the offer, with the expected time when every file has been timed, else the data size
+      const bytes = windowBytes(tracks, refId, ls, le), ms = LOAD_RATE * bytes, size = fmtBytes(bytes);
+      // reads that would be kept: all of them, or at most the downsampling cap per window
+      const cap = P.downsample.enabled ? Math.ceil((le - ls) / P.downsample.window) * P.downsample.maxReads : Infinity;
+      const n = results.reduce((a, r) => a + (r.res ? Math.min(r.res.total, cap, P.maxReads) : 0), 0);
+      S.msg = { text: t('reads.ask', { span: fmtBp(span0), lim: fmtBp(P.readWindowKb * 1000), n: fmtInt(n) }), action: ms ? t('reads.askBtnT', { s: (ms / 1000).toFixed(ms < 10000 ? 1 : 0) }) : t('reads.askBtn', { size }), kind: 'reads' };
+    }
     S.loading = false;
     // the records were replaced: a selection in this panel no longer points at them
     if (S.selected && S.selected.pn === pn) { S.selected = null; if (cardState && cardState.pn === pn) hideCard(); }
     rebuildPanel();
     if (pn.focusName) { focusRead(pn.focusName); pn.focusName = null; }
     draw();
+    if (!depthOnly && tracks.length) noteLoad(windowBytes(tracks, refId, ls, le), performance.now() - t0);
   } catch (e) {
     if (!back() || token !== S.loadToken) return;
     S.loading = false; S.msg = { text: errText(e), error: true }; draw();
@@ -1350,7 +1377,7 @@ function drawMessage() {
   if (pn) {
     el.hidden = false; el.className = 'msg' + (pn.msg.error ? ' err' : '');
     el.textContent = (S.panels.length > 1 ? panelLocus(pn) + ': ' : '') + pn.msg.text;
-    if (pn.msg.action) { const b = document.createElement('button'); b.className = 'btn'; b.textContent = pn.msg.action; b.onclick = () => { if (!S.panels.includes(pn)) return; usePanel(pn); S.forceLoad = true; S.msg = null; ensureData(); }; el.append(' ', b); }
+    if (pn.msg.action) { const b = document.createElement('button'); b.className = 'btn'; b.textContent = pn.msg.action; b.onclick = () => { if (!S.panels.includes(pn)) return; usePanel(pn); if (pn.msg.kind === 'reads') S.forceReads = true; else S.forceLoad = true; S.msg = null; ensureData(); }; el.append(' ', b); }
     return;
   }
   el.hidden = true;
@@ -2245,9 +2272,6 @@ function openMenu(x, gx, y, hit) {
     const [cl, cr] = clipLens(r0), noSeq = !r0.lseq, mate = (r0.flag & 1) ? findMate(r0, hit.T) : null;
     copy = act('copySeq', t('menu.copySeq'), noSeq) + act('copyLeft', t('menu.copyLeft'), noSeq || !cl) + act('copyRight', t('menu.copyRight'), noSeq || !cr) +
       act('copyPair', t(mate || !(r0.flag & 1) ? 'menu.copyPair' : 'menu.copyPairNo'), noSeq || !mate || !mate.lseq) + '<div class="msep"></div>';
-    // BLAT (UCSC) of the read or a clipped end: needs a reference UCSC knows and 20+ bases
-    const db = ucscDb(), bl = (a, k, n) => blatItem(a, t(k), noSeq || !db || n < BLAT_MIN || n > BLAT_MAX, !db ? t('blat.noDb') : !n ? t('blat.noClip') : n < BLAT_MIN ? t('blat.short', { n: BLAT_MIN }) : n > BLAT_MAX ? t('blat.long', { n: fmtInt(BLAT_MAX) }) : t('blat.tip', { db: db || '' }));
-    copy += bl('blatSeq', 'menu.blatSeq', r0.lseq) + bl('blatLeft', 'menu.blatLeft', cl) + bl('blatRight', 'menu.blatRight', cr) + '<div class="msep"></div>';
   }
   m.innerHTML =
     (mateOk ? act('mateSplit', t('menu.mateSplit')) + '<div class="msep"></div>' : '') + copy +
@@ -2286,27 +2310,6 @@ function copyReadSeq(rec, T, act) {
   if (!txt) return;
   navigator.clipboard.writeText(txt).then(() => toast(t('copied.seq', { n: fmtInt(txt.replace(/^>.*$/gm, '').replace(/\s/g, '').length) })), () => toast(t('copyFail')));
 }
-// ---- BLAT at the UCSC Genome Browser: where else a read (or its clipped end) aligns. UCSC's BLAT
-// server does not answer other web pages (no CORS; its API wants a personal key), so LGV opens the
-// UCSC BLAT page in a new tab with the bases filled in, on this explicit request only (see the
-// guide, Privacy); the results are shown there.
-const BLAT_MIN = 20, BLAT_MAX = 8000; // longer: the bases no longer fit in a web address reliably
-const BLAT_PAGE = 'https://genome.ucsc.edu/cgi-bin/hgBlat';
-// UCSC assembly of the open reference, by the length of chr1 (any naming: chr1, 1)
-function ucscDb() {
-  const i = contigId('chr1'); if (i < 0) return null;
-  return { 248956422: 'hg38', 249250621: 'hg19', 248387328: 'hs1', 195154279: 'mm39', 195471971: 'mm10' }[S.contigs[i].len] || null;
-}
-function blatItem(a, label, off, tip) { return `<button class="mi" role="menuitem" data-act="${a}" data-val="" title="${esc(tip)}"${off ? ' disabled' : ''}><span class="mk" aria-hidden="true"></span>${esc(label)}</button>`; }
-function blatRead(rec, act) {
-  const [cl, cr] = clipLens(rec), db = ucscDb(); if (!db) return;
-  const [a, b] = act === 'blatLeft' ? [0, cl] : act === 'blatRight' ? [rec.lseq - cr, rec.lseq] : [0, rec.lseq];
-  const seq = seqOf(rec, a, b); if (seq.length < BLAT_MIN || seq.length > BLAT_MAX) return;
-  const x = document.createElement('a');
-  x.href = BLAT_PAGE + '?type=DNA&db=' + db + '&userSeq=' + encodeURIComponent(seq);
-  x.target = '_blank'; x.rel = 'noopener noreferrer';
-  document.body.append(x); x.click(); x.remove();
-}
 $('ctx').addEventListener('click', e => {
   const sb = e.target.closest('[data-sig]');
   if (sb) { const a = menuState && menuState.sig; closeMenu(); if (a && ANN.tracks.includes(a)) signalMenuAct(a, sb.dataset.sig, sb.dataset.val); return; }
@@ -2316,7 +2319,6 @@ $('ctx').addEventListener('click', e => {
   usePanel(menuState.pn);
   if (act === 'mateSplit') { const h = menuState.hit; closeMenu(); hideCard(); if (h) openMatePanel(h.rec, h.T); draw(); return; }
   if (act.startsWith('copy')) { const h = menuState.hit; closeMenu(); if (h) copyReadSeq(h.rec, h.T, act); return; }
-  if (act.startsWith('blat')) { const h = menuState.hit; closeMenu(); if (h) blatRead(h.rec, act); return; }
   if (act === 'pairs') P.viewPairs = !P.viewPairs;
   else if (act === 'clips') { P.showSoftClips = !P.showSoftClips; reloadNeeded = true; }
   else if (act === 'color') P.colorBy = val;
@@ -2439,7 +2441,7 @@ const CONTROLS = [
   ['bqShade', 'baseQualityShading', 'bool', 'rebuild'], ['softClips', 'showSoftClips', 'bool', 'reload'],
   ['minMapq', 'filters.minMapq', 'num', 'reload'], ['hideDup', 'filters.hideDuplicates', 'bool', 'reload'],
   ['hideSec', 'filters.hideSecondary', 'bool', 'reload'], ['hideSupp', 'filters.hideSupplementary', 'bool', 'reload'], ['hideQc', 'filters.hideQcFail', 'bool', 'reload'],
-  ['dsOn', 'downsample.enabled', 'bool', 'reload'], ['dsMax', 'downsample.maxReads', 'num', 'reload'], ['dsWin', 'downsample.window', 'num', 'reload'],
+  ['readWin', 'readWindowKb', 'num', 'reload'], ['dsOn', 'downsample.enabled', 'bool', 'reload'], ['dsMax', 'downsample.maxReads', 'num', 'reload'], ['dsWin', 'downsample.window', 'num', 'reload'],
   ['covHeight', 'coverage.height', 'num', 'draw'], ['trackMinH', 'trackMinHeight', 'num', 'draw'], ['alleleThr', 'coverage.alleleThreshold', 'num', 'rebuild'],
   ['hideToolbar', 'hideToolbar', 'bool', 'chrome'], ['showGenes', 'showGenes', 'bool', 'draw'], ['startRef', 'startReference', 'str', 'none'], ['language', 'language', 'str', 'lang'],
 ];

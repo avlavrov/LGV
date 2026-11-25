@@ -270,6 +270,13 @@ Each sample has a coverage track: gray bars of read depth; the scale is in the c
 Where non-reference bases make up at least 20% of reads (**View → Highlight alleles from**), the
 bar shows colored parts by base.
 
+- **Reads are loaded in windows up to 200 kb** (View → Load reads up to, 1–1000 kb). The window
+  loaded is a little wider than the screen. In a wider window only the depth is read (quickly, no
+  allele colors), the reads area says why, and the message at the bottom offers **Load reads** with
+  the number of reads to expect and, once each file has been read before, the expected time (from
+  how fast that file was read so far); after that, windows on that contig up to 1.5 times as wide
+  load their reads without asking. How many reads come in is predictable: depth × window ÷ read
+  length, and with downsampling at most reads per window × window ÷ its width.
 - Coverage counts **every** read that passes the filters, also where the reads shown are
   downsampled.
 - Above 1 Mb wide, coverage is counted as depth only (no allele colors): it loads several times
@@ -379,11 +386,6 @@ Right click on the reads:
   All are copied as FASTA with the read name: `>name/1`; clips as `>name/1_left_clip` and
   `>name/1_right_clip`; a pair as `>name/1` and `>name/2`. The sequence is as stored in the file, on
   the reference's forward strand. Items that do not apply are grayed out.
-- **BLAT read sequence**, **BLAT left / right soft clip**: opens the BLAT page of the UCSC Genome
-  Browser in a new tab with these bases filled in; the results (where else they align) are shown
-  there. Works when the open reference is one UCSC knows (hg38, hg19, T2T hs1, mm39, mm10) and the
-  sequence has 20–8,000 bases; otherwise the item is grayed out and its tooltip says why. **The
-  bases are sent to UCSC** (see Privacy).
 - **View as pairs**, **Show soft-clipped bases**.
 - **Color by**: none, strand, pair orientation and insert size, tag value (with the tag field).
 - **Sort by** at the clicked position: start (unsorted), base, MAPQ, strand, insert size. Reads
@@ -408,11 +410,12 @@ copied as JSON, pasted from someone else and applied, or reset.
 
 - **Reads**: read height (1–24 px), color, tag for color, fade low-quality bases, show soft clips,
   MAPQ transparency (from / to MQ, transparency at low MQ: 0% is a solid read, 100% an empty one
-  with only the outline). Every read has a thin pale gray outline; the pointed 3' end is drawn only
+  with only the outline; the same at every scale: a read narrower than 3 pixels keeps its top and
+  bottom lines). Every read has a thin pale gray outline; the pointed 3' end is drawn only
   in views up to 5 kb wide, further out reads are rectangles. Mismatches, insertions and clips are
   never paled by MAPQ: their color depends only on the base's own quality.
 - **Group and sort**: group by strand, first / second of pair, pair orientation or a tag; sort rows.
-- **Filters**: minimum MAPQ; hide duplicates, secondary, supplementary, QC-failed reads;
+- **Filters**: the read window (load reads up to, kb, see section 8); minimum MAPQ; hide duplicates, secondary, supplementary, QC-failed reads;
   downsampling (reads per window, window size). Filters and downsampling act while reading, so
   changing them reads the window again.
 - **Coverage**: minimum sample height, coverage track height, allele highlight threshold.
@@ -495,10 +498,6 @@ copied as JSON, pasted from someone else and applied, or reset.
 - Data goes only between the files or links you chose and your computer. LGV sends nothing
   anywhere; the only connection it makes by itself is loading the reference chosen to open at
   start (sequence only).
-- The one exception is **BLAT**, and only when you choose it in the right-click menu: the bases of
-  that read (or of its clipped end) go to the UCSC Genome Browser (genome.ucsc.edu) in the address
-  of the BLAT page LGV opens in a new tab, nothing else (no read name, file name or position). Do not use it for data that must not leave your
-  computer.
 - Gene search and the gene track are built in: typed gene names are not sent anywhere.
 - Only the display profile is saved in the browser. Tokens, links and folder access are never
   saved.

@@ -15,10 +15,7 @@ user chose and the user's device.** LGV sends nothing anywhere by itself.
    user typed, plus the public reference presets: GRCh38 opens at start by default (sequence only,
    from the IGV team's public bucket; View → "At start open" changes it or turns it off). Gene search
    needs no network: the MANE gene table is bundled with LGV, so typed gene names never leave the
-   computer. The one other call is **BLAT**, made only when the user picks it in the read's
-   right-click menu: LGV opens the UCSC BLAT page (`BLAT_PAGE`) in a new tab
-   (`noopener`, `noreferrer`) with the bases of that read (or clipped end) in its address; LGV
-   reads nothing back. No telemetry, no CDN, no
+   computer. No telemetry, no CDN, no
    fonts from the web. The local build carries a strict Content Security Policy
    (`default-src 'none'`, no `unsafe-eval`, connections only over HTTPS or to this computer).
 5. **Storage only for the display profile.** Tokens and links are never saved. Folders the user lets LGV read
