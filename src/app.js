@@ -669,6 +669,12 @@ function trackFetch(T, br, ls, le, opts, slot) {
   if (!T.fq) T.fq = { busy: false, wait: new Map() };
   const q = T.fq, old = q.wait.get(pn);
   if (old) old.reject(new CgvError('superseded'));
+  // the read in progress is for a view this panel has left: stop it if it is a long one (a wide
+  // window) and its worker serves nobody else at the moment — the new view need not wait for it
+  if (q.cur && q.cur.pn === pn && performance.now() - q.cur.t0 > 300 && T.worker) {
+    const w = T.worker; let n = 0; for (const x of POOL.wait.values()) if (x.w === w) n++;
+    if (n === 1) failWorker(w, 'superseded', performance.now() - q.cur.t0);
+  }
   return new Promise((resolve, reject) => {
     q.wait.set(pn, { resolve, reject, args: [br, ls, le, opts] });
     pumpFetch(T);
@@ -677,12 +683,13 @@ function trackFetch(T, br, ls, le, opts, slot) {
 function pumpFetch(T) {
   const q = T.fq; if (q.busy || !q.wait.size) return;
   const [pn, job] = q.wait.entries().next().value; q.wait.delete(pn);
+  q.cur = { pn, t0: performance.now() };
   const where = pn.view && S.contigs && S.contigs[pn.view.refId] ? S.contigs[pn.view.refId].name + ':' : '';
   q.busy = true;
   const t0 = performance.now();
   fetchNow(T, ...job.args).then(r => { diag('load', `${T.name} ${where}${job.args[1]}-${job.args[2]} ${r.reads.length} reads ${Math.round(performance.now() - t0)} ms`); job.resolve(r); },
     e => { diag('load', `${T.name} failed after ${Math.round(performance.now() - t0)} ms: ${e && (e.code || e.message)}`); job.reject(e); })
-    .finally(() => { q.busy = false; pumpFetch(T); });
+    .finally(() => { q.busy = false; q.cur = null; pumpFetch(T); });
 }
 async function fetchNow(T, br, ls, le, opts) {
   if (T.reattach) { T.reattach = false; await attachWorker(T); }
@@ -693,7 +700,7 @@ async function fetchNow(T, br, ls, le, opts) {
       const c = m.res.cov, cov = new SparseCoverage(c.start, c.end);
       for (const [bi, blk] of c.blocks) cov.blocks.set(bi, blk);
       if (c.depthOnly) cov.depthOnly = true;
-      return { reads: m.res.reads, total: m.res.total, sampled: m.res.sampled, cov };
+      return { reads: m.res.reads, total: m.res.total, sampled: m.res.sampled, cov, tooMany: !!m.res.tooMany };
     } catch (e) { if (e.code !== 'worker') throw e; T.worker = null; } // the worker died: read on the page
   }
   return T.bam.fetch(br, ls, le, opts);
@@ -737,7 +744,7 @@ async function ensureData() {
   const t0 = performance.now();
   try {
     const depthOnly = span > COV_DETAIL_BP;
-    const opts = { depthOnly, filters: P.filters, downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null };
+    const opts = { depthOnly, maxReads: P.maxReads, filters: P.filters, downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null };
     // samples load side by side; one that fails shows its error in its own track
     const results = await Promise.all(tracks.map(async T => {
       const br = T.map[refId];
@@ -776,7 +783,9 @@ async function ensureData() {
     for (const { T, res, msg, error } of results) {
       T.data = { reads: res ? res.reads : [], insert: insertSizeBounds(res ? res.reads : []),
         cov: res ? res.cov : new SparseCoverage(ls, le), total: res ? res.total : 0, sampled: res ? res.sampled : [] };
-      T.msg = msg ? { text: msg, error: !!error } : null;
+      // no reads in wide windows (coverage only), nor past the read limit: say why in the reads area
+      T.msg = msg ? { text: msg, error: !!error } : res && depthOnly && res.total ? { text: t('reads.wide', { span: fmtBp(COV_DETAIL_BP) }) }
+        : res && res.tooMany ? { text: t('reads.tooMany', { n: fmtInt(P.maxReads) }) } : null;
     }
     S.stats.loadMs = performance.now() - t0;
     S.loading = false;

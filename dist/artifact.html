@@ -434,6 +434,7 @@ const STRINGS = {
     'track.mostBad': '{name}: {n} of {all} lines could not be read, so the file is probably not {format}. Line {line}: “{text}”',
     'track.fmt.bed': 'BED (contig ⇥ start ⇥ end …)', 'track.fmt.bedgraph': 'bedGraph (contig ⇥ start ⇥ end ⇥ value)', 'track.fmt.vcf': 'VCF', 'track.fmt.gtf': 'GTF', 'track.fmt.gff': 'GFF3',
     'about.diag': 'Diagnostic log', 'about.diagHint': 'What took long in this session — sample reads, slow frames, the page busy, background reader restarts ({n} entries). Kept only in this page; copy it to send with a problem report. It holds file names and loci, no reads.', 'about.diagCopy': 'Copy diagnostic log',
+    'reads.wide': 'Reads are shown in windows up to {span}; zoom in to see them. Coverage counts every read.', 'reads.tooMany': 'More than {n} reads in this window: zoom in to see them. Coverage counts every read.',
     'tip.contig': 'Go to a whole chromosome or contig', 'contig.aria': 'Contig', 'contig.other': 'Other contigs',
     'tip.signal': 'Signal track: click for the values here; right-click to choose how it is drawn',
     'sig.loading': 'loading…', 'sig.failed': 'could not be read', 'sig.noContig': 'no data for this contig', 'sig.tooMuch': 'zoom in: too much data at this scale',
@@ -563,6 +564,7 @@ const STRINGS = {
     'track.mostBad': '{name}: не прочитано {n} строк из {all}, так что это, скорее всего, не {format}. Строка {line}: «{text}»',
     'track.fmt.bed': 'BED (контиг ⇥ начало ⇥ конец …)', 'track.fmt.bedgraph': 'bedGraph (контиг ⇥ начало ⇥ конец ⇥ значение)', 'track.fmt.vcf': 'VCF', 'track.fmt.gtf': 'GTF', 'track.fmt.gff': 'GFF3',
     'about.diag': 'Журнал диагностики', 'about.diagHint': 'Что занимало время в этом сеансе — чтение образцов, медленные кадры, занятость страницы, перезапуски фонового чтения ({n} записей). Хранится только в этой странице; скопируйте и пришлите вместе с описанием проблемы. В нём имена файлов и локусы, ридов нет.', 'about.diagCopy': 'Скопировать журнал диагностики',
+    'reads.wide': 'Риды показываются в окнах до {span}; приблизьте, чтобы их увидеть. Покрытие считает все риды.', 'reads.tooMany': 'В этом окне больше {n} ридов: приблизьте, чтобы их увидеть. Покрытие считает все риды.',
     'tip.contig': 'Перейти к целой хромосоме или контигу', 'contig.aria': 'Контиг', 'contig.other': 'Другие контиги',
     'tip.signal': 'Дорожка значений: клик — значения в этом месте; правый клик — как её рисовать',
     'sig.loading': 'загрузка…', 'sig.failed': 'не удалось прочитать', 'sig.noContig': 'нет данных для этого контига', 'sig.tooMuch': 'приблизьте: на этом масштабе слишком много данных',
@@ -1773,7 +1775,7 @@ class Downsampler {
   }
   flush() {
     const all = this.extra.length ? this.kept.concat(this.extra) : this.kept;
-    if (all.length) { all.sort((a, b) => a.pos - b.pos); for (const r of all) this.out.reads.push(r); }
+    if (all.length && !this.out.tooMany) { all.sort((a, b) => a.pos - b.pos); for (const r of all) this.out.reads.push(r); }
     if (this.lost) this.out.sampled.push([this.win * this.ds.window, (this.win + 1) * this.ds.window]);
     if (this.pend.length) {
       const yes = new Set(this.kh); for (const h of this.xh) yes.add(h);
@@ -1857,6 +1859,10 @@ class BamFile {
       if (flt && !passFlags(flag, mapq, flt)) return;
       if (depth) depth.add(buf, dv, p); else addCoverage(buf, dv, p, cov);
       if (!ds || pos >= beg) out.total++;
+      // wide windows (opts.depthOnly): coverage only, no reads (they are below a pixel there, and a
+      // million of them would cost minutes to read, send and lay out); past opts.maxReads, none either
+      if (opts.depthOnly || out.tooMany) return;
+      if (opts.maxReads && out.reads.length >= opts.maxReads) { out.tooMany = true; out.reads = []; return; }
       if (!ds) { out.reads.push(parseBamRecord(buf, dv, p)); return; }
       // Downsampling decides per window of read starts. A read starting before `beg` belongs to a window
       // this query only partly sees, so the choice there could differ from a wider query. Such reads
@@ -4100,6 +4106,9 @@ class CramFile {
         if (flt && !passFlags(rec.flag, rec.mapq, flt)) continue;
         if (depth) depth.addRec(rec); else addCoverageRec(rec, cov);
         if (!ds || rec.pos >= beg) out.total++;
+        // as in BamFile.fetch: no reads for wide windows or past opts.maxReads
+        if (opts.depthOnly || out.tooMany) continue;
+        if (opts.maxReads && out.reads.length >= opts.maxReads) { out.tooMany = true; out.reads = []; continue; }
         if (!ds) { out.reads.push(rec); continue; }
         if (rec.pos < beg) continue; // as in BamFile.fetch: the left edge belongs to a wider query
         // as in BamFile.fetch
@@ -5984,6 +5993,12 @@ function trackFetch(T, br, ls, le, opts, slot) {
   if (!T.fq) T.fq = { busy: false, wait: new Map() };
   const q = T.fq, old = q.wait.get(pn);
   if (old) old.reject(new CgvError('superseded'));
+  // the read in progress is for a view this panel has left: stop it if it is a long one (a wide
+  // window) and its worker serves nobody else at the moment — the new view need not wait for it
+  if (q.cur && q.cur.pn === pn && performance.now() - q.cur.t0 > 300 && T.worker) {
+    const w = T.worker; let n = 0; for (const x of POOL.wait.values()) if (x.w === w) n++;
+    if (n === 1) failWorker(w, 'superseded', performance.now() - q.cur.t0);
+  }
   return new Promise((resolve, reject) => {
     q.wait.set(pn, { resolve, reject, args: [br, ls, le, opts] });
     pumpFetch(T);
@@ -5992,12 +6007,13 @@ function trackFetch(T, br, ls, le, opts, slot) {
 function pumpFetch(T) {
   const q = T.fq; if (q.busy || !q.wait.size) return;
   const [pn, job] = q.wait.entries().next().value; q.wait.delete(pn);
+  q.cur = { pn, t0: performance.now() };
   const where = pn.view && S.contigs && S.contigs[pn.view.refId] ? S.contigs[pn.view.refId].name + ':' : '';
   q.busy = true;
   const t0 = performance.now();
   fetchNow(T, ...job.args).then(r => { diag('load', `${T.name} ${where}${job.args[1]}-${job.args[2]} ${r.reads.length} reads ${Math.round(performance.now() - t0)} ms`); job.resolve(r); },
     e => { diag('load', `${T.name} failed after ${Math.round(performance.now() - t0)} ms: ${e && (e.code || e.message)}`); job.reject(e); })
-    .finally(() => { q.busy = false; pumpFetch(T); });
+    .finally(() => { q.busy = false; q.cur = null; pumpFetch(T); });
 }
 async function fetchNow(T, br, ls, le, opts) {
   if (T.reattach) { T.reattach = false; await attachWorker(T); }
@@ -6008,7 +6024,7 @@ async function fetchNow(T, br, ls, le, opts) {
       const c = m.res.cov, cov = new SparseCoverage(c.start, c.end);
       for (const [bi, blk] of c.blocks) cov.blocks.set(bi, blk);
       if (c.depthOnly) cov.depthOnly = true;
-      return { reads: m.res.reads, total: m.res.total, sampled: m.res.sampled, cov };
+      return { reads: m.res.reads, total: m.res.total, sampled: m.res.sampled, cov, tooMany: !!m.res.tooMany };
     } catch (e) { if (e.code !== 'worker') throw e; T.worker = null; } // the worker died: read on the page
   }
   return T.bam.fetch(br, ls, le, opts);
@@ -6052,7 +6068,7 @@ async function ensureData() {
   const t0 = performance.now();
   try {
     const depthOnly = span > COV_DETAIL_BP;
-    const opts = { depthOnly, filters: P.filters, downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null };
+    const opts = { depthOnly, maxReads: P.maxReads, filters: P.filters, downsample: P.downsample.enabled ? { max: P.downsample.maxReads, window: P.downsample.window } : null };
     // samples load side by side; one that fails shows its error in its own track
     const results = await Promise.all(tracks.map(async T => {
       const br = T.map[refId];
@@ -6091,7 +6107,9 @@ async function ensureData() {
     for (const { T, res, msg, error } of results) {
       T.data = { reads: res ? res.reads : [], insert: insertSizeBounds(res ? res.reads : []),
         cov: res ? res.cov : new SparseCoverage(ls, le), total: res ? res.total : 0, sampled: res ? res.sampled : [] };
-      T.msg = msg ? { text: msg, error: !!error } : null;
+      // no reads in wide windows (coverage only), nor past the read limit: say why in the reads area
+      T.msg = msg ? { text: msg, error: !!error } : res && depthOnly && res.total ? { text: t('reads.wide', { span: fmtBp(COV_DETAIL_BP) }) }
+        : res && res.tooMany ? { text: t('reads.tooMany', { n: fmtInt(P.maxReads) }) } : null;
     }
     S.stats.loadMs = performance.now() - t0;
     S.loading = false;

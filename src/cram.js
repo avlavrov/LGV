@@ -354,6 +354,9 @@ class CramFile {
         if (flt && !passFlags(rec.flag, rec.mapq, flt)) continue;
         if (depth) depth.addRec(rec); else addCoverageRec(rec, cov);
         if (!ds || rec.pos >= beg) out.total++;
+        // as in BamFile.fetch: no reads for wide windows or past opts.maxReads
+        if (opts.depthOnly || out.tooMany) continue;
+        if (opts.maxReads && out.reads.length >= opts.maxReads) { out.tooMany = true; out.reads = []; continue; }
         if (!ds) { out.reads.push(rec); continue; }
         if (rec.pos < beg) continue; // as in BamFile.fetch: the left edge belongs to a wider query
         // as in BamFile.fetch

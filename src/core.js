@@ -308,7 +308,7 @@ class Downsampler {
   }
   flush() {
     const all = this.extra.length ? this.kept.concat(this.extra) : this.kept;
-    if (all.length) { all.sort((a, b) => a.pos - b.pos); for (const r of all) this.out.reads.push(r); }
+    if (all.length && !this.out.tooMany) { all.sort((a, b) => a.pos - b.pos); for (const r of all) this.out.reads.push(r); }
     if (this.lost) this.out.sampled.push([this.win * this.ds.window, (this.win + 1) * this.ds.window]);
     if (this.pend.length) {
       const yes = new Set(this.kh); for (const h of this.xh) yes.add(h);
@@ -392,6 +392,10 @@ class BamFile {
       if (flt && !passFlags(flag, mapq, flt)) return;
       if (depth) depth.add(buf, dv, p); else addCoverage(buf, dv, p, cov);
       if (!ds || pos >= beg) out.total++;
+      // wide windows (opts.depthOnly): coverage only, no reads (they are below a pixel there, and a
+      // million of them would cost minutes to read, send and lay out); past opts.maxReads, none either
+      if (opts.depthOnly || out.tooMany) return;
+      if (opts.maxReads && out.reads.length >= opts.maxReads) { out.tooMany = true; out.reads = []; return; }
       if (!ds) { out.reads.push(parseBamRecord(buf, dv, p)); return; }
       // Downsampling decides per window of read starts. A read starting before `beg` belongs to a window
       // this query only partly sees, so the choice there could differ from a wider query. Such reads

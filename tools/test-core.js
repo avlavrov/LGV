@@ -144,6 +144,10 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
       let bad = 0; const A = new Uint32Array(6), B = new Uint32Array(6);
       for (let pos = 5000; pos < 30000; pos++) { const a = fullC.cov.counts(pos, A), b = dep.cov.counts(pos, B); if (a[0] + a[1] + a[2] + a[3] + a[4] !== b[4]) bad++; }
       ok(bad === 0 && dep.cov.depthOnly && dep.total === fullC.total, 'depth-only coverage equals the sum of base counts (' + bad + ' positions differ)');
+      ok(dep.reads.length === 0, 'a depth-only (wide) window returns no reads');
+      const capped = await bam.fetch(0, 5000, 30000, { filters: flt, maxReads: 1000 });
+      let same3 = true; for (let j = 5000; j < 30000; j += 7) for (let k = 0; k < 6; k++) if (capped.cov.get(j, k) !== fullC.cov.get(j, k)) same3 = false;
+      ok(capped.tooMany && capped.reads.length === 0 && same3 && capped.total === fullC.total, `past maxReads (${fullC.reads.length} > 1000): no reads, the limit is reported, coverage complete`);
     }
     const again = await bam.fetch(0, 11000, 13000, { filters: flt });
     ok(again.reads.length === full.reads.length && again.total === full.total, 'second fetch through the block cache gives the same reads');

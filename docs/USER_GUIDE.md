@@ -274,6 +274,10 @@ bar shows colored parts by base.
   downsampled.
 - Above 1 Mb wide, coverage is counted as depth only (no allele colors): it loads several times
   faster, and alleles cannot be seen at that scale anyway.
+  Reads are not read at all in such windows (each is below a pixel, and the million reads of an
+  exome would take minutes to read, send and lay out); a hint to zoom in stands in their place. The
+  same past 300,000 reads in a window. If you zoom in while a wide window is being read, that read is
+  stopped and the new view does not wait for it.
 - **Click the coverage** for the counts at that base. The top row shows the position,
   **Copy** and **×**; then:
 
