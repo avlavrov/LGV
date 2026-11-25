@@ -120,10 +120,25 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     ok(same, 'coverage from the stream equals coverage from records');
     const ds = await bam.fetch(0, 11000, 13000, { filters: flt, downsample: { max: 5, window: 50 } });
     const perWin = {}; for (const r of ds.reads) { const w = Math.floor(r.pos / 50); perWin[w] = (perWin[w] || 0) + 1; }
-    ok(Math.max(...Object.values(perWin)) <= 5 && ds.total === full.reads.filter(r => r.pos >= 11000).length && ds.sampled.length > 0, `downsampling: ${ds.reads.length} of ${ds.total} kept, ${ds.sampled.length} windows sampled, max ${Math.max(...Object.values(perWin))} per window`);
+    ok(Math.max(...Object.values(perWin)) <= 10 && ds.total === full.reads.filter(r => r.pos >= 11000).length && ds.sampled.length > 0, `downsampling: ${ds.reads.length} of ${ds.total} kept, ${ds.sampled.length} windows sampled, max ${Math.max(...Object.values(perWin))} per window`);
     let same2 = true; for (let j = 11000; j < 13000; j++) for (let k = 0; k < 6; k++) if (ds.cov.get(j, k) !== full.cov.get(j, k)) same2 = false;
     ok(same2, 'coverage is the same with downsampling');
     ok(ds.reads.every((r, i) => !i || ds.reads[i - 1].pos <= r.pos), 'downsampled reads stay sorted');
+    {
+      // pairs: a kept read's mate (in the same query) is kept far more often than by a random choice
+      const D = { max: 5, window: 50 }, wide = await bam.fetch(0, 10000, 16000, { filters: flt, downsample: D }), all = await bam.fetch(0, 10000, 16000, { filters: flt });
+      const keptN = new Map(); for (const r of wide.reads) keptN.set(r.name, (keptN.get(r.name) || 0) + 1);
+      const allN = new Map(); for (const r of all.reads) if (r.pos >= 10000) allN.set(r.name, (allN.get(r.name) || 0) + 1);
+      let both = 0, one = 0; for (const [nm, c] of keptN) if (allN.get(nm) === 2) { if (c === 2) both++; else one++; }
+      const frac = wide.reads.length / [...allN.values()].reduce((a, b) => a + b, 0);
+      ok(both / (both + one) > 0.6, `downsampling keeps pairs: of the pairs with a read kept, ${both} kept both, ${one} one (${(100 * both / (both + one)).toFixed(0)}%; random would give about ${(100 * frac).toFixed(0)}%)`);
+      // a name asked for is kept even where its window is full
+      const lost = all.reads.find(r => r.pos >= 10000 && !keptN.has(r.name));
+      const forced = await bam.fetch(0, 10000, 16000, { filters: flt, downsample: D, keep: [lost.name] });
+      ok(forced.reads.some(r => r.name === lost.name) && forced.reads.every((r, i) => !i || forced.reads[i - 1].pos <= r.pos), 'a read asked for by name is kept through downsampling, order kept');
+      const again = await bam.fetch(0, 10000, 16000, { filters: flt, downsample: D });
+      ok(again.reads.map(r => r.name + r.pos).join() === wide.reads.map(r => r.name + r.pos).join(), 'the same reads are kept on every load');
+    }
     {
       const fullC = await bam.fetch(0, 5000, 30000, { filters: flt }), dep = await bam.fetch(0, 5000, 30000, { filters: flt, depthOnly: true });
       let bad = 0; const A = new Uint32Array(6), B = new Uint32Array(6);
@@ -178,9 +193,10 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     // downsampling gives the same reads for a window whatever the query start
     const flt = { minMapq: 0, hideDuplicates: true, hideSecondary: true, hideSupplementary: false, hideQcFail: true }, ds = { max: 5, window: 50 };
     const q1 = await bam.fetch(0, 10000, 14000, { filters: flt, downsample: ds }), q2 = await bam.fetch(0, 11000, 16000, { filters: flt, downsample: ds });
-    const keys = q => new Set(q.reads.filter(r => r.pos >= 11000 && r.pos < 14000).map(C.readKey));
+    // (past an insert size from the later start: a mate before the query start cannot decide for its pair)
+    const keys = q => new Set(q.reads.filter(r => r.pos >= 12000 && r.pos < 14000).map(C.readKey));
     const k1 = keys(q1), k2 = keys(q2);
-    ok(k1.size === k2.size && [...k1].every(k => k2.has(k)), `downsampling: ${k1.size} kept reads in 11000-14000 are the same for both queries`);
+    ok(k1.size === k2.size && [...k1].every(k => k2.has(k)), `downsampling: ${k1.size} kept reads in 12000-14000 are the same for both queries`);
   }
   // sparse coverage over a huge window allocates blocks only where reads are
   {

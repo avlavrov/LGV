@@ -39,6 +39,8 @@ class FeatureIndex {
     c.list.push(f); if (f.end - f.start > c.maxLen) c.maxLen = f.end - f.start;
     if (++this.count > TRACK_LIMITS.features) throw new CgvError('trackMany', { name: this.name, n: TRACK_LIMITS.features.toLocaleString('en') });
   }
+  // a line that does not parse: counted; the first one kept (cut short) for the message
+  bad(line) { if (!this.skipped++) this.firstBad = { n: LINE_NO, text: String(line).slice(0, 120) }; }
   finish() { for (const c of this.byChr.values()) c.list.sort((a, b) => a.start - b.start || a.end - b.end); return this; }
   // features overlapping [a, b) on a contig (any naming: chr7, 7)
   query(contig, a, b) {
@@ -51,7 +53,9 @@ class FeatureIndex {
   }
 }
 
-function* lines(text) { let p = 0; while (p < text.length) { let e = text.indexOf('\n', p); if (e < 0) e = text.length; const l = text.charCodeAt(e - 1) === 13 ? text.slice(p, e - 1) : text.slice(p, e); p = e + 1; yield l; } }
+// LINE_NO: the number of the line last yielded (1-based), for messages about lines that do not parse
+let LINE_NO = 0;
+function* lines(text) { let p = 0; LINE_NO = 0; while (p < text.length) { LINE_NO++; let e = text.indexOf('\n', p); if (e < 0) e = text.length; const l = text.charCodeAt(e - 1) === 13 ? text.slice(p, e - 1) : text.slice(p, e); p = e + 1; yield l; } }
 
 // BED 3–12: chrom start end [name score strand thickStart thickEnd itemRgb blockCount blockSizes blockStarts]
 function parseBed(text, name) {
@@ -60,7 +64,7 @@ function parseBed(text, name) {
     if (!line || line[0] === '#' || /^(track|browser)\b/.test(line)) continue;
     const f = line.includes('\t') ? line.split('\t') : line.trim().split(/\s+/);
     const start = intField(f[1]), end = intField(f[2]);
-    if (f.length < 3 || !f[0] || start < 0 || end < start) { ix.skipped++; continue; }
+    if (f.length < 3 || !f[0] || start < 0 || end < start) { ix.bad(line); continue; }
     const ft = { start, end: Math.max(end, start + 1), name: f[3] && f[3] !== '.' ? f[3].slice(0, 200) : '', strand: f[5] === '-' ? -1 : f[5] === '+' ? 1 : 0, chr: f[0] };
     if (f[4] !== undefined && f[4] !== '.' && isFinite(+f[4])) ft.score = +f[4];
     const ts = intField(f[6]), te = intField(f[7]);
@@ -91,7 +95,7 @@ function parseBedGraph(text, name) {
     if (!line || line[0] === '#' || /^(track|browser)\b/.test(line)) continue;
     const f = line.includes('\t') ? line.split('\t') : line.trim().split(/\s+/);
     const start = intField(f[1]), end = intField(f[2]), v = +f[3];
-    if (f.length < 4 || !f[0] || start < 0 || end <= start || !isFinite(v) || f[3] === '') { ix.skipped++; continue; }
+    if (f.length < 4 || !f[0] || start < 0 || end <= start || !isFinite(v) || f[3] === '') { ix.bad(line); continue; }
     ix.add(f[0], { start, end, value: v });
     if (v < ix.min) ix.min = v; if (v > ix.max) ix.max = v;
   }
@@ -106,7 +110,7 @@ function parseVcf(text, name) {
     if (line.startsWith('##')) { if (ix.header.length < 5000) ix.header.push(line.slice(0, 2000)); continue; }
     if (line[0] === '#') { const f = line.split('\t'); ix.samples = f.slice(9, 9 + TRACK_LIMITS.samples).map(s => s.slice(0, 200)); continue; }
     const f = line.split('\t'), pos = intField(f[1]);
-    if (f.length < 8 || !f[0] || pos < 1 || !/^[A-Za-z*.]+$/.test(f[3] || '')) { ix.skipped++; continue; }
+    if (f.length < 8 || !f[0] || pos < 1 || !/^[A-Za-z*.]+$/.test(f[3] || '')) { ix.bad(line); continue; }
     const ref = f[3].toUpperCase(), start = pos - 1;
     ix.add(f[0], {
       start, end: start + Math.max(1, ref.length), id: f[2] === '.' ? '' : f[2].slice(0, 200), ref: ref.slice(0, 1000), alt: f[4].slice(0, 1000),
@@ -145,7 +149,7 @@ function parseGtfGff(text, name, kind) {
     if (!line || line[0] === '#') { if (line === '##FASTA') break; continue; }
     const f = line.split('\t');
     const s1 = intField(f[3]), e1 = intField(f[4]);
-    if (f.length < 9 || !f[0] || s1 < 1 || e1 < s1) { ix.skipped++; continue; }
+    if (f.length < 9 || !f[0] || s1 < 1 || e1 < s1) { ix.bad(line); continue; }
     const type = f[2], a = attr(f[8]), strand = f[6] === '-' ? -1 : f[6] === '+' ? 1 : 0, start = s1 - 1, end = e1;
     const child = /^(exon|CDS|five_prime_UTR|three_prime_UTR|UTR|start_codon|stop_codon)$/.test(type);
     if (child) {

@@ -46,8 +46,9 @@ team's public storage) and opens on BRCA1. A short message confirms the referenc
 
 From top to bottom:
 
-- **Top bar**: **LGV** (click for About: version, credits, third-party code and data), the locus
-  field with **Go**, **← →** (back / forward), **− +** (zoom), **PNG** (save a picture) and **Link**
+- **Top bar**: **LGV** (click for About: version, credits, third-party code and data, the
+  diagnostic log), the **contig list** (choose a chromosome or contig to see it whole; chromosomes
+  first, alternative and unplaced contigs under **Other contigs**), the locus field with **Go**, **← →** (back / forward), **− +** (zoom), **PNG** (save a picture) and **Link**
   (copy a link to this view) — section 15a, the width of the view, the loaded reference and samples,
   the status line (reads shown, load and draw times), **Open** and **View**. **H** hides the bar; a
   button in the corner brings it back.
@@ -151,7 +152,8 @@ The view splits into panels:
 ## 6. Chromosome map
 
 A strip across the top shows the chromosome on screen: for GRCh38 with its bands (dark = G-positive
-bands, red = centromere); other genomes get a plain bar. A **red box** marks where the view is; the
+bands, red = centromere) and the band names (p21.3, q11.21…) inside the bands wide enough for them;
+other genomes get a plain bar. A **red box** marks where the view is; the
 active panel's box is filled. With several panels the boxes are numbered like the panel headers,
 and panels on different chromosomes get their chromosomes side by side. **Click or drag** on the map
 to move the active panel there.
@@ -195,7 +197,9 @@ names match with or without `chr`.
   track name and the details — for BED name, score, blocks and thick part; for GTF / GFF3 type and
   all attributes; for bedGraph the value; for VCF ID, REF, ALT, QUAL, FILTER, every INFO field and
   each sample's FORMAT fields (up to 30 samples).
-- Lines that cannot be read are skipped and counted: a message says how many.
+- Lines that cannot be read are skipped and counted: a message says how many. When most lines
+  cannot be read, the file is probably not of the format its name says (for example a table of
+  `samtools idxstats` saved as `.bed`): the message says so and shows the first such line.
 - Tracks stay open when another reference is loaded (they are positions, not reads).
 
 ## 7b. Signal tracks: TDF and bigWig
@@ -237,7 +241,8 @@ is followed:
 
 Windowing functions, as UCSC draws them: **maximum** shows the value of the column farthest from zero,
 **minimum** the nearest one, **mean** the mean over the bases with data; **mean + whiskers** draws
-the mean dark, mean ± 1 SD medium and the extreme value light. A point is one screen pixel.
+the mean dark, mean ± 1 SD medium and the extreme value light. A point is one screen pixel; while the points in view are few (fewer than 0.8 × the track's
+width in pixels) they are 2 × 2 px, easier to see.
 
 **When a TDF says nothing about how to draw it**: a file of type `ALLELE_FREQUENCY` is drawn as
 points; so is a file whose values all lie in 0–1 at separate positions (they cover less than half
@@ -327,7 +332,7 @@ bar shows colored parts by base.
 - **Pairs** (right click → View as pairs): both mates of a pair in one row, joined by a thin line;
   where mates overlap the overlap is shaded. A mate outside the loaded window is shown by the line
   to where it lies.
-- **Downsampling**: in deep regions at most 100 reads are kept per 50 bp window (adjustable); marks above the reads show where reads were left out. Coverage still counts every read.
+- **Downsampling**: in deep regions at most 100 reads are kept per 50 bp window (adjustable); marks above the reads show where reads were left out. Coverage still counts every read. Which reads are kept is decided by their names, so it is the same on every load, and **pairs stay together**: when a read is kept, its mate in the loaded window is kept too (a window may then hold up to twice the number). A mate opened from a card (**Go to mate**, **Mate in split screen**) is always shown.
 - **Rows** never reshuffle on their own: panning, reloading or recoloring keeps every read in its
   row. A new layout is made only when grouping, sorting, filters or downsampling change.
 
@@ -344,7 +349,8 @@ with its quality, e.g. `Base = C @ QV 37 (soft-clipped)`.
   position has its own Location / Base — mates that overlap show only one letter on screen.
 - The base the card is about is **outlined** with a thin line in the read (and in the mate).
 - **Go to mate** moves the view to the mate; **Mate in split screen** opens it in a new panel;
-  **Copy** copies the text.
+  **Copy** copies the text. A mate in the loaded window that downsampling left out is named as such
+  in the card; both buttons show it.
 - **×** at the top right closes the card (also Escape).
 - **Drag the card by its top row** to move it; later cards open where you left it (until the page
   is closed), even if part of it is off screen.
@@ -372,7 +378,8 @@ ruler and gene track:
 
 - the wheel over a sample's reads scrolls its rows; past their end it scrolls the whole stack;
 - the wheel or a vertical drag over coverage scrolls the stack;
-- the scrollbar on the right; PageUp / PageDown.
+- the scrollbar on the right, in its own strip (the panels end before it, nothing lies under it);
+  PageUp / PageDown.
 
 ## 13. View settings
 
@@ -417,7 +424,12 @@ copied as JSON, pasted from someone else and applied, or reset.
   anyway** reads it.
 - A damaged file gives a clear message saying what is wrong (for example a checksum mismatch in a
   block) instead of showing wrong data.
-- Reading that takes longer than 60 s is stopped with a message; the file may be damaged.
+- Reading that takes longer than 60 s is stopped with a message; the file may be damaged. Each
+  sample is read one request at a time, and only the newest view of each panel waits, so fast
+  panning and zooming do not pile up reads.
+- **About → Copy diagnostic log** copies what took long in this session (sample reads with their
+  times, slow frames, the page being busy, background reader restarts): send it with a report of a
+  freeze or a slow step. The log stays in the page only; it holds file names and loci, no reads.
 - Messages at the bottom close with × or a click; short ones go by themselves.
 - **No index found**: choose the index together with the file, the whole folder, or allow the folder
   when asked (3.1).

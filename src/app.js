@@ -124,12 +124,16 @@ function ideoH() { return S.contigs ? IDEO_H : 0; }
 function panelHdr() { return ideoH() + (S.panels.length > 1 ? PANEL_HDR : 0); }
 // Places the panels side by side over the full width. keepSpan: each panel keeps the stretch of
 // genome it shows (panels added or closed); otherwise it keeps its scale (the window was resized).
+// The panels share the width; the samples' scroll bar, when shown, keeps its own strip on the right
+// so that nothing (the × of a sample, reads) lies under it.
+let vbarOn = false; const VBAR_W = 12;
 function layoutPanels(keepSpan) {
-  const n = S.panels.length, step = (FULL_W + PANEL_GAP) / n;
+  const LW = Math.max(1, FULL_W - (vbarOn ? VBAR_W : 0));
+  const n = S.panels.length, step = (LW + PANEL_GAP) / n;
   const prev = CUR;
   S.panels.forEach((pn, i) => {
     const oldW = pn.w, x0 = Math.round(i * step), x1 = Math.round((i + 1) * step - PANEL_GAP * (n > 1 ? 1 : 0));
-    pn.x0 = x0; pn.w = Math.max(1, (i === n - 1 ? FULL_W : x1) - x0);
+    pn.x0 = x0; pn.w = Math.max(1, (i === n - 1 ? LW : x1) - x0);
     if (oldW && S.contigs && oldW !== pn.w) {
       usePanel(pn);
       const v = pn.view, c = v.start + oldW * v.bpPerPx / 2;
@@ -171,6 +175,13 @@ function setPanels(list) {
 }
 // IGV's "View mate region in split screen": a new panel next to this one, centered on the mate, at
 // the same scale; the read and its mate are outlined in every panel.
+// A read name this panel keeps in view whatever downsampling leaves out (a mate opened from a card).
+function keepRead(pn, T, name) {
+  if (!pn.keep) pn.keep = new Map();
+  let set = pn.keep.get(T.id); if (!set) pn.keep.set(T.id, set = new Set());
+  set.delete(name); set.add(name);
+  while (set.size > 20) set.delete(set.values().next().value);
+}
 function openMatePanel(rec, T) {
   const src = CUR, v = T.back[rec.mateRef];
   if (!(rec.flag & 1) || rec.flag & 8 || rec.mateRef < 0) return;
@@ -182,7 +193,7 @@ function openMatePanel(rec, T) {
   const pn = newPanel({ refId: v, start: 0, bpPerPx: S.view.bpPerPx });
   S.panels.splice(S.panels.indexOf(src) + 1, 0, pn);
   layoutPanels(true);
-  usePanel(pn); S.hl = pn.focusName = { name: rec.name, id: T.id };
+  usePanel(pn); S.hl = pn.focusName = { name: rec.name, id: T.id }; keepRead(pn, T, rec.name);
   goto(v, center - span / 2, center + span / 2);
   S.active = pn; syncLocus();
 }
@@ -605,6 +616,7 @@ function makeWorker() {
 }
 // Ends every call waiting on worker w with an error, and puts a fresh worker in its place.
 function failWorker(w, code, ms) {
+  diag('worker', `${code} after ${Math.round((ms || 0) / 1000)} s: restarted`);
   for (const [id, x] of POOL.wait) if (x.w === w) { POOL.wait.delete(id); clearTimeout(x.timer); x.cb({ ok: false, err: { code, vars: { s: Math.round((ms || 0) / 1000) }, message: 'worker ' + code } }); }
   const i = POOL.workers.indexOf(w); if (i < 0) return;
   try { w.terminate(); } catch (e) { /* already gone */ }
@@ -648,7 +660,31 @@ async function attachWorker(T) {
   try { await callWorker(w, { op: 'open', key: T.id, cram: !!T.bam.isCram, bam: srcDesc(T.bam.src), bai: srcDesc(T.bam.baiSrc) }); T.worker = w; }
   catch (e) { T.worker = null; }
 }
-async function trackFetch(T, br, ls, le, opts) {
+// One read at a time per sample, and per panel only the newest waits: a worker answers in order, so
+// reads for views already left behind (fast panning and zooming) would queue up in it and make the
+// newest wait — past the time limit, which then restarts the worker. A request replaced by a newer
+// one for the same panel ends with 'superseded', which the panel ignores (its load token moved on).
+function trackFetch(T, br, ls, le, opts, slot) {
+  const pn = slot || CUR; // slot: what a newer request replaces (the panel; a one-off read passes its own)
+  if (!T.fq) T.fq = { busy: false, wait: new Map() };
+  const q = T.fq, old = q.wait.get(pn);
+  if (old) old.reject(new CgvError('superseded'));
+  return new Promise((resolve, reject) => {
+    q.wait.set(pn, { resolve, reject, args: [br, ls, le, opts] });
+    pumpFetch(T);
+  });
+}
+function pumpFetch(T) {
+  const q = T.fq; if (q.busy || !q.wait.size) return;
+  const [pn, job] = q.wait.entries().next().value; q.wait.delete(pn);
+  const where = pn.view && S.contigs && S.contigs[pn.view.refId] ? S.contigs[pn.view.refId].name + ':' : '';
+  q.busy = true;
+  const t0 = performance.now();
+  fetchNow(T, ...job.args).then(r => { diag('load', `${T.name} ${where}${job.args[1]}-${job.args[2]} ${r.reads.length} reads ${Math.round(performance.now() - t0)} ms`); job.resolve(r); },
+    e => { diag('load', `${T.name} failed after ${Math.round(performance.now() - t0)} ms: ${e && (e.code || e.message)}`); job.reject(e); })
+    .finally(() => { q.busy = false; pumpFetch(T); });
+}
+async function fetchNow(T, br, ls, le, opts) {
   if (T.reattach) { T.reattach = false; await attachWorker(T); }
   if (T.worker) {
     try {
@@ -706,7 +742,9 @@ async function ensureData() {
     const results = await Promise.all(tracks.map(async T => {
       const br = T.map[refId];
       if (br < 0) return { T, res: null, msg: t('sample.noContig', { name: S.contigs[refId].name }) };
-      try { return { T, res: await trackFetch(T, br, ls, le, opts), msg: null }; }
+      // reads asked for by name (a mate being opened) are kept also where the area is downsampled
+      const keep = pn.keep && pn.keep.get(T.id);
+      try { return { T, res: await trackFetch(T, br, ls, le, keep ? Object.assign({}, opts, { keep: [...keep] }) : opts), msg: null }; }
       catch (e) { return { T, res: null, msg: errText(e), error: true }; }
     }));
     if (!back() || token !== S.loadToken) return;
@@ -786,6 +824,11 @@ function fmtBp(n) {
 function fmtBytes(n) { return n >= 1 << 30 ? (n / (1 << 30)).toLocaleString(NUM_LOCALE[LANG], { maximumFractionDigits: 1 }) + ' GB' : Math.max(1, Math.round(n / (1 << 20))) + ' MB'; }
 function fmtInt(n) { return Math.round(n).toLocaleString(NUM_LOCALE[LANG]); }
 
+// ---- Diagnostic log: what took long (reads of samples, slow frames, long main-thread tasks,
+// worker restarts), kept in memory only (last 300 entries) and copied from About for a bug report.
+const DIAG = [];
+function diag(kind, msg) { DIAG.push(`${new Date().toISOString().slice(11, 23)} ${kind} ${msg}`); if (DIAG.length > 300) DIAG.shift(); }
+try { new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.duration >= 200) diag('busy', `page busy ${Math.round(e.duration)} ms`); }).observe({ type: 'longtask', buffered: true }); } catch (e) { /* not in this browser */ }
 const frameTimes = [];
 function render() {
   const t0 = performance.now(), tp = {};
@@ -800,6 +843,7 @@ function render() {
   drawIdeogram();
   drawMessage(); updateVBar();
   S.stats.drawMs = performance.now() - t0;
+  if (S.stats.drawMs > 200) diag('frame', `${Math.round(S.stats.drawMs)} ms ` + JSON.stringify(tp));
   S.stats.parts = tp;
   frameTimes.push(S.stats.drawMs); if (frameTimes.length > 15) frameTimes.shift();
   updateStatus();
@@ -1131,7 +1175,28 @@ function locusText() {
 }
 function panelLocus(pn) { const prev = CUR; usePanel(pn); const s = locusText(); usePanel(prev); return s; }
 // The field lists every panel's locus, as IGV does; typing several loci opens one panel for each.
+// The contig list next to the locus field: chromosomes first, other contigs (alts, unplaced) after.
+let contigSelFor = null;
+function updateContigSel() {
+  const el = $('contigSel');
+  if (!S.contigs) { el.hidden = true; contigSelFor = null; return; }
+  if (contigSelFor !== S.contigs) {
+    contigSelFor = S.contigs;
+    const main = /^(chr)?([0-9]{1,2}|x|y|m|mt|w|z)$/i, opt = (c, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = c.name; return o; };
+    const a = [], b = [];
+    S.contigs.forEach((c, i) => (main.test(c.name) ? a : b).push(opt(c, i)));
+    el.replaceChildren(...a);
+    if (b.length) { const g = document.createElement('optgroup'); g.label = t('contig.other'); g.append(...b.slice(0, 5000)); el.append(g); }
+    el.hidden = false;
+  }
+  if (S.active) el.value = String(S.active.view.refId);
+}
+$('contigSel').onchange = e => {
+  const id = +e.target.value; if (!S.contigs || !S.contigs[id]) return;
+  e.target.blur(); navPush(); hideCard(); setPanels([{ id, s: 0, e: S.contigs[id].len }]);
+};
 function syncLocus() {
+  updateContigSel();
   if (!S.contigs || document.activeElement === $('locus')) return;
   $('locus').value = S.panels.map(panelLocus).join('  ');
   const prev = CUR; usePanel(S.active);
@@ -1411,7 +1476,7 @@ function renderCard(place) {
     const mateRec = mate;
     const left = !mateRec || rec.pos <= mateRec.pos ? rec : mateRec, right = left === rec ? mateRec : rec;
     for (const [r, title] of [[left, t('card.leftAln')], [right, t('card.rightAln')]]) {
-      if (!r) { cols.push({ title, lines: [['txt', (rec.flag & 8) ? t('card.mateUnmapped2') : t('card.mateNotLoaded')]], base: null }); continue; }
+      if (!r) { cols.push({ title, lines: [['txt', (rec.flag & 8) ? t('card.mateUnmapped2') : mateSampledOut(rec, T) ? t('card.mateSampled') : t('card.mateNotLoaded')]], base: null }); continue; }
       // the clicked position in both reads: overlapping mates show one letter on screen, both here
       cols.push({ title, lines: alignmentLines(r, T), base: r === rec || covers(r, pos) ? baseLines(r, pos) : null });
     }
@@ -1444,10 +1509,19 @@ function renderCard(place) {
     usePanel(cardState.pn); hideCard(); S.selected = null;
     const v = T.back[rec.mateRef];
     if (v < 0) { toast(t('sample.mateNoContig', { name: T.bam.refs[rec.mateRef].name })); draw(); return; }
-    navPush(); goto(v, rec.matePos - 150, rec.matePos + 300);
+    navPush();
+    // a mate left out by downsampling: reload this panel keeping it
+    if (!findMate(rec, T)) { keepRead(CUR, T, rec.name); S.hl = CUR.focusName = { name: rec.name, id: T.id }; S.data = null; for (const X of S.tracks) X.data = null; }
+    goto(v, rec.matePos - 150, rec.matePos + 300);
   };
 }
 function tips(root, map) { for (const [sel, k] of Object.entries(map)) { const el = root.querySelector(sel); if (el) el.title = t(k); } }
+// the mate lies in the loaded window, in a stretch where downsampling left reads out
+function mateSampledOut(rec, T) {
+  const d = S.data, v = T.back[rec.mateRef];
+  if (!d || v !== d.refId || rec.matePos < d.start || rec.matePos >= d.end || !T.data) return false;
+  return T.data.sampled.some(([a, b]) => rec.matePos >= a && rec.matePos < b);
+}
 function hideCard() { $('card').hidden = true; cardState = null; }
 // ---- Coverage at a position, as IGV shows it: counts of A, C, G, T, N by strand, deletions and
 // insertions. Counted from every read at that position (read again from the file, so downsampling
@@ -1466,7 +1540,7 @@ async function showCoverageCard(T, pos, gx, y) {
   c.hidden = false; placeCard(gx, y); draw();
   $('closeCard').onclick = () => { hideCard(); draw(); };
   let res;
-  try { res = await trackFetch(T, br, pos, pos + 1, { filters: P.filters, downsample: null }); }
+  try { res = await trackFetch(T, br, pos, pos + 1, { filters: P.filters, downsample: null }, {}); }
   catch (e) { if (cardState && cardState.cov === tok) c.querySelector('.ln:last-child').textContent = errText(e); return; }
   if (!cardState || cardState.cov !== tok) return; // closed or replaced meanwhile
   // per base: [forward, reverse, quality sum, quality count]
@@ -1579,7 +1653,9 @@ const vbar = $('vbar'), vthumb = vbar.firstElementChild;
 function vbarGeom() { const avail = H - covTop(), total = tracksHeight(), th = Math.max(24, avail * avail / total); return { avail, total, th }; }
 function updateVBar() {
   const { avail, total, th } = vbarGeom(), on = S.tracks.length > 1 && total > avail + 1;
-  vbar.hidden = !on; if (!on) return;
+  vbar.hidden = !on;
+  if (on !== vbarOn) { vbarOn = on; layoutPanels(false); usePanel(S.active); syncLocus(); draw(); }
+  if (!on) return;
   vbar.style.top = covTop() + 'px'; vbar.style.height = avail + 'px';
   vthumb.style.height = th + 'px'; vthumb.style.top = (avail - th) * (S.vscroll || 0) / (total - avail) + 'px';
 }
@@ -2303,7 +2379,9 @@ async function openTracks(srcs) {
       if (signalKind(src.name)) { ANN.tracks.push(await openSignalTrack(src, key)); continue; } // TDF, bigWig: read by region
       const ix = await loadTrack(src);
       ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix, src });
-      if (ix.skipped) toast(t('track.skipped', { name: src.name, n: fmtInt(ix.skipped), ok: fmtInt(ix.count) }), true);
+      // most lines unreadable: the file is probably not what its name says; show the first such line
+      if (ix.skipped > ix.count && ix.firstBad) toast(t('track.mostBad', { name: src.name, n: fmtInt(ix.skipped), all: fmtInt(ix.skipped + ix.count), line: fmtInt(ix.firstBad.n), text: ix.firstBad.text.replace(/\t/g, ' ⇥ '), format: t('track.fmt.' + ix.kind) }), true);
+      else if (ix.skipped) toast(t('track.skipped', { name: src.name, n: fmtInt(ix.skipped), ok: fmtInt(ix.count) }), true);
     } catch (e) { toast(t('track.failed', { name: src.name, msg: errText(e) }), true); }
   }
   clampScroll(); draw();
@@ -2457,6 +2535,18 @@ function drawIdeogram() {
       if (b.stain === 'acen') { ctx.fillStyle = '#c4544e'; ctx.fillRect(x0, by + 3, Math.max(0.5, x1 - x0), bh - 6); ctx.fillStyle = COL.css.bg; ctx.fillRect(x0, by, x1 - x0, 3); ctx.fillRect(x0, by + bh - 3, x1 - x0, 3); continue; }
       if (b.stain === 'gneg') continue;
       ctx.fillStyle = mix(STAIN[b.stain] ?? 0.4); ctx.fillRect(x0, by, Math.max(0.5, x1 - x0), bh);
+    }
+    // band names inside the bands wide enough for them, light on dark bands
+    if (bands) {
+      ctx.font = '8px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      let free = bx;
+      for (const b of bands) {
+        if (b.stain === 'acen') continue;
+        const x0 = bx + b.s / len * bw, x1 = bx + b.e / len * bw, tw = ctx.measureText(b.name).width;
+        if (x1 - x0 < tw + 3 || x0 < free) continue;
+        ctx.fillStyle = (STAIN[b.stain] ?? 0.4) > 0.45 ? COL.css.bg : COL.css.muted;
+        ctx.fillText(b.name, (x0 + x1) / 2, by + bh / 2 + 0.5); free = x1;
+      }
     }
     ctx.restore();
     ctx.strokeStyle = mix(0.55); ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(bx + 0.5, by + 0.5, bw - 1, bh - 1, bh / 2); ctx.stroke();
@@ -2616,6 +2706,13 @@ function showAbout() {
   const ul = document.createElement('ul'); ul.className = 'about-list'; el.append(ul);
   for (const k of ['about.htscodecs', 'about.mane', 'about.bands', 'about.refs']) { const li = document.createElement('li'); li.textContent = t(k); ul.append(li); }
   add('p', t('about.guide'), 'hint');
+  add('h2', t('about.diag'));
+  add('p', t('about.diagHint', { n: DIAG.length }), 'hint');
+  const b = document.createElement('button'); b.className = 'btn'; b.textContent = t('about.diagCopy'); el.append(b);
+  b.onclick = () => {
+    const env = `LGV ${LGV_INFO.version}${v} · ${navigator.userAgent} · ${navigator.hardwareConcurrency || '?'} cores · workers ${POOL.ok ? POOL.workers.length : 'off'}`;
+    navigator.clipboard.writeText([env, ...DIAG].join('\n')).then(() => toast(t('copied')), () => toast(t('copyFail')));
+  };
   closePanels(); $('aboutPanel').hidden = false;
 }
 $('aboutBtn').onclick = () => { if ($('aboutPanel').hidden) showAbout(); else $('aboutPanel').hidden = true; };

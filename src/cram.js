@@ -338,12 +338,7 @@ class CramFile {
     const cov = new SparseCoverage(beg, end);
     const depth = opts.depthOnly ? new DepthDiff(beg, end) : null;
     const out = { reads: [], cov, total: 0, sampled: [] };
-    let win = -1, n = 0, kept = [], rng = 1;
-    const flush = () => {
-      if (kept.length) { kept.sort((a, b) => a.pos - b.pos); for (const r of kept) out.reads.push(r); }
-      if (ds && n > ds.max) out.sampled.push([win * ds.window, (win + 1) * ds.window]);
-      kept = []; n = 0;
-    };
+    const dsm = ds ? new Downsampler(ds, opts.keep, out) : null;
     // the slices the index lists for this window, in file order, each once
     const seen = new Set(), list = [];
     for (const e of this.slices(refId, beg, end)) { const k = e.container + ':' + e.slice; if (!seen.has(k)) { seen.add(k); list.push(e); } }
@@ -361,14 +356,12 @@ class CramFile {
         if (!ds || rec.pos >= beg) out.total++;
         if (!ds) { out.reads.push(rec); continue; }
         if (rec.pos < beg) continue; // as in BamFile.fetch: the left edge belongs to a wider query
-        const w = Math.floor(rec.pos / ds.window);
-        if (w !== win) { flush(); win = w; rng = (Math.imul(w + 1, 2654435761) >>> 0) || 1; }
-        n++;
-        if (kept.length < ds.max) kept.push(rec);
-        else { rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0; const j = rng % n; if (j < ds.max) kept[j] = rec; }
+        // as in BamFile.fetch
+        const ahead = (rec.flag & 9) === 1 && rec.mateRef === refId && rec.matePos < end && Math.floor(rec.matePos / ds.window) > Math.floor(rec.pos / ds.window);
+        dsm.add(rec.pos, nameHash(rec.name), ahead, () => rec.name, () => rec);
       }
     }
-    flush();
+    if (dsm) dsm.flush();
     if (depth) depth.finish(cov);
     if (!ds) out.reads.sort((a, b) => a.pos - b.pos);
     return out;

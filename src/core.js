@@ -273,6 +273,51 @@ function bamRecordOk(buf, dv, p, bs) {
   return lseq ? qlen === lseq || ncig === 0 : qlen <= BAM_LIMITS.readLength;
 }
 
+// FNV-1a hash of a read name (ASCII), the key that downsampling keeps reads by (BAM and CRAM alike).
+function nameHash(name) { let h = 2166136261; for (let i = 0; i < name.length; i++) { h ^= name.charCodeAt(i) & 255; h = Math.imul(h, 16777619); } return h >>> 0; }
+
+// Downsampling, shared by BAM and CRAM: at most `max` reads starting in each `window` bp, chosen by
+// the hash of the read name (the smallest hashes), so the choice is the same on every load. Pairs are
+// kept together: a read whose mate starts in a later window of the same query decides for both, and
+// its mate is kept or left out with it when it comes (kept mates may take a window up to 2 × max).
+// Names in `keep` are always kept, with their mates. What is kept for a window does not depend on
+// where the query began, except for reads whose mate starts before that (within an insert size).
+class Downsampler {
+  constructor(ds, keep, out) {
+    this.ds = ds; this.keep = keep && keep.length ? new Set(keep) : null; this.out = out;
+    this.win = -1; this.n = 0; this.lost = false; this.kept = []; this.kh = []; this.top = -1; this.extra = []; this.xh = []; this.pend = [];
+    this.open = new Map(); // name hash → kept? for mates still to come
+  }
+  // pos: read start; h: name hash; ahead: its mate starts in a later window of this query;
+  // name(), rec(): the read name and record, made only when needed
+  add(pos, h, ahead, name, rec) {
+    const w = Math.floor(pos / this.ds.window);
+    if (w !== this.win) { this.flush(); this.win = w; }
+    this.n++;
+    if (ahead) this.pend.push(h);
+    if (this.keep && this.keep.has(name())) { this.extra.push(rec()); this.xh.push(h); return; }
+    if (this.open.has(h)) { // the second mate: as the first one went
+      const k = this.open.get(h); this.open.delete(h);
+      if (k && this.extra.length < this.ds.max) { this.extra.push(rec()); this.xh.push(h); } else this.lost = true; // a window holds at most 2 × max
+      return;
+    }
+    if (this.kept.length < this.ds.max) { this.kept.push(rec()); this.kh.push(h); this.top = -1; return; }
+    this.lost = true;
+    if (this.top < 0) { this.top = 0; for (let i = 1; i < this.kh.length; i++) if (this.kh[i] > this.kh[this.top]) this.top = i; } // the largest hash kept
+    if (h < this.kh[this.top]) { this.kept[this.top] = rec(); this.kh[this.top] = h; this.top = -1; }
+  }
+  flush() {
+    const all = this.extra.length ? this.kept.concat(this.extra) : this.kept;
+    if (all.length) { all.sort((a, b) => a.pos - b.pos); for (const r of all) this.out.reads.push(r); }
+    if (this.lost) this.out.sampled.push([this.win * this.ds.window, (this.win + 1) * this.ds.window]);
+    if (this.pend.length) {
+      const yes = new Set(this.kh); for (const h of this.xh) yes.add(h);
+      for (const h of this.pend) this.open.set(h, yes.has(h));
+      while (this.open.size > 500000) this.open.delete(this.open.keys().next().value); // mates that never came
+    }
+    this.kept = []; this.kh = []; this.extra = []; this.xh = []; this.pend = []; this.n = 0; this.top = -1; this.lost = false;
+  }
+}
 class BamFile {
   constructor(bamSource, baiSource) { this.src = bamSource; this.baiSrc = baiSource; this.maxSpan = 0; }
   // baiSource may be a list of candidates (e.g. sample.bam.bai, then sample.bai): the first one that
@@ -321,7 +366,11 @@ class BamFile {
   // Reads overlapping [beg, end) on refId.
   // opts.filters: load-time filters (flag bits, MAPQ). opts.downsample: { max, window } — keep at most
   // `max` reads starting in each `window` bp, as IGV does; coverage still counts every read that passes
-  // the filters. Returns { reads, cov (6 counters per bp over [beg, end)), total, sampled: [[s, e]...] }.
+  // the filters. Which reads are kept is decided by a hash of the read name: the reads of a window
+  // with the smallest hashes. Both mates of a pair have the same name, so where the two windows are
+  // about as deep, a pair is kept or left out together (a random choice keeps the mate of a kept read
+  // only by chance); the choice is also the same on every load. opts.keep: read names always kept
+  // (a mate being opened). Returns { reads, cov (6 counters per bp over [beg, end)), total, sampled: [[s, e]...] }.
   async fetch(refId, beg, end, opts) {
     opts = opts || {};
     const flt = opts.filters || null;
@@ -331,12 +380,7 @@ class BamFile {
     // several times cheaper, and allele colors cannot be seen at that scale anyway
     const depth = opts.depthOnly ? new DepthDiff(beg, end) : null;
     const out = { reads: [], cov, total: 0, sampled: [] };
-    let win = -1, n = 0, kept = [], rng = 1;
-    const flush = () => {
-      if (kept.length) { kept.sort((a, b) => a.pos - b.pos); for (const r of kept) out.reads.push(r); }
-      if (ds && n > ds.max) out.sampled.push([win * ds.window, (win + 1) * ds.window]);
-      kept = []; n = 0;
-    };
+    const dsm = ds ? new Downsampler(ds, opts.keep, out) : null;
     const visit = (buf, dv, p, pos) => {
       const s = p + 4, flag = dv.getUint16(s + 14, true), mapq = buf[s + 9];
       if (flag & 4) return;
@@ -351,18 +395,21 @@ class BamFile {
       if (!ds) { out.reads.push(parseBamRecord(buf, dv, p)); return; }
       // Downsampling decides per window of read starts. A read starting before `beg` belongs to a window
       // this query only partly sees, so the choice there could differ from a wider query. Such reads
-      // count for coverage but are not returned: what is returned for a window never depends on where
-      // the query began. Callers start the query a read length early to cover the left edge.
+      // count for coverage but are not returned: what is returned for a window does not depend on where
+      // the query began (see Downsampler for mates). Callers start the query a read length early.
       if (pos < beg) return;
-      const w = Math.floor(pos / ds.window);
-      if (w !== win) { flush(); win = w; rng = (Math.imul(w + 1, 2654435761) >>> 0) || 1; }
-      n++;
-      if (kept.length < ds.max) kept.push(parseBamRecord(buf, dv, p));
-      else { rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0; const j = rng % n; if (j < ds.max) kept[j] = parseBamRecord(buf, dv, p); }
+      // the hash of the read name (without its closing NUL), as nameHash
+      const ln = buf[s + 8], q0 = s + 32;
+      let h = 2166136261;
+      for (let i = 0; i < ln - 1; i++) { h ^= buf[q0 + i]; h = Math.imul(h, 16777619); }
+      h >>>= 0;
+      const nRef = dv.getInt32(s + 20, true), nPos = dv.getInt32(s + 24, true);
+      const ahead = (flag & 9) === 1 && nRef === refId && nPos < end && Math.floor(nPos / ds.window) > Math.floor(pos / ds.window);
+      dsm.add(pos, h, ahead, () => String.fromCharCode.apply(null, buf.subarray(q0, q0 + ln - 1)), () => parseBamRecord(buf, dv, p));
     };
     // chunks are disjoint and in file order, so reads arrive sorted by position
     for (const c of this.index.chunks(refId, beg, end)) await this._scanChunk(c, refId, beg, end, visit);
-    flush();
+    if (dsm) dsm.flush();
     if (depth) depth.finish(cov);
     return out;
   }
@@ -1196,4 +1243,4 @@ if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && s
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { isBgzfHeader, BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, NIB_IDX, DepthDiff, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { nameHash, Downsampler, isBgzfHeader, BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, NIB_IDX, DepthDiff, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

@@ -10,6 +10,7 @@
 // frequencies) stays visible.
 'use strict';
 
+const SIG_BIG_DOTS = 0.8; // points drawn 2 × 2 px while fewer than this × the track's width in pixels
 const SIG_ROWS_MAX = 40, SIG_PREF_KEY = 'lgv.signal.v1';
 const WF_UCSC = { maximum: 'max', minimum: 'min', mean: 'mean', 'mean+whiskers': 'whiskers' };
 function sigPrefs() { try { const o = JSON.parse(localStorage.getItem(SIG_PREF_KEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
@@ -164,18 +165,24 @@ function drawSignal(a, y, h) {
       const a0 = Math.max(0, Math.min(ya, yb)), a1 = Math.min(R - 1, Math.max(ya, yb)), A = Math.round(al * 255);
       for (let yy = a0, i = (a0 * W + x) * 4; yy <= a1; yy++, i += W * 4) { d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = A; }
     };
-    const zr = ry(0), dot = Math.max(1, Math.round(DPR)) - 1; // a point: one screen pixel
+    const zr = ry(0), px = Math.max(1, Math.round(DPR));
+    // a point is one screen pixel; when the points in view are few (fewer than SIG_BIG_DOTS × the
+    // track's width), 2 × 2 px, easier on the eyes
+    let nIn = 0;
+    if (P) { const vs = S.view.start, ve = vs + W * S.view.bpPerPx; for (let k = 0; k < P.length; k += 2) if (P[k] >= vs && P[k] < ve) nIn++; }
+    else if (s.graph === 'points') for (let x = 0; x < W; x++) if (!Number.isNaN(val[x])) nIn++;
+    const big = nIn < SIG_BIG_DOTS * W, dot = (big ? 2 : 1) * px - 1, dw = big ? 2 : 1;
+    const point = (x, y0, c) => { span(x, y0 - (big ? px : 0), y0 - (big ? px : 0) + dot, c, 1); if (dw === 2 && x + 1 < W) span(x + 1, y0 - px, y0 - px + dot, c, 1); };
     if (s.graph === 'heatmap') {
       for (let x = 0; x < W; x++) { const v = val[x]; if (Number.isNaN(v)) continue; span(x, 0, R - 1, v < 0 ? cNeg : cPos, 0.12 + 0.88 * (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)); }
     } else if (P) {
-      // every value its own point of one screen pixel; a spot already marked is skipped (most are, zoomed out)
+      // every value its own point; a spot already marked is skipped (most are, zoomed out)
       const vs = S.view.start, bpp = S.view.bpPerPx, seen = new Uint8Array(W * R), k1 = (R - 1) / (hi - lo);
       for (let k = 0; k < P.length; k += 2) {
         const x = Math.floor((P[k] - vs) / bpp); if (x < 0 || x >= W) continue;
         const v = s.log ? tf(P[k + 1]) : P[k + 1], y0 = Math.round((R - 1) - (Math.max(lo, Math.min(hi, v)) - lo) * k1), cell = y0 * W + x;
         if (seen[cell]) continue; seen[cell] = 1;
-        const c = v < 0 ? cNeg : cPos;
-        span(x, y0, y0 + dot, c, 1);
+        point(x, y0, v < 0 ? cNeg : cPos);
       }
     } else if (s.graph === 'line') {
       let prev = null;
@@ -193,7 +200,7 @@ function drawSignal(a, y, h) {
             span(x, zr, ry(v < 0 ? tf(C.mn[x]) : tf(C.mx[x])), c, 0.3); span(x, zr, ry(tf(v < 0 ? mean - sd : mean + sd)), c, 0.55); span(x, zr, ry(v), c, 1);
           }
         } else if (s.graph === 'points') {
-          const y0 = ry(v); span(x, y0, y0 + dot, c, 1);
+          point(x, ry(v), c);
         } else span(x, zr, ry(v), c, 1);
       }
     }

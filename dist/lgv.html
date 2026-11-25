@@ -66,7 +66,8 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .file { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
 .status { color: var(--muted); font: 11px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; font-variant-numeric: tabular-nums; }
 @media (max-width: 900px) { .status, .file { display: none; } .locus { flex: 0 1 auto; } }
-@media (max-width: 560px) { #span, #examples, #snapBtn, #copyLink, #navBack, #navFwd { display: none; } #locus { flex-basis: 180px; } }
+#contigSel { max-width: 110px; padding: 0 2px 0 6px; font-family: var(--mono); font-size: 12px; }
+@media (max-width: 560px) { #contigSel, #span, #examples, #snapBtn, #copyLink, #navBack, #navFwd { display: none; } #locus { flex-basis: 180px; } }
 
 #stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; cursor: default; user-select: none; -webkit-user-select: none; }
 #stage.drop::after { content: attr(data-drop-text); position: absolute; inset: 12px; border: 2px dashed var(--accent); border-radius: 10px; display: grid; place-items: center; color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--bg) 80%, transparent); }
@@ -162,6 +163,7 @@ body.bare .side { top: 0; }
 <header class="bar">
   <button class="mark" id="aboutBtn" data-i18n-title="tip.about" title="About LGV">LGV</button>
   <div class="locus">
+    <select id="contigSel" class="btn" data-i18n-title="tip.contig" data-i18n-aria="contig.aria" aria-label="Contig" hidden></select>
     <input id="locus" data-i18n-title="tip.locus" type="text" list="geneList" spellcheck="false" autocomplete="off" data-i18n-aria="locus.aria" aria-label="Locus: contig:start-end" placeholder="chr7:117,559,500-117,560,000">
     <datalist id="geneList"></datalist>
     <button class="btn" id="goBtn" data-i18n-title="tip.go" data-i18n="btn.go">Go</button>
@@ -342,7 +344,7 @@ const STRINGS = {
     'folder.found': 'Samples in this folder: {n}. Choose which to open.', 'folder.noIndex': 'no index next to it', 'folder.open': 'Open selected', 'folder.none': 'Nothing selected',
     'tracks.n': '{n} samples', 'sample.already': '{name} is already open', 'sample.failed': 'Could not open {name}: {msg}',
     'open.urlAuth': 'Access token (optional)', 'open.urlBtn': 'Open link',
-    'open.urlHint': 'The server must allow CORS and Range requests. The token is not saved. On claude.ai, loading by link is blocked by the platform security policy — open cgv.html locally to use links.',
+    'open.urlHint': 'The server must allow CORS and Range requests. The token is not saved.',
     'open.demo': 'Demo', 'open.demoBtn': 'Synthetic demo data', 'open.demoHint': '40 kb of made-up sequence, 30×, five known variants.',
     'ref.title': 'Reference', 'ref.hint': 'Loading a reference switches the genome and closes open samples. Samples opened afterwards are matched to it. Without a reference, LGV rebuilds reference bases from MD tags where reads cover them.',
     'ref.current': 'Current reference: {name}', 'ref.none': 'No reference loaded', 'ref.fromMd': 'reference from MD tags',
@@ -398,7 +400,7 @@ const STRINGS = {
     'card.first': 'First in pair', 'card.second': 'Second in pair', 'card.pairOr': 'Pair orientation', 'card.hidden': 'Hidden tags',
     'card.location': 'Location', 'card.base': 'Base', 'card.deletion': 'deletion', 'card.softclip': 'soft-clipped',
     'card.show': 'Show', 'card.showRead': 'Read', 'card.showPair': 'Read and mate',
-    'card.mateNotLoaded': 'Mate is not in the loaded window', 'card.mateUnmapped2': 'Mate is unmapped',
+    'card.mateNotLoaded': 'Mate is not in the loaded window', 'card.mateSampled': 'Mate is in this window but was left out by downsampling. Go to mate or Mate in split screen shows it', 'card.mateUnmapped2': 'Mate is unmapped',
     'menu.pairs': 'View as pairs', 'menu.colorBy': 'Color by', 'menu.sortBy': 'Sort by (at {pos})',
     'view.menuHint': 'Pair view, coloring and sorting: right click on the reads.', 'view.group': 'Group',
     'keys.right': 'right click on reads', 'keys.rightD': 'view as pairs, color by, sort by (at the clicked position)',
@@ -438,6 +440,10 @@ const STRINGS = {
     'err.headerCut': 'The BAM header is cut short — the file is incomplete', 'err.headerBig': 'The BAM header is too large',
     'err.fai': 'Empty or invalid FASTA index (.fai)', 'err.gzi': 'Invalid .gzi index', 'err.needGzi': 'A compressed .fa.gz needs its .gzi index',
     'err.faIrregular': 'Sequence {name} has lines of different lengths, so it cannot be indexed. Rewrap it to a fixed width, e.g. with seqkit seq -w 60.', 'err.faEmpty': 'No sequences found — is this a FASTA file?',
+    'track.mostBad': '{name}: {n} of {all} lines could not be read, so the file is probably not {format}. Line {line}: “{text}”',
+    'track.fmt.bed': 'BED (contig ⇥ start ⇥ end …)', 'track.fmt.bedgraph': 'bedGraph (contig ⇥ start ⇥ end ⇥ value)', 'track.fmt.vcf': 'VCF', 'track.fmt.gtf': 'GTF', 'track.fmt.gff': 'GFF3',
+    'about.diag': 'Diagnostic log', 'about.diagHint': 'What took long in this session — sample reads, slow frames, the page busy, background reader restarts ({n} entries). Kept only in this page; copy it to send with a problem report. It holds file names and loci, no reads.', 'about.diagCopy': 'Copy diagnostic log',
+    'tip.contig': 'Go to a whole chromosome or contig', 'contig.aria': 'Contig', 'contig.other': 'Other contigs',
     'tip.signal': 'Signal track: click for the values here; right-click to choose how it is drawn',
     'sig.loading': 'loading…', 'sig.failed': 'could not be read', 'sig.noContig': 'no data for this contig', 'sig.tooMuch': 'zoom in: too much data at this scale',
     'sig.summary': '{what} per {bp} window', 'sig.wf.max': 'maximum', 'sig.wf.min': 'minimum', 'sig.wf.mean': 'mean', 'sig.wf.whiskers': 'mean + whiskers', 'sig.wf.range': 'range',
@@ -467,7 +473,7 @@ const STRINGS = {
     'tracks.n': 'образцов: {n}', 'sample.already': '{name} уже открыт', 'sample.failed': 'Не удалось открыть {name}: {msg}',
     'err.noIndex': 'Не найден индекс для {name} (проверены {tried})',
     'open.urlAuth': 'Токен доступа (необязательно)', 'open.urlBtn': 'Открыть по ссылке',
-    'open.urlHint': 'Сервер должен разрешать CORS и Range-запросы. Токен не сохраняется. На claude.ai загрузка по ссылке заблокирована политикой безопасности платформы — для ссылок откройте cgv.html локально.',
+    'open.urlHint': 'Сервер должен разрешать CORS и Range-запросы. Токен не сохраняется.',
     'open.demo': 'Демо', 'open.demoBtn': 'Синтетические демо-данные', 'open.demoHint': '40 т.п.н. выдуманной последовательности, 30×, пять известных вариантов.',
     'ref.title': 'Референс', 'ref.hint': 'Загрузка референса переключает геном и закрывает открытые образцы. Образцы, открытые после этого, сопоставляются с ним. Без референса LGV восстанавливает базы референса из тегов MD там, где есть риды.',
     'ref.current': 'Текущий референс: {name}', 'ref.none': 'Референс не загружен', 'ref.fromMd': 'референс из MD',
@@ -523,7 +529,7 @@ const STRINGS = {
     'card.first': 'Первый в паре', 'card.second': 'Второй в паре', 'card.pairOr': 'Ориентация пары', 'card.hidden': 'Скрытые теги',
     'card.location': 'Позиция', 'card.base': 'Основание', 'card.deletion': 'делеция', 'card.softclip': 'soft clip',
     'card.show': 'Показать', 'card.showRead': 'Рид', 'card.showPair': 'Рид и мейт',
-    'card.mateNotLoaded': 'Мейта нет в загруженном окне', 'card.mateUnmapped2': 'Мейт не выровнен',
+    'card.mateNotLoaded': 'Мейта нет в загруженном окне', 'card.mateSampled': 'Мейт в этом окне, но не показан из-за даунсэмплинга. «К мейту» или «Мейт в соседнем окне» покажут его', 'card.mateUnmapped2': 'Мейт не выровнен',
     'menu.pairs': 'Показывать парами', 'menu.colorBy': 'Раскраска', 'menu.sortBy': 'Сортировать по (в {pos})',
     'view.menuHint': 'Показ парами, раскраска и сортировка — правый клик по ридам.', 'view.group': 'Группировка',
     'keys.right': 'правый клик по ридам', 'keys.rightD': 'показ парами, раскраска, сортировка (в позиции клика)',
@@ -563,6 +569,10 @@ const STRINGS = {
     'err.headerCut': 'Заголовок BAM обрывается — файл неполный', 'err.headerBig': 'Слишком большой заголовок BAM',
     'err.fai': 'Пустой или неверный индекс FASTA (.fai)', 'err.gzi': 'Неверный индекс .gzi', 'err.needGzi': 'Для сжатого .fa.gz нужен индекс .gzi',
     'err.faIrregular': 'В последовательности {name} строки разной длины, её нельзя проиндексировать. Переформатируйте файл на строки одной длины, например seqkit seq -w 60.', 'err.faEmpty': 'Последовательности не найдены — это точно FASTA?',
+    'track.mostBad': '{name}: не прочитано {n} строк из {all}, так что это, скорее всего, не {format}. Строка {line}: «{text}»',
+    'track.fmt.bed': 'BED (контиг ⇥ начало ⇥ конец …)', 'track.fmt.bedgraph': 'bedGraph (контиг ⇥ начало ⇥ конец ⇥ значение)', 'track.fmt.vcf': 'VCF', 'track.fmt.gtf': 'GTF', 'track.fmt.gff': 'GFF3',
+    'about.diag': 'Журнал диагностики', 'about.diagHint': 'Что занимало время в этом сеансе — чтение образцов, медленные кадры, занятость страницы, перезапуски фонового чтения ({n} записей). Хранится только в этой странице; скопируйте и пришлите вместе с описанием проблемы. В нём имена файлов и локусы, ридов нет.', 'about.diagCopy': 'Скопировать журнал диагностики',
+    'tip.contig': 'Перейти к целой хромосоме или контигу', 'contig.aria': 'Контиг', 'contig.other': 'Другие контиги',
     'tip.signal': 'Дорожка значений: клик — значения в этом месте; правый клик — как её рисовать',
     'sig.loading': 'загрузка…', 'sig.failed': 'не удалось прочитать', 'sig.noContig': 'нет данных для этого контига', 'sig.tooMuch': 'приблизьте: на этом масштабе слишком много данных',
     'sig.summary': '{what} по окнам {bp}', 'sig.wf.max': 'максимум', 'sig.wf.min': 'минимум', 'sig.wf.mean': 'среднее', 'sig.wf.whiskers': 'среднее с разбросом', 'sig.wf.range': 'диапазон',
@@ -1737,6 +1747,51 @@ function bamRecordOk(buf, dv, p, bs) {
   return lseq ? qlen === lseq || ncig === 0 : qlen <= BAM_LIMITS.readLength;
 }
 
+// FNV-1a hash of a read name (ASCII), the key that downsampling keeps reads by (BAM and CRAM alike).
+function nameHash(name) { let h = 2166136261; for (let i = 0; i < name.length; i++) { h ^= name.charCodeAt(i) & 255; h = Math.imul(h, 16777619); } return h >>> 0; }
+
+// Downsampling, shared by BAM and CRAM: at most `max` reads starting in each `window` bp, chosen by
+// the hash of the read name (the smallest hashes), so the choice is the same on every load. Pairs are
+// kept together: a read whose mate starts in a later window of the same query decides for both, and
+// its mate is kept or left out with it when it comes (kept mates may take a window up to 2 × max).
+// Names in `keep` are always kept, with their mates. What is kept for a window does not depend on
+// where the query began, except for reads whose mate starts before that (within an insert size).
+class Downsampler {
+  constructor(ds, keep, out) {
+    this.ds = ds; this.keep = keep && keep.length ? new Set(keep) : null; this.out = out;
+    this.win = -1; this.n = 0; this.lost = false; this.kept = []; this.kh = []; this.top = -1; this.extra = []; this.xh = []; this.pend = [];
+    this.open = new Map(); // name hash → kept? for mates still to come
+  }
+  // pos: read start; h: name hash; ahead: its mate starts in a later window of this query;
+  // name(), rec(): the read name and record, made only when needed
+  add(pos, h, ahead, name, rec) {
+    const w = Math.floor(pos / this.ds.window);
+    if (w !== this.win) { this.flush(); this.win = w; }
+    this.n++;
+    if (ahead) this.pend.push(h);
+    if (this.keep && this.keep.has(name())) { this.extra.push(rec()); this.xh.push(h); return; }
+    if (this.open.has(h)) { // the second mate: as the first one went
+      const k = this.open.get(h); this.open.delete(h);
+      if (k && this.extra.length < this.ds.max) { this.extra.push(rec()); this.xh.push(h); } else this.lost = true; // a window holds at most 2 × max
+      return;
+    }
+    if (this.kept.length < this.ds.max) { this.kept.push(rec()); this.kh.push(h); this.top = -1; return; }
+    this.lost = true;
+    if (this.top < 0) { this.top = 0; for (let i = 1; i < this.kh.length; i++) if (this.kh[i] > this.kh[this.top]) this.top = i; } // the largest hash kept
+    if (h < this.kh[this.top]) { this.kept[this.top] = rec(); this.kh[this.top] = h; this.top = -1; }
+  }
+  flush() {
+    const all = this.extra.length ? this.kept.concat(this.extra) : this.kept;
+    if (all.length) { all.sort((a, b) => a.pos - b.pos); for (const r of all) this.out.reads.push(r); }
+    if (this.lost) this.out.sampled.push([this.win * this.ds.window, (this.win + 1) * this.ds.window]);
+    if (this.pend.length) {
+      const yes = new Set(this.kh); for (const h of this.xh) yes.add(h);
+      for (const h of this.pend) this.open.set(h, yes.has(h));
+      while (this.open.size > 500000) this.open.delete(this.open.keys().next().value); // mates that never came
+    }
+    this.kept = []; this.kh = []; this.extra = []; this.xh = []; this.pend = []; this.n = 0; this.top = -1; this.lost = false;
+  }
+}
 class BamFile {
   constructor(bamSource, baiSource) { this.src = bamSource; this.baiSrc = baiSource; this.maxSpan = 0; }
   // baiSource may be a list of candidates (e.g. sample.bam.bai, then sample.bai): the first one that
@@ -1785,7 +1840,11 @@ class BamFile {
   // Reads overlapping [beg, end) on refId.
   // opts.filters: load-time filters (flag bits, MAPQ). opts.downsample: { max, window } — keep at most
   // `max` reads starting in each `window` bp, as IGV does; coverage still counts every read that passes
-  // the filters. Returns { reads, cov (6 counters per bp over [beg, end)), total, sampled: [[s, e]...] }.
+  // the filters. Which reads are kept is decided by a hash of the read name: the reads of a window
+  // with the smallest hashes. Both mates of a pair have the same name, so where the two windows are
+  // about as deep, a pair is kept or left out together (a random choice keeps the mate of a kept read
+  // only by chance); the choice is also the same on every load. opts.keep: read names always kept
+  // (a mate being opened). Returns { reads, cov (6 counters per bp over [beg, end)), total, sampled: [[s, e]...] }.
   async fetch(refId, beg, end, opts) {
     opts = opts || {};
     const flt = opts.filters || null;
@@ -1795,12 +1854,7 @@ class BamFile {
     // several times cheaper, and allele colors cannot be seen at that scale anyway
     const depth = opts.depthOnly ? new DepthDiff(beg, end) : null;
     const out = { reads: [], cov, total: 0, sampled: [] };
-    let win = -1, n = 0, kept = [], rng = 1;
-    const flush = () => {
-      if (kept.length) { kept.sort((a, b) => a.pos - b.pos); for (const r of kept) out.reads.push(r); }
-      if (ds && n > ds.max) out.sampled.push([win * ds.window, (win + 1) * ds.window]);
-      kept = []; n = 0;
-    };
+    const dsm = ds ? new Downsampler(ds, opts.keep, out) : null;
     const visit = (buf, dv, p, pos) => {
       const s = p + 4, flag = dv.getUint16(s + 14, true), mapq = buf[s + 9];
       if (flag & 4) return;
@@ -1815,18 +1869,21 @@ class BamFile {
       if (!ds) { out.reads.push(parseBamRecord(buf, dv, p)); return; }
       // Downsampling decides per window of read starts. A read starting before `beg` belongs to a window
       // this query only partly sees, so the choice there could differ from a wider query. Such reads
-      // count for coverage but are not returned: what is returned for a window never depends on where
-      // the query began. Callers start the query a read length early to cover the left edge.
+      // count for coverage but are not returned: what is returned for a window does not depend on where
+      // the query began (see Downsampler for mates). Callers start the query a read length early.
       if (pos < beg) return;
-      const w = Math.floor(pos / ds.window);
-      if (w !== win) { flush(); win = w; rng = (Math.imul(w + 1, 2654435761) >>> 0) || 1; }
-      n++;
-      if (kept.length < ds.max) kept.push(parseBamRecord(buf, dv, p));
-      else { rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0; const j = rng % n; if (j < ds.max) kept[j] = parseBamRecord(buf, dv, p); }
+      // the hash of the read name (without its closing NUL), as nameHash
+      const ln = buf[s + 8], q0 = s + 32;
+      let h = 2166136261;
+      for (let i = 0; i < ln - 1; i++) { h ^= buf[q0 + i]; h = Math.imul(h, 16777619); }
+      h >>>= 0;
+      const nRef = dv.getInt32(s + 20, true), nPos = dv.getInt32(s + 24, true);
+      const ahead = (flag & 9) === 1 && nRef === refId && nPos < end && Math.floor(nPos / ds.window) > Math.floor(pos / ds.window);
+      dsm.add(pos, h, ahead, () => String.fromCharCode.apply(null, buf.subarray(q0, q0 + ln - 1)), () => parseBamRecord(buf, dv, p));
     };
     // chunks are disjoint and in file order, so reads arrive sorted by position
     for (const c of this.index.chunks(refId, beg, end)) await this._scanChunk(c, refId, beg, end, visit);
-    flush();
+    if (dsm) dsm.flush();
     if (depth) depth.finish(cov);
     return out;
   }
@@ -2660,7 +2717,7 @@ if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && s
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { isBgzfHeader, BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, NIB_IDX, DepthDiff, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { nameHash, Downsampler, isBgzfHeader, BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, NIB_IDX, DepthDiff, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
 
 // CGV: bzip2 and xz/LZMA2 decompression for CRAM blocks (methods 2 and 3). Written for CGV from the
 // format descriptions (bzip2: Seward's format as documented by the bzip2 sources and Joe Tsai's
@@ -4036,12 +4093,7 @@ class CramFile {
     const cov = new SparseCoverage(beg, end);
     const depth = opts.depthOnly ? new DepthDiff(beg, end) : null;
     const out = { reads: [], cov, total: 0, sampled: [] };
-    let win = -1, n = 0, kept = [], rng = 1;
-    const flush = () => {
-      if (kept.length) { kept.sort((a, b) => a.pos - b.pos); for (const r of kept) out.reads.push(r); }
-      if (ds && n > ds.max) out.sampled.push([win * ds.window, (win + 1) * ds.window]);
-      kept = []; n = 0;
-    };
+    const dsm = ds ? new Downsampler(ds, opts.keep, out) : null;
     // the slices the index lists for this window, in file order, each once
     const seen = new Set(), list = [];
     for (const e of this.slices(refId, beg, end)) { const k = e.container + ':' + e.slice; if (!seen.has(k)) { seen.add(k); list.push(e); } }
@@ -4059,14 +4111,12 @@ class CramFile {
         if (!ds || rec.pos >= beg) out.total++;
         if (!ds) { out.reads.push(rec); continue; }
         if (rec.pos < beg) continue; // as in BamFile.fetch: the left edge belongs to a wider query
-        const w = Math.floor(rec.pos / ds.window);
-        if (w !== win) { flush(); win = w; rng = (Math.imul(w + 1, 2654435761) >>> 0) || 1; }
-        n++;
-        if (kept.length < ds.max) kept.push(rec);
-        else { rng ^= rng << 13; rng >>>= 0; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0; const j = rng % n; if (j < ds.max) kept[j] = rec; }
+        // as in BamFile.fetch
+        const ahead = (rec.flag & 9) === 1 && rec.mateRef === refId && rec.matePos < end && Math.floor(rec.matePos / ds.window) > Math.floor(rec.pos / ds.window);
+        dsm.add(rec.pos, nameHash(rec.name), ahead, () => rec.name, () => rec);
       }
     }
-    flush();
+    if (dsm) dsm.flush();
     if (depth) depth.finish(cov);
     if (!ds) out.reads.sort((a, b) => a.pos - b.pos);
     return out;
@@ -4560,6 +4610,8 @@ class FeatureIndex {
     c.list.push(f); if (f.end - f.start > c.maxLen) c.maxLen = f.end - f.start;
     if (++this.count > TRACK_LIMITS.features) throw new CgvError('trackMany', { name: this.name, n: TRACK_LIMITS.features.toLocaleString('en') });
   }
+  // a line that does not parse: counted; the first one kept (cut short) for the message
+  bad(line) { if (!this.skipped++) this.firstBad = { n: LINE_NO, text: String(line).slice(0, 120) }; }
   finish() { for (const c of this.byChr.values()) c.list.sort((a, b) => a.start - b.start || a.end - b.end); return this; }
   // features overlapping [a, b) on a contig (any naming: chr7, 7)
   query(contig, a, b) {
@@ -4572,7 +4624,9 @@ class FeatureIndex {
   }
 }
 
-function* lines(text) { let p = 0; while (p < text.length) { let e = text.indexOf('\n', p); if (e < 0) e = text.length; const l = text.charCodeAt(e - 1) === 13 ? text.slice(p, e - 1) : text.slice(p, e); p = e + 1; yield l; } }
+// LINE_NO: the number of the line last yielded (1-based), for messages about lines that do not parse
+let LINE_NO = 0;
+function* lines(text) { let p = 0; LINE_NO = 0; while (p < text.length) { LINE_NO++; let e = text.indexOf('\n', p); if (e < 0) e = text.length; const l = text.charCodeAt(e - 1) === 13 ? text.slice(p, e - 1) : text.slice(p, e); p = e + 1; yield l; } }
 
 // BED 3–12: chrom start end [name score strand thickStart thickEnd itemRgb blockCount blockSizes blockStarts]
 function parseBed(text, name) {
@@ -4581,7 +4635,7 @@ function parseBed(text, name) {
     if (!line || line[0] === '#' || /^(track|browser)\b/.test(line)) continue;
     const f = line.includes('\t') ? line.split('\t') : line.trim().split(/\s+/);
     const start = intField(f[1]), end = intField(f[2]);
-    if (f.length < 3 || !f[0] || start < 0 || end < start) { ix.skipped++; continue; }
+    if (f.length < 3 || !f[0] || start < 0 || end < start) { ix.bad(line); continue; }
     const ft = { start, end: Math.max(end, start + 1), name: f[3] && f[3] !== '.' ? f[3].slice(0, 200) : '', strand: f[5] === '-' ? -1 : f[5] === '+' ? 1 : 0, chr: f[0] };
     if (f[4] !== undefined && f[4] !== '.' && isFinite(+f[4])) ft.score = +f[4];
     const ts = intField(f[6]), te = intField(f[7]);
@@ -4612,7 +4666,7 @@ function parseBedGraph(text, name) {
     if (!line || line[0] === '#' || /^(track|browser)\b/.test(line)) continue;
     const f = line.includes('\t') ? line.split('\t') : line.trim().split(/\s+/);
     const start = intField(f[1]), end = intField(f[2]), v = +f[3];
-    if (f.length < 4 || !f[0] || start < 0 || end <= start || !isFinite(v) || f[3] === '') { ix.skipped++; continue; }
+    if (f.length < 4 || !f[0] || start < 0 || end <= start || !isFinite(v) || f[3] === '') { ix.bad(line); continue; }
     ix.add(f[0], { start, end, value: v });
     if (v < ix.min) ix.min = v; if (v > ix.max) ix.max = v;
   }
@@ -4627,7 +4681,7 @@ function parseVcf(text, name) {
     if (line.startsWith('##')) { if (ix.header.length < 5000) ix.header.push(line.slice(0, 2000)); continue; }
     if (line[0] === '#') { const f = line.split('\t'); ix.samples = f.slice(9, 9 + TRACK_LIMITS.samples).map(s => s.slice(0, 200)); continue; }
     const f = line.split('\t'), pos = intField(f[1]);
-    if (f.length < 8 || !f[0] || pos < 1 || !/^[A-Za-z*.]+$/.test(f[3] || '')) { ix.skipped++; continue; }
+    if (f.length < 8 || !f[0] || pos < 1 || !/^[A-Za-z*.]+$/.test(f[3] || '')) { ix.bad(line); continue; }
     const ref = f[3].toUpperCase(), start = pos - 1;
     ix.add(f[0], {
       start, end: start + Math.max(1, ref.length), id: f[2] === '.' ? '' : f[2].slice(0, 200), ref: ref.slice(0, 1000), alt: f[4].slice(0, 1000),
@@ -4666,7 +4720,7 @@ function parseGtfGff(text, name, kind) {
     if (!line || line[0] === '#') { if (line === '##FASTA') break; continue; }
     const f = line.split('\t');
     const s1 = intField(f[3]), e1 = intField(f[4]);
-    if (f.length < 9 || !f[0] || s1 < 1 || e1 < s1) { ix.skipped++; continue; }
+    if (f.length < 9 || !f[0] || s1 < 1 || e1 < s1) { ix.bad(line); continue; }
     const type = f[2], a = attr(f[8]), strand = f[6] === '-' ? -1 : f[6] === '+' ? 1 : 0, start = s1 - 1, end = e1;
     const child = /^(exon|CDS|five_prime_UTR|three_prime_UTR|UTR|start_codon|stop_codon)$/.test(type);
     if (child) {
@@ -5394,12 +5448,16 @@ function ideoH() { return S.contigs ? IDEO_H : 0; }
 function panelHdr() { return ideoH() + (S.panels.length > 1 ? PANEL_HDR : 0); }
 // Places the panels side by side over the full width. keepSpan: each panel keeps the stretch of
 // genome it shows (panels added or closed); otherwise it keeps its scale (the window was resized).
+// The panels share the width; the samples' scroll bar, when shown, keeps its own strip on the right
+// so that nothing (the × of a sample, reads) lies under it.
+let vbarOn = false; const VBAR_W = 12;
 function layoutPanels(keepSpan) {
-  const n = S.panels.length, step = (FULL_W + PANEL_GAP) / n;
+  const LW = Math.max(1, FULL_W - (vbarOn ? VBAR_W : 0));
+  const n = S.panels.length, step = (LW + PANEL_GAP) / n;
   const prev = CUR;
   S.panels.forEach((pn, i) => {
     const oldW = pn.w, x0 = Math.round(i * step), x1 = Math.round((i + 1) * step - PANEL_GAP * (n > 1 ? 1 : 0));
-    pn.x0 = x0; pn.w = Math.max(1, (i === n - 1 ? FULL_W : x1) - x0);
+    pn.x0 = x0; pn.w = Math.max(1, (i === n - 1 ? LW : x1) - x0);
     if (oldW && S.contigs && oldW !== pn.w) {
       usePanel(pn);
       const v = pn.view, c = v.start + oldW * v.bpPerPx / 2;
@@ -5441,6 +5499,13 @@ function setPanels(list) {
 }
 // IGV's "View mate region in split screen": a new panel next to this one, centered on the mate, at
 // the same scale; the read and its mate are outlined in every panel.
+// A read name this panel keeps in view whatever downsampling leaves out (a mate opened from a card).
+function keepRead(pn, T, name) {
+  if (!pn.keep) pn.keep = new Map();
+  let set = pn.keep.get(T.id); if (!set) pn.keep.set(T.id, set = new Set());
+  set.delete(name); set.add(name);
+  while (set.size > 20) set.delete(set.values().next().value);
+}
 function openMatePanel(rec, T) {
   const src = CUR, v = T.back[rec.mateRef];
   if (!(rec.flag & 1) || rec.flag & 8 || rec.mateRef < 0) return;
@@ -5452,7 +5517,7 @@ function openMatePanel(rec, T) {
   const pn = newPanel({ refId: v, start: 0, bpPerPx: S.view.bpPerPx });
   S.panels.splice(S.panels.indexOf(src) + 1, 0, pn);
   layoutPanels(true);
-  usePanel(pn); S.hl = pn.focusName = { name: rec.name, id: T.id };
+  usePanel(pn); S.hl = pn.focusName = { name: rec.name, id: T.id }; keepRead(pn, T, rec.name);
   goto(v, center - span / 2, center + span / 2);
   S.active = pn; syncLocus();
 }
@@ -5875,6 +5940,7 @@ function makeWorker() {
 }
 // Ends every call waiting on worker w with an error, and puts a fresh worker in its place.
 function failWorker(w, code, ms) {
+  diag('worker', `${code} after ${Math.round((ms || 0) / 1000)} s: restarted`);
   for (const [id, x] of POOL.wait) if (x.w === w) { POOL.wait.delete(id); clearTimeout(x.timer); x.cb({ ok: false, err: { code, vars: { s: Math.round((ms || 0) / 1000) }, message: 'worker ' + code } }); }
   const i = POOL.workers.indexOf(w); if (i < 0) return;
   try { w.terminate(); } catch (e) { /* already gone */ }
@@ -5918,7 +5984,31 @@ async function attachWorker(T) {
   try { await callWorker(w, { op: 'open', key: T.id, cram: !!T.bam.isCram, bam: srcDesc(T.bam.src), bai: srcDesc(T.bam.baiSrc) }); T.worker = w; }
   catch (e) { T.worker = null; }
 }
-async function trackFetch(T, br, ls, le, opts) {
+// One read at a time per sample, and per panel only the newest waits: a worker answers in order, so
+// reads for views already left behind (fast panning and zooming) would queue up in it and make the
+// newest wait — past the time limit, which then restarts the worker. A request replaced by a newer
+// one for the same panel ends with 'superseded', which the panel ignores (its load token moved on).
+function trackFetch(T, br, ls, le, opts, slot) {
+  const pn = slot || CUR; // slot: what a newer request replaces (the panel; a one-off read passes its own)
+  if (!T.fq) T.fq = { busy: false, wait: new Map() };
+  const q = T.fq, old = q.wait.get(pn);
+  if (old) old.reject(new CgvError('superseded'));
+  return new Promise((resolve, reject) => {
+    q.wait.set(pn, { resolve, reject, args: [br, ls, le, opts] });
+    pumpFetch(T);
+  });
+}
+function pumpFetch(T) {
+  const q = T.fq; if (q.busy || !q.wait.size) return;
+  const [pn, job] = q.wait.entries().next().value; q.wait.delete(pn);
+  const where = pn.view && S.contigs && S.contigs[pn.view.refId] ? S.contigs[pn.view.refId].name + ':' : '';
+  q.busy = true;
+  const t0 = performance.now();
+  fetchNow(T, ...job.args).then(r => { diag('load', `${T.name} ${where}${job.args[1]}-${job.args[2]} ${r.reads.length} reads ${Math.round(performance.now() - t0)} ms`); job.resolve(r); },
+    e => { diag('load', `${T.name} failed after ${Math.round(performance.now() - t0)} ms: ${e && (e.code || e.message)}`); job.reject(e); })
+    .finally(() => { q.busy = false; pumpFetch(T); });
+}
+async function fetchNow(T, br, ls, le, opts) {
   if (T.reattach) { T.reattach = false; await attachWorker(T); }
   if (T.worker) {
     try {
@@ -5976,7 +6066,9 @@ async function ensureData() {
     const results = await Promise.all(tracks.map(async T => {
       const br = T.map[refId];
       if (br < 0) return { T, res: null, msg: t('sample.noContig', { name: S.contigs[refId].name }) };
-      try { return { T, res: await trackFetch(T, br, ls, le, opts), msg: null }; }
+      // reads asked for by name (a mate being opened) are kept also where the area is downsampled
+      const keep = pn.keep && pn.keep.get(T.id);
+      try { return { T, res: await trackFetch(T, br, ls, le, keep ? Object.assign({}, opts, { keep: [...keep] }) : opts), msg: null }; }
       catch (e) { return { T, res: null, msg: errText(e), error: true }; }
     }));
     if (!back() || token !== S.loadToken) return;
@@ -6056,6 +6148,11 @@ function fmtBp(n) {
 function fmtBytes(n) { return n >= 1 << 30 ? (n / (1 << 30)).toLocaleString(NUM_LOCALE[LANG], { maximumFractionDigits: 1 }) + ' GB' : Math.max(1, Math.round(n / (1 << 20))) + ' MB'; }
 function fmtInt(n) { return Math.round(n).toLocaleString(NUM_LOCALE[LANG]); }
 
+// ---- Diagnostic log: what took long (reads of samples, slow frames, long main-thread tasks,
+// worker restarts), kept in memory only (last 300 entries) and copied from About for a bug report.
+const DIAG = [];
+function diag(kind, msg) { DIAG.push(`${new Date().toISOString().slice(11, 23)} ${kind} ${msg}`); if (DIAG.length > 300) DIAG.shift(); }
+try { new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.duration >= 200) diag('busy', `page busy ${Math.round(e.duration)} ms`); }).observe({ type: 'longtask', buffered: true }); } catch (e) { /* not in this browser */ }
 const frameTimes = [];
 function render() {
   const t0 = performance.now(), tp = {};
@@ -6070,6 +6167,7 @@ function render() {
   drawIdeogram();
   drawMessage(); updateVBar();
   S.stats.drawMs = performance.now() - t0;
+  if (S.stats.drawMs > 200) diag('frame', `${Math.round(S.stats.drawMs)} ms ` + JSON.stringify(tp));
   S.stats.parts = tp;
   frameTimes.push(S.stats.drawMs); if (frameTimes.length > 15) frameTimes.shift();
   updateStatus();
@@ -6401,7 +6499,28 @@ function locusText() {
 }
 function panelLocus(pn) { const prev = CUR; usePanel(pn); const s = locusText(); usePanel(prev); return s; }
 // The field lists every panel's locus, as IGV does; typing several loci opens one panel for each.
+// The contig list next to the locus field: chromosomes first, other contigs (alts, unplaced) after.
+let contigSelFor = null;
+function updateContigSel() {
+  const el = $('contigSel');
+  if (!S.contigs) { el.hidden = true; contigSelFor = null; return; }
+  if (contigSelFor !== S.contigs) {
+    contigSelFor = S.contigs;
+    const main = /^(chr)?([0-9]{1,2}|x|y|m|mt|w|z)$/i, opt = (c, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = c.name; return o; };
+    const a = [], b = [];
+    S.contigs.forEach((c, i) => (main.test(c.name) ? a : b).push(opt(c, i)));
+    el.replaceChildren(...a);
+    if (b.length) { const g = document.createElement('optgroup'); g.label = t('contig.other'); g.append(...b.slice(0, 5000)); el.append(g); }
+    el.hidden = false;
+  }
+  if (S.active) el.value = String(S.active.view.refId);
+}
+$('contigSel').onchange = e => {
+  const id = +e.target.value; if (!S.contigs || !S.contigs[id]) return;
+  e.target.blur(); navPush(); hideCard(); setPanels([{ id, s: 0, e: S.contigs[id].len }]);
+};
 function syncLocus() {
+  updateContigSel();
   if (!S.contigs || document.activeElement === $('locus')) return;
   $('locus').value = S.panels.map(panelLocus).join('  ');
   const prev = CUR; usePanel(S.active);
@@ -6681,7 +6800,7 @@ function renderCard(place) {
     const mateRec = mate;
     const left = !mateRec || rec.pos <= mateRec.pos ? rec : mateRec, right = left === rec ? mateRec : rec;
     for (const [r, title] of [[left, t('card.leftAln')], [right, t('card.rightAln')]]) {
-      if (!r) { cols.push({ title, lines: [['txt', (rec.flag & 8) ? t('card.mateUnmapped2') : t('card.mateNotLoaded')]], base: null }); continue; }
+      if (!r) { cols.push({ title, lines: [['txt', (rec.flag & 8) ? t('card.mateUnmapped2') : mateSampledOut(rec, T) ? t('card.mateSampled') : t('card.mateNotLoaded')]], base: null }); continue; }
       // the clicked position in both reads: overlapping mates show one letter on screen, both here
       cols.push({ title, lines: alignmentLines(r, T), base: r === rec || covers(r, pos) ? baseLines(r, pos) : null });
     }
@@ -6714,10 +6833,19 @@ function renderCard(place) {
     usePanel(cardState.pn); hideCard(); S.selected = null;
     const v = T.back[rec.mateRef];
     if (v < 0) { toast(t('sample.mateNoContig', { name: T.bam.refs[rec.mateRef].name })); draw(); return; }
-    navPush(); goto(v, rec.matePos - 150, rec.matePos + 300);
+    navPush();
+    // a mate left out by downsampling: reload this panel keeping it
+    if (!findMate(rec, T)) { keepRead(CUR, T, rec.name); S.hl = CUR.focusName = { name: rec.name, id: T.id }; S.data = null; for (const X of S.tracks) X.data = null; }
+    goto(v, rec.matePos - 150, rec.matePos + 300);
   };
 }
 function tips(root, map) { for (const [sel, k] of Object.entries(map)) { const el = root.querySelector(sel); if (el) el.title = t(k); } }
+// the mate lies in the loaded window, in a stretch where downsampling left reads out
+function mateSampledOut(rec, T) {
+  const d = S.data, v = T.back[rec.mateRef];
+  if (!d || v !== d.refId || rec.matePos < d.start || rec.matePos >= d.end || !T.data) return false;
+  return T.data.sampled.some(([a, b]) => rec.matePos >= a && rec.matePos < b);
+}
 function hideCard() { $('card').hidden = true; cardState = null; }
 // ---- Coverage at a position, as IGV shows it: counts of A, C, G, T, N by strand, deletions and
 // insertions. Counted from every read at that position (read again from the file, so downsampling
@@ -6736,7 +6864,7 @@ async function showCoverageCard(T, pos, gx, y) {
   c.hidden = false; placeCard(gx, y); draw();
   $('closeCard').onclick = () => { hideCard(); draw(); };
   let res;
-  try { res = await trackFetch(T, br, pos, pos + 1, { filters: P.filters, downsample: null }); }
+  try { res = await trackFetch(T, br, pos, pos + 1, { filters: P.filters, downsample: null }, {}); }
   catch (e) { if (cardState && cardState.cov === tok) c.querySelector('.ln:last-child').textContent = errText(e); return; }
   if (!cardState || cardState.cov !== tok) return; // closed or replaced meanwhile
   // per base: [forward, reverse, quality sum, quality count]
@@ -6849,7 +6977,9 @@ const vbar = $('vbar'), vthumb = vbar.firstElementChild;
 function vbarGeom() { const avail = H - covTop(), total = tracksHeight(), th = Math.max(24, avail * avail / total); return { avail, total, th }; }
 function updateVBar() {
   const { avail, total, th } = vbarGeom(), on = S.tracks.length > 1 && total > avail + 1;
-  vbar.hidden = !on; if (!on) return;
+  vbar.hidden = !on;
+  if (on !== vbarOn) { vbarOn = on; layoutPanels(false); usePanel(S.active); syncLocus(); draw(); }
+  if (!on) return;
   vbar.style.top = covTop() + 'px'; vbar.style.height = avail + 'px';
   vthumb.style.height = th + 'px'; vthumb.style.top = (avail - th) * (S.vscroll || 0) / (total - avail) + 'px';
 }
@@ -7573,7 +7703,9 @@ async function openTracks(srcs) {
       if (signalKind(src.name)) { ANN.tracks.push(await openSignalTrack(src, key)); continue; } // TDF, bigWig: read by region
       const ix = await loadTrack(src);
       ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix, src });
-      if (ix.skipped) toast(t('track.skipped', { name: src.name, n: fmtInt(ix.skipped), ok: fmtInt(ix.count) }), true);
+      // most lines unreadable: the file is probably not what its name says; show the first such line
+      if (ix.skipped > ix.count && ix.firstBad) toast(t('track.mostBad', { name: src.name, n: fmtInt(ix.skipped), all: fmtInt(ix.skipped + ix.count), line: fmtInt(ix.firstBad.n), text: ix.firstBad.text.replace(/\t/g, ' ⇥ '), format: t('track.fmt.' + ix.kind) }), true);
+      else if (ix.skipped) toast(t('track.skipped', { name: src.name, n: fmtInt(ix.skipped), ok: fmtInt(ix.count) }), true);
     } catch (e) { toast(t('track.failed', { name: src.name, msg: errText(e) }), true); }
   }
   clampScroll(); draw();
@@ -7728,6 +7860,18 @@ function drawIdeogram() {
       if (b.stain === 'gneg') continue;
       ctx.fillStyle = mix(STAIN[b.stain] ?? 0.4); ctx.fillRect(x0, by, Math.max(0.5, x1 - x0), bh);
     }
+    // band names inside the bands wide enough for them, light on dark bands
+    if (bands) {
+      ctx.font = '8px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      let free = bx;
+      for (const b of bands) {
+        if (b.stain === 'acen') continue;
+        const x0 = bx + b.s / len * bw, x1 = bx + b.e / len * bw, tw = ctx.measureText(b.name).width;
+        if (x1 - x0 < tw + 3 || x0 < free) continue;
+        ctx.fillStyle = (STAIN[b.stain] ?? 0.4) > 0.45 ? COL.css.bg : COL.css.muted;
+        ctx.fillText(b.name, (x0 + x1) / 2, by + bh / 2 + 0.5); free = x1;
+      }
+    }
     ctx.restore();
     ctx.strokeStyle = mix(0.55); ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(bx + 0.5, by + 0.5, bw - 1, bh - 1, bh / 2); ctx.stroke();
     // where the panels are
@@ -7874,7 +8018,7 @@ function saveSnapshot() {
 $('snapBtn').onclick = saveSnapshot;
 
 // ======================= About =======================
-const LGV_INFO = { version: '0.9.0', build: '2026-11-24' };
+const LGV_INFO = { version: '0.9.0', build: '2026-11-25' };
 function showAbout() {
   const el = $('aboutBody'), v = LGV_INFO.build.startsWith('__') ? '' : ' · ' + LGV_INFO.build;
   el.replaceChildren();
@@ -7886,6 +8030,13 @@ function showAbout() {
   const ul = document.createElement('ul'); ul.className = 'about-list'; el.append(ul);
   for (const k of ['about.htscodecs', 'about.mane', 'about.bands', 'about.refs']) { const li = document.createElement('li'); li.textContent = t(k); ul.append(li); }
   add('p', t('about.guide'), 'hint');
+  add('h2', t('about.diag'));
+  add('p', t('about.diagHint', { n: DIAG.length }), 'hint');
+  const b = document.createElement('button'); b.className = 'btn'; b.textContent = t('about.diagCopy'); el.append(b);
+  b.onclick = () => {
+    const env = `LGV ${LGV_INFO.version}${v} · ${navigator.userAgent} · ${navigator.hardwareConcurrency || '?'} cores · workers ${POOL.ok ? POOL.workers.length : 'off'}`;
+    navigator.clipboard.writeText([env, ...DIAG].join('\n')).then(() => toast(t('copied')), () => toast(t('copyFail')));
+  };
   closePanels(); $('aboutPanel').hidden = false;
 }
 $('aboutBtn').onclick = () => { if ($('aboutPanel').hidden) showAbout(); else $('aboutPanel').hidden = true; };
@@ -7903,6 +8054,7 @@ startup();
 // frequencies) stays visible.
 'use strict';
 
+const SIG_BIG_DOTS = 0.8; // points drawn 2 × 2 px while fewer than this × the track's width in pixels
 const SIG_ROWS_MAX = 40, SIG_PREF_KEY = 'lgv.signal.v1';
 const WF_UCSC = { maximum: 'max', minimum: 'min', mean: 'mean', 'mean+whiskers': 'whiskers' };
 function sigPrefs() { try { const o = JSON.parse(localStorage.getItem(SIG_PREF_KEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
@@ -8057,18 +8209,24 @@ function drawSignal(a, y, h) {
       const a0 = Math.max(0, Math.min(ya, yb)), a1 = Math.min(R - 1, Math.max(ya, yb)), A = Math.round(al * 255);
       for (let yy = a0, i = (a0 * W + x) * 4; yy <= a1; yy++, i += W * 4) { d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = A; }
     };
-    const zr = ry(0), dot = Math.max(1, Math.round(DPR)) - 1; // a point: one screen pixel
+    const zr = ry(0), px = Math.max(1, Math.round(DPR));
+    // a point is one screen pixel; when the points in view are few (fewer than SIG_BIG_DOTS × the
+    // track's width), 2 × 2 px, easier on the eyes
+    let nIn = 0;
+    if (P) { const vs = S.view.start, ve = vs + W * S.view.bpPerPx; for (let k = 0; k < P.length; k += 2) if (P[k] >= vs && P[k] < ve) nIn++; }
+    else if (s.graph === 'points') for (let x = 0; x < W; x++) if (!Number.isNaN(val[x])) nIn++;
+    const big = nIn < SIG_BIG_DOTS * W, dot = (big ? 2 : 1) * px - 1, dw = big ? 2 : 1;
+    const point = (x, y0, c) => { span(x, y0 - (big ? px : 0), y0 - (big ? px : 0) + dot, c, 1); if (dw === 2 && x + 1 < W) span(x + 1, y0 - px, y0 - px + dot, c, 1); };
     if (s.graph === 'heatmap') {
       for (let x = 0; x < W; x++) { const v = val[x]; if (Number.isNaN(v)) continue; span(x, 0, R - 1, v < 0 ? cNeg : cPos, 0.12 + 0.88 * (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)); }
     } else if (P) {
-      // every value its own point of one screen pixel; a spot already marked is skipped (most are, zoomed out)
+      // every value its own point; a spot already marked is skipped (most are, zoomed out)
       const vs = S.view.start, bpp = S.view.bpPerPx, seen = new Uint8Array(W * R), k1 = (R - 1) / (hi - lo);
       for (let k = 0; k < P.length; k += 2) {
         const x = Math.floor((P[k] - vs) / bpp); if (x < 0 || x >= W) continue;
         const v = s.log ? tf(P[k + 1]) : P[k + 1], y0 = Math.round((R - 1) - (Math.max(lo, Math.min(hi, v)) - lo) * k1), cell = y0 * W + x;
         if (seen[cell]) continue; seen[cell] = 1;
-        const c = v < 0 ? cNeg : cPos;
-        span(x, y0, y0 + dot, c, 1);
+        point(x, y0, v < 0 ? cNeg : cPos);
       }
     } else if (s.graph === 'line') {
       let prev = null;
@@ -8086,7 +8244,7 @@ function drawSignal(a, y, h) {
             span(x, zr, ry(v < 0 ? tf(C.mn[x]) : tf(C.mx[x])), c, 0.3); span(x, zr, ry(tf(v < 0 ? mean - sd : mean + sd)), c, 0.55); span(x, zr, ry(v), c, 1);
           }
         } else if (s.graph === 'points') {
-          const y0 = ry(v); span(x, y0, y0 + dot, c, 1);
+          point(x, ry(v), c);
         } else span(x, zr, ry(v), c, 1);
       }
     }
