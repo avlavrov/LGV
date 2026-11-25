@@ -65,7 +65,7 @@ More languages are one dictionary in `src/i18n.js`.
 | Navigation | ← → back / forward between places jumped to; − + zoom all panels at once |
 | F13 Mate | view as pairs (right click), read details + go to mate; **split screen** as in IGV: right click on a read → "View mate region in split screen" (or the button in the read details) opens a panel centered on the mate, the read and its mate outlined in every panel; several loci typed in the locus field separated by spaces open one panel each; each panel has its own ruler, scroll and zoom, × in its header closes it; at least 6 panels, more as the width allows (60 px each) |
 | F14 Read details | IGV-style popup: read, mapping, clipping, mate and tags, then Location and `Base = A @ QV 14` for the clicked base; one read or read + mate side by side; copy; dragged by its top row, then opens where it was left (until the page is closed). Right click on a read: copy its sequence, left or right soft clip, or the pair as FASTA |
-| F15 BLAT | right click on a read: BLAT the read or a soft clip at UCSC (on request only: the bases go to the UCSC API with the user's API key, or the UCSC BLAT page opens with them); compact results table, a click shows a hit in one reused side panel |
+| F15 BLAT | right click on a read: BLAT the read or a soft clip — opens the UCSC BLAT page in a new tab with the bases filled in (on request only) |
 | F18 Display profile as JSON | kept in the browser, copied and applied as JSON |
 | F23 Screen space for data | one bar of controls, hidden with H |
 

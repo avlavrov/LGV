@@ -110,21 +110,6 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .card .seg .btn:first-child { border-radius: 6px 0 0 6px; } .card .seg .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
 .card .seg .btn.on { border-color: var(--accent); color: var(--accent); position: relative; }
 .card-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-.card.blatc { width: min(560px, calc(100% - 16px)); }
-.card .blat { max-height: 260px; overflow: auto; margin: 0 -4px; }
-.card .blat table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
-.card .blat th { position: sticky; top: 0; background: var(--panel); font-weight: 600; color: var(--muted); text-align: left; padding: 2px 4px; border-bottom: 1px solid var(--line); }
-.card .blat td { padding: 2px 4px; white-space: nowrap; cursor: pointer; }
-.card .blat td:first-child { width: 10px; color: var(--accent); padding-right: 0; }
-.card .blat .lc { font-family: var(--mono); font-size: 11.5px; }
-.card .blat .n { text-align: right; }
-.card .blat tbody tr:hover td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
-.card .blat tr.on td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.card .blat tr.off td { color: var(--muted); cursor: default; }
-.card .note { font-size: 11.5px; color: var(--muted); margin-right: auto; align-self: center; }
-.card a.btn { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
-.card .ln a { color: var(--accent); }
-.card #blatKey { flex: 1; min-width: 160px; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font-family: var(--mono); font-size: 12px; }
 
 .side { position: absolute; z-index: 10; top: var(--bar-h); right: 0; bottom: 0; width: min(330px, 100%); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 28px rgb(0 0 0 / .08); overflow: auto;
   padding-block: 12px 24px; padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 18px; }

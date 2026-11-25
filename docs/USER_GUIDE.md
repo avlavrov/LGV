@@ -324,9 +324,10 @@ bar shows colored parts by base.
   `HP` for haplotypes).
 - **Strand**: the 3′ end of each read is pointed, so the strand shows under any coloring.
 - **MAPQ**: the body of a read with low mapping quality is transparent (80% at MAPQ 0, less and
-  less up to solid at MAPQ 30 and above; adjustable up to 100%, which leaves only the outline). A
-  pale read keeps a thin outline in its color, so it stays visible zoomed out. Mismatches,
-  insertions and clip marks on it are not paled: their color depends only on base quality.
+  less up to solid at MAPQ 30 and above; adjustable up to 100%, an empty read): the read's color
+  over the background, never lighter than the background. Every read has the same thin pale gray
+  outline at any MAPQ, so a pale or empty read still shows where it lies, even zoomed out.
+  Mismatches, insertions and clip marks are not paled: their color depends only on base quality.
 - **Mismatches**: only bases that differ from the reference are colored: A green, C blue, G orange,
   T red; N is not marked. Letters appear inside reads from 7 pixels per base when rows are at least
   9 px tall.
@@ -378,19 +379,11 @@ Right click on the reads:
   All are copied as FASTA with the read name: `>name/1`; clips as `>name/1_left_clip` and
   `>name/1_right_clip`; a pair as `>name/1` and `>name/2`. The sequence is as stored in the file, on
   the reference's forward strand. Items that do not apply are grayed out.
-- **BLAT read sequence**, **BLAT left / right soft clip**: where else these bases align, from the
-  BLAT server of the UCSC Genome Browser. Works when the open reference is one UCSC knows (hg38,
-  hg19, T2T hs1, mm39, mm10) and the sequence has 20–25,000 bases; otherwise the item is grayed out
-  and its tooltip says why. **The bases are sent to UCSC** (see Privacy).
-  UCSC lets other pages use BLAT only through its API, with a personal **API key** (free: log in at
-  genome.ucsc.edu, My Data → Track Hubs → Hub Development). The first BLAT asks for it; it is kept
-  only until the page is closed. **Open at UCSC** opens the UCSC BLAT page with the bases filled in
-  instead (no key needed, results stay there; up to 8,000 bases).
-  The results open in a small table: locus, strand, score, identity and the part of the query that
-  aligned, best first; ● marks the read's own place; the tooltip of a row gives matches,
-  mismatches, gaps and blocks. **Click a row** to show that alignment (marked with a band) in a
-  panel next to the read's one; later clicks reuse the same panel instead of opening new ones.
-  **Copy** copies the table as text.
+- **BLAT read sequence**, **BLAT left / right soft clip**: opens the BLAT page of the UCSC Genome
+  Browser in a new tab with these bases filled in; the results (where else they align) are shown
+  there. Works when the open reference is one UCSC knows (hg38, hg19, T2T hs1, mm39, mm10) and the
+  sequence has 20–8,000 bases; otherwise the item is grayed out and its tooltip says why. **The
+  bases are sent to UCSC** (see Privacy).
 - **View as pairs**, **Show soft-clipped bases**.
 - **Color by**: none, strand, pair orientation and insert size, tag value (with the tag field).
 - **Sort by** at the clicked position: start (unsorted), base, MAPQ, strand, insert size. Reads
@@ -414,11 +407,10 @@ ruler and gene track:
 copied as JSON, pasted from someone else and applied, or reset.
 
 - **Reads**: read height (1–24 px), color, tag for color, fade low-quality bases, show soft clips,
-  MAPQ transparency (from / to MQ, transparency at low MQ: 0% is a solid read, 100% leaves only its
-  outline; the pointed 3' end is drawn only in views up to 5 kb wide, further out reads are
-  rectangles). Pale reads keep a thin outline in their color so they still show where they lie, even
-  zoomed out. Mismatches, insertions and clips are never paled by MAPQ: their color depends only on
-  the base's own quality.
+  MAPQ transparency (from / to MQ, transparency at low MQ: 0% is a solid read, 100% an empty one
+  with only the outline). Every read has a thin pale gray outline; the pointed 3' end is drawn only
+  in views up to 5 kb wide, further out reads are rectangles. Mismatches, insertions and clips are
+  never paled by MAPQ: their color depends only on the base's own quality.
 - **Group and sort**: group by strand, first / second of pair, pair orientation or a tag; sort rows.
 - **Filters**: minimum MAPQ; hide duplicates, secondary, supplementary, QC-failed reads;
   downsampling (reads per window, window size). Filters and downsampling act while reading, so
@@ -504,9 +496,8 @@ copied as JSON, pasted from someone else and applied, or reset.
   anywhere; the only connection it makes by itself is loading the reference chosen to open at
   start (sequence only).
 - The one exception is **BLAT**, and only when you choose it in the right-click menu: the bases of
-  that read (or of its clipped end) are sent to the UCSC Genome Browser (api.genome.ucsc.edu, with
-  your API key; or genome.ucsc.edu when you open the UCSC page), nothing else (no read name, file
-  name or position). Do not use it for data that must not leave your
+  that read (or of its clipped end) go to the UCSC Genome Browser (genome.ucsc.edu) in the address
+  of the BLAT page LGV opens in a new tab, nothing else (no read name, file name or position). Do not use it for data that must not leave your
   computer.
 - Gene search and the gene track are built in: typed gene names are not sent anywhere.
 - Only the display profile is saved in the browser. Tokens, links and folder access are never

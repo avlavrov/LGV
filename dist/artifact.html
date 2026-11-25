@@ -110,21 +110,6 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .card .seg .btn:first-child { border-radius: 6px 0 0 6px; } .card .seg .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
 .card .seg .btn.on { border-color: var(--accent); color: var(--accent); position: relative; }
 .card-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-.card.blatc { width: min(560px, calc(100% - 16px)); }
-.card .blat { max-height: 260px; overflow: auto; margin: 0 -4px; }
-.card .blat table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
-.card .blat th { position: sticky; top: 0; background: var(--panel); font-weight: 600; color: var(--muted); text-align: left; padding: 2px 4px; border-bottom: 1px solid var(--line); }
-.card .blat td { padding: 2px 4px; white-space: nowrap; cursor: pointer; }
-.card .blat td:first-child { width: 10px; color: var(--accent); padding-right: 0; }
-.card .blat .lc { font-family: var(--mono); font-size: 11.5px; }
-.card .blat .n { text-align: right; }
-.card .blat tbody tr:hover td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
-.card .blat tr.on td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.card .blat tr.off td { color: var(--muted); cursor: default; }
-.card .note { font-size: 11.5px; color: var(--muted); margin-right: auto; align-self: center; }
-.card a.btn { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
-.card .ln a { color: var(--accent); }
-.card #blatKey { flex: 1; min-width: 160px; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font-family: var(--mono); font-size: 12px; }
 
 .side { position: absolute; z-index: 10; top: var(--bar-h); right: 0; bottom: 0; width: min(330px, 100%); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 28px rgb(0 0 0 / .08); overflow: auto;
   padding-block: 12px 24px; padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 18px; }
@@ -422,7 +407,7 @@ const STRINGS = {
     'copied': 'Copied', 'copyFail': 'Could not copy — select the text manually',
     'profile.copied': 'Profile copied', 'profile.applied': 'Profile applied', 'profile.reset': 'Profile reset', 'profile.bad': 'The profile has a JSON error: {msg}',
     'card.name': 'Name', 'card.pos': 'Position', 'card.flag': 'Flag', 'card.len': 'Length', 'card.mate': 'Mate', 'card.mateUnmapped': 'unmapped', 'card.tlen': 'Insert (TLEN)',
-    'cov.relative': '≈ relative (index)', 'tip.covEst': 'Depth estimated from the index (bytes of reads per 16 kb, scaled by windows already read in detail); mean over 16 kb, not the peak. Click for exact counts at a base', 'reads.wideEst': 'Coverage here is estimated from the index: exact depth is counted in windows up to {exact}, reads are shown up to {span}.', 'blat.page': 'Open at UCSC', 'blat.keyWhy': 'BLAT from LGV goes through the UCSC Genome Browser API, which needs your personal API key (free). It is kept only until this page is closed.', 'blat.keyWhere': 'Get a key: log in at UCSC, My Data → Track Hubs → Hub Development', 'blat.keyPh': 'UCSC API key', 'blat.run': 'Run BLAT', 'err.blatKey': 'UCSC did not accept the API key', 'err.blatBusy': 'UCSC asks to slow down (too many BLAT requests); try again in a minute', 'menu.blatSeq': 'BLAT read sequence', 'menu.blatLeft': 'BLAT left soft clip', 'menu.blatRight': 'BLAT right soft clip', 'blat.tip': 'Sends these bases to the UCSC Genome Browser BLAT server ({db}) and lists where else they align', 'blat.noDb': 'BLAT needs a reference that UCSC knows: hg38, hg19, T2T (hs1), mm39 or mm10', 'blat.noClip': 'This read has no soft clip on this side', 'blat.short': 'Too short for BLAT (under {n} bases)', 'blat.long': 'Too long for BLAT (over {n} bases)', 'blat.read': 'read', 'blat.left': 'left clip', 'blat.right': 'right clip', 'blat.wait': 'Asking UCSC BLAT…', 'blat.none': 'No alignments found', 'blat.locus': 'Locus', 'blat.score': 'Score', 'blat.ident': 'Identity', 'blat.query': 'Query', 'blat.note': '{n} alignments; ● the read’s own place. Click a row to show it in the side panel', 'blat.rowTip': 'Matches {m}, mismatches {mm}; gaps: {gq} in the query, {gt} in the genome; {b} blocks; query length {q}', 'blat.noContig': '{name} is not in the open reference', 'err.blatBad': 'UCSC BLAT sent an answer that could not be read', 'err.blatHttp': 'UCSC BLAT answered with an error ({status}); try again in a minute', 'err.blatNet': 'Could not reach UCSC BLAT (no connection, or the page is not allowed to connect)',
+    'cov.relative': '≈ relative (index)', 'tip.covEst': 'Depth estimated from the index (bytes of reads per 16 kb, scaled by windows already read in detail); mean over 16 kb, not the peak. Click for exact counts at a base', 'reads.wideEst': 'Coverage here is estimated from the index: exact depth is counted in windows up to {exact}, reads are shown up to {span}.', 'menu.blatSeq': 'BLAT read sequence', 'menu.blatLeft': 'BLAT left soft clip', 'menu.blatRight': 'BLAT right soft clip', 'blat.tip': 'Opens the UCSC BLAT page ({db}) in a new tab with these bases filled in: they are sent to UCSC, and the results are shown there', 'blat.noDb': 'BLAT needs a reference that UCSC knows: hg38, hg19, T2T (hs1), mm39 or mm10', 'blat.noClip': 'This read has no soft clip on this side', 'blat.short': 'Too short for BLAT (under {n} bases)', 'blat.long': 'Too long for BLAT (over {n} bases)', 
     'card.toMate': 'Go to mate', 'btn.snap': 'PNG', 'btn.link': 'Link', 'tip.snap': 'Save the view as a PNG picture', 'tip.link': 'Copy a link that opens this view (reference, samples and tracks opened by link, loci)', 'tip.about': 'About LGV', 'link.copied': 'Link copied', 'link.copiedSkipped': 'Link copied. Not in it (opened from this computer): {names}', 'launch.bad': '{n} link(s) were not opened: only https links are read', 'start.refFailedLink': 'Could not load the reference {name}', 'snap.saved': 'Saved {name}', 'snap.fail': 'Could not make the picture', 'about.version': 'Version {v}', 'about.built': 'Built with Claude, an AI model by Anthropic.', 'about.asis': 'Provided as is, without warranty of any kind.', 'about.third': 'Third-party code and data', 'about.htscodecs': 'CRAM codecs adapted from htscodecs (Genome Research Ltd), BSD 3-Clause license.', 'about.mane': 'MANE Select and Plus Clinical v1.2 transcripts (NCBI, EMBL-EBI); exon coordinates from Ensembl 111.', 'about.bands': 'GRCh38 chromosome bands from ideogram by Eric Weitz (CC0).', 'about.refs': 'Reference genome presets: public copies hosted by the IGV team (Broad Institute).', 'about.guide': 'The user guide is docs/USER_GUIDE.md (Russian: docs/USER_GUIDE.ru.md) in the LGV repository.', 'ins.title': 'Insertion', 'ins.len': 'Length', 'ins.seq': 'Inserted bases', 'ins.qual': 'Base qualities', 'tip.copyIns': 'Copy the inserted bases (FASTA, with the read name and position)', 'track.skipped': '{name}: {n} lines could not be read and were skipped; {ok} features loaded', 'track.failed': 'Track {name} not opened: {msg}', 'track.nSamples': '{n} samples, first {shown} shown', 'track.moreSamples': '… {n} more samples', 'track.name': 'Name', 'track.type': 'Type', 'track.value': 'Value', 'track.score': 'Score', 'track.blocks': 'Blocks', 'track.thick': 'Thick part', 'tip.ann': 'Annotation track: click a feature for its details', 'tip.closeTrack': 'Close this track', 'tip.go': "Go to the locus or gene (Enter)", 'tip.open': "Open BAM / CRAM files, links or a reference", 'tip.view': "Display settings", 'tip.locus': "chr7:117,559,500-117,560,000, a position, a gene (CFTR) or a MANE transcript; several separated by spaces open side by side", 'tip.ideo': "Chromosome map: click or drag to move the active panel there", 'tip.ruler': "Drag to zoom to a region; click to center the view there", 'tip.genes': "MANE transcripts: click one for its details", 'tip.cov': "Click for base counts at this position (all reads, before downsampling)", 'tip.closeSample': "Close this sample", 'tip.showRead': "Details of the clicked read only", 'tip.showPair': "The read and its mate side by side", 'tip.toMate': "Move the view to the mate", 'tip.mateSplit': "Open the mate in a new panel next to this one", 'tip.copyCard': "Copy the text of this card", 'tip.mqvLine': "Reads with this base (share of all; + forward, − reverse strand). mQV: mean base quality (Phred) of this base in these reads", 'tip.baseLine': "Reads with this base (share of all; + forward, − reverse strand)", 'tip.total': "A + C + G + T + N; deletions are counted separately", 'tip.del': "Reads with a deletion at this position", 'tip.ins': "Reads with an insertion right after this base", 'tip.bqShade': "Mismatches of bases below Q20 are paler: 20% below Q5, full at Q20", 'tip.softClips': "Show the clipped ends of reads in the read’s color; clipped mismatches are colored", 'tip.mqTransp': "How transparent reads with MAPQ at or below \"From MQ\" are; at 100% only their outline is left. Mismatches and insertions keep their colors (only base quality pales them)", 'tip.minMapq': "Reads below this mapping quality are not read at all (coverage too)", 'tip.downsample': "Keep at most N reads starting in each window; coverage still counts every read", 'tip.dsMax': "Reads kept per window", 'tip.trackMinH': "With many samples each keeps this height and the view scrolls", 'tip.covHeight': "Height of each coverage track", 'tip.alleleThr': "Coverage bars are split by base where non-reference bases reach this share of reads", 'tip.showGenes': "MANE Select and Plus Clinical transcripts on GRCh38, built into LGV", 'tip.startRef': "Reference (or demo) opened when LGV starts", 'nav.back': 'Back to the previous place', 'nav.fwd': 'Forward', 'nav.zoomIn': 'Zoom in (all panels)', 'nav.zoomOut': 'Zoom out (all panels)', 'cov.title': 'Coverage', 'cov.total': 'Total count', 'cov.ref': 'reference', 'cov.meanQ': 'Mean base quality', 'cov.note': 'All reads at this position, before downsampling; filters from View apply. INS: insertions right after this base.', 'menu.copySeq': 'Copy read sequence', 'menu.copyLeft': 'Copy left soft-clipped sequence', 'menu.copyRight': 'Copy right soft-clipped sequence', 'menu.copyPair': 'Copy read pair (FASTA)', 'menu.copyPairNo': 'Copy read pair (mate not loaded)', 'copied.seq': 'Copied: {n} bases', 'card.mateSplit': 'Mate in split screen', 'menu.mateSplit': 'View mate region in split screen', 'split.full': 'No room for more panels ({n}). Close one with × in its header', 'card.copy': 'Copy',
     'card.clicked': 'Base', 'card.bq': 'Base quality', 'card.ref': 'ref', 'card.del': 'deletion',
     'flag.1': 'paired', 'flag.2': 'proper pair', 'flag.4': 'unmapped', 'flag.8': 'mate unmapped', 'flag.16': 'reverse strand', 'flag.32': 'mate reverse',
@@ -553,7 +538,7 @@ const STRINGS = {
     'copied': 'Скопировано', 'copyFail': 'Не удалось скопировать — выделите текст вручную',
     'profile.copied': 'Профиль скопирован', 'profile.applied': 'Профиль применён', 'profile.reset': 'Профиль сброшен', 'profile.bad': 'В профиле ошибка JSON: {msg}',
     'card.name': 'Имя', 'card.pos': 'Позиция', 'card.flag': 'Флаг', 'card.len': 'Длина', 'card.mate': 'Мейт', 'card.mateUnmapped': 'не выровнен', 'card.tlen': 'Вставка (TLEN)',
-    'cov.relative': '≈ относительное (индекс)', 'tip.covEst': 'Глубина оценена по индексу (байты ридов на 16 кб, пересчитанные по окнам, уже прочитанным подробно); среднее за 16 кб, а не пик. Клик — точный счёт в основании', 'reads.wideEst': 'Покрытие здесь оценено по индексу: точная глубина считается в окнах до {exact}, риды показываются до {span}.', 'blat.page': 'Открыть на сайте UCSC', 'blat.keyWhy': 'BLAT из LGV идёт через API UCSC Genome Browser, которому нужен ваш личный API-ключ (бесплатный). Он хранится, только пока страница открыта.', 'blat.keyWhere': 'Где взять ключ: войдите на сайт UCSC, My Data → Track Hubs → Hub Development', 'blat.keyPh': 'API-ключ UCSC', 'blat.run': 'Запустить BLAT', 'err.blatKey': 'UCSC не принял API-ключ', 'err.blatBusy': 'UCSC просит запрашивать реже (слишком много запросов BLAT); попробуйте через минуту', 'menu.blatSeq': 'BLAT последовательности рида', 'menu.blatLeft': 'BLAT левого soft clip', 'menu.blatRight': 'BLAT правого soft clip', 'blat.tip': 'Отправляет эти основания на сервер BLAT UCSC Genome Browser ({db}) и показывает, где ещё они выравниваются', 'blat.noDb': 'BLAT нужен референс, известный UCSC: hg38, hg19, T2T (hs1), mm39 или mm10', 'blat.noClip': 'У этого рида нет soft clip с этой стороны', 'blat.short': 'Слишком коротко для BLAT (меньше {n} оснований)', 'blat.long': 'Слишком длинно для BLAT (больше {n} оснований)', 'blat.read': 'рид', 'blat.left': 'левый клип', 'blat.right': 'правый клип', 'blat.wait': 'Запрос к UCSC BLAT…', 'blat.none': 'Выравниваний не найдено', 'blat.locus': 'Локус', 'blat.score': 'Score', 'blat.ident': 'Идентичность', 'blat.query': 'Запрос', 'blat.note': 'Выравниваний: {n}; ● — место самого рида. Клик по строке — показать в соседнем окне', 'blat.rowTip': 'Совпадений {m}, несовпадений {mm}; разрывов: {gq} в запросе, {gt} в геноме; блоков {b}; длина запроса {q}', 'blat.noContig': '{name} нет в открытом референсе', 'err.blatBad': 'Ответ UCSC BLAT не удалось прочитать', 'err.blatHttp': 'UCSC BLAT ответил ошибкой ({status}); попробуйте через минуту', 'err.blatNet': 'Нет связи с UCSC BLAT (нет сети или странице не разрешено подключаться)',
+    'cov.relative': '≈ относительное (индекс)', 'tip.covEst': 'Глубина оценена по индексу (байты ридов на 16 кб, пересчитанные по окнам, уже прочитанным подробно); среднее за 16 кб, а не пик. Клик — точный счёт в основании', 'reads.wideEst': 'Покрытие здесь оценено по индексу: точная глубина считается в окнах до {exact}, риды показываются до {span}.', 'menu.blatSeq': 'BLAT последовательности рида', 'menu.blatLeft': 'BLAT левого soft clip', 'menu.blatRight': 'BLAT правого soft clip', 'blat.tip': 'Открывает страницу BLAT UCSC ({db}) в новой вкладке с этими основаниями: они отправляются в UCSC, результаты показываются там', 'blat.noDb': 'BLAT нужен референс, известный UCSC: hg38, hg19, T2T (hs1), mm39 или mm10', 'blat.noClip': 'У этого рида нет soft clip с этой стороны', 'blat.short': 'Слишком коротко для BLAT (меньше {n} оснований)', 'blat.long': 'Слишком длинно для BLAT (больше {n} оснований)', 
     'card.toMate': 'К мейту', 'btn.snap': 'PNG', 'btn.link': 'Ссылка', 'tip.snap': 'Сохранить вид картинкой PNG', 'tip.link': 'Скопировать ссылку, открывающую этот вид (референс, образцы и дорожки по ссылкам, локусы)', 'tip.about': 'О программе LGV', 'link.copied': 'Ссылка скопирована', 'link.copiedSkipped': 'Ссылка скопирована. В неё не вошли (открыты с этого компьютера): {names}', 'launch.bad': 'Ссылок не открыто: {n} — читаются только https-ссылки', 'start.refFailedLink': 'Не удалось загрузить референс {name}', 'snap.saved': 'Сохранено: {name}', 'snap.fail': 'Не удалось сделать картинку', 'about.version': 'Версия {v}', 'about.built': 'Сделано с помощью Claude — модели ИИ компании Anthropic.', 'about.asis': 'Предоставляется как есть, без каких-либо гарантий.', 'about.third': 'Сторонний код и данные', 'about.htscodecs': 'Кодеки CRAM на основе htscodecs (Genome Research Ltd), лицензия BSD 3-Clause.', 'about.mane': 'Транскрипты MANE Select и Plus Clinical v1.2 (NCBI, EMBL-EBI); координаты экзонов из Ensembl 111.', 'about.bands': 'Полосы хромосом GRCh38 из ideogram, Eric Weitz (CC0).', 'about.refs': 'Готовые референсы: публичные копии из хранилища команды IGV (Broad Institute).', 'about.guide': 'Руководство пользователя — docs/USER_GUIDE.ru.md в репозитории LGV.', 'ins.title': 'Инсерция', 'ins.len': 'Длина', 'ins.seq': 'Вставленные основания', 'ins.qual': 'Качество оснований', 'tip.copyIns': 'Скопировать вставленные основания (FASTA, с именем рида и позицией)', 'track.skipped': '{name}: {n} строк не прочитаны и пропущены; загружено объектов: {ok}', 'track.failed': 'Дорожка {name} не открыта: {msg}', 'track.nSamples': 'образцов: {n}, показаны первые {shown}', 'track.moreSamples': '… ещё образцов: {n}', 'track.name': 'Имя', 'track.type': 'Тип', 'track.value': 'Значение', 'track.score': 'Score', 'track.blocks': 'Блоков', 'track.thick': 'Толстая часть', 'tip.ann': 'Дорожка аннотации: клик по объекту — его карточка', 'tip.closeTrack': 'Закрыть эту дорожку', 'tip.go': "Перейти к локусу или гену (Enter)", 'tip.open': "Открыть BAM / CRAM, ссылки или референс", 'tip.view': "Настройки отображения", 'tip.locus': "chr7:117,559,500-117,560,000, позиция, ген (CFTR) или транскрипт MANE; несколько через пробел — окна рядом", 'tip.ideo': "Карта хромосомы: клик или перетаскивание переносит туда активное окно", 'tip.ruler': "Протяните, чтобы приблизить участок; клик центрирует", 'tip.genes': "Транскрипты MANE: клик — карточка транскрипта", 'tip.cov': "Клик — счёт оснований в позиции (все риды, без даунсэмплинга)", 'tip.closeSample': "Закрыть этот образец", 'tip.showRead': "Карточка только кликнутого рида", 'tip.showPair': "Рид и его мейт рядом", 'tip.toMate': "Перейти к мейту", 'tip.mateSplit': "Открыть мейта в новом окне рядом", 'tip.copyCard': "Скопировать текст карточки", 'tip.mqvLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь). mQV — среднее качество (Phred) этого основания в этих ридах", 'tip.baseLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь)", 'tip.total': "A + C + G + T + N; делеции считаются отдельно", 'tip.del': "Риды с делецией в этой позиции", 'tip.ins': "Риды с инсерцией сразу после этого основания", 'tip.bqShade': "Несовпадения с качеством ниже Q20 бледнее: 20% ниже Q5, полностью с Q20", 'tip.softClips': "Показывать клипированные концы ридов цветом рида; несовпадения в клипах раскрашены", 'tip.mqTransp': "Насколько прозрачны риды с MAPQ не выше «От MQ»; при 100% остаётся только контур. Несовпадения и инсерции сохраняют цвет (бледнеют только от качества основания)", 'tip.minMapq': "Риды с качеством картирования ниже не читаются вовсе (и в покрытии тоже)", 'tip.downsample': "Не больше N ридов, начинающихся в каждом окне; покрытие считает все риды", 'tip.dsMax': "Сколько ридов оставлять на окно", 'tip.trackMinH': "Если образцов много, каждый сохраняет эту высоту, а экран прокручивается", 'tip.covHeight': "Высота дорожки покрытия", 'tip.alleleThr': "Столбик покрытия делится по основаниям, если не-референсные основания набирают эту долю ридов", 'tip.showGenes': "Транскрипты MANE Select и Plus Clinical на GRCh38, встроены в LGV", 'tip.startRef': "Референс (или демо), который открывается при запуске LGV", 'nav.back': 'Назад к предыдущему месту', 'nav.fwd': 'Вперёд', 'nav.zoomIn': 'Приблизить (все окна)', 'nav.zoomOut': 'Отдалить (все окна)', 'cov.title': 'Покрытие', 'cov.total': 'Всего', 'cov.ref': 'референс', 'cov.meanQ': 'Среднее качество основания', 'cov.note': 'Все риды в этой позиции, без даунсэмплинга; фильтры из «Вид» действуют. INS — инсерции сразу после этого основания.', 'menu.copySeq': 'Копировать последовательность рида', 'menu.copyLeft': 'Копировать левый soft clip', 'menu.copyRight': 'Копировать правый soft clip', 'menu.copyPair': 'Копировать пару ридов (FASTA)', 'menu.copyPairNo': 'Копировать пару ридов (мейт не загружен)', 'copied.seq': 'Скопировано оснований: {n}', 'card.mateSplit': 'Мейт в соседнем окне', 'menu.mateSplit': 'Показать регион мейта в соседнем окне', 'split.full': 'Больше окон не помещается ({n}). Закройте одно крестиком в его заголовке', 'card.copy': 'Копировать',
     'card.clicked': 'Основание', 'card.bq': 'Качество основания', 'card.ref': 'реф.', 'card.del': 'делеция',
     'flag.1': 'парный', 'flag.2': 'правильная пара', 'flag.4': 'не выровнен', 'flag.8': 'мейт не выровнен', 'flag.16': 'обратная цепь', 'flag.32': 'мейт на обратной',
@@ -5766,19 +5751,21 @@ function initGL() {
   precision mediump float;
   in vec4 v_color; in vec3 v_box; in vec2 v_out; out vec4 o;
   uniform highp float u_dpr;
-  uniform vec3 u_bg;
+  uniform vec3 u_bg, u_outline;
   void main() {
     o = v_color;
     if (v_box.z < -0.5) {
       // strand arrow: the cut-off corner in the background color; on an outlined read a line along the cut
-      bool line = v_out.y > 0.0 && v_box.x * v_box.y < 1.0 / u_dpr;
-      o = vec4(line ? mix(u_bg, v_color.rgb, v_out.y) : u_bg, 1.0);
+      bool line = v_box.x * v_box.y < 1.0 / u_dpr;
+      o = vec4(line ? u_outline : u_bg, 1.0);
     } else if (v_out.y > 0.0) {
       // one device pixel at the edges of the box at the outline's opacity (thin rows: a mix of both)
       float e = 1.0 / u_dpr, h = v_box.z, w = v_out.x;
       bool edge = v_box.x < e || v_box.x > w - e || v_box.y < e || v_box.y > h - e;
-      float a = h * u_dpr < 4.0 || w * u_dpr < 4.0 ? max(v_color.a, v_out.y * 0.7) : edge ? max(v_color.a, v_out.y) : v_color.a;
-      o = vec4(v_color.rgb, a);
+      // the fill is the read's color over the background at its opacity (never lighter than the
+      // background); thin boxes: the fill over the outline gray, so empty reads still show
+      if (h * u_dpr < 4.0 || w * u_dpr < 4.0) o = vec4(mix(u_outline, v_color.rgb, v_color.a), 1.0);
+      else if (edge) o = vec4(u_outline, 1.0);
     }
   }`;
   const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
@@ -5786,7 +5773,7 @@ function initGL() {
   gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
   GL.prog = prog;
-  GL.u = {}; for (const n of ['u_viewInt', 'u_viewFrac', 'u_bpPerPx', 'u_rowH', 'u_gap', 'u_grpGap', 'u_scroll', 'u_top', 'u_size', 'u_mmFade', 'u_dpr', 'u_arrows', 'u_bg']) GL.u[n] = gl.getUniformLocation(prog, n);
+  GL.u = {}; for (const n of ['u_viewInt', 'u_viewFrac', 'u_bpPerPx', 'u_rowH', 'u_gap', 'u_grpGap', 'u_scroll', 'u_top', 'u_size', 'u_mmFade', 'u_dpr', 'u_arrows', 'u_bg', 'u_outline']) GL.u[n] = gl.getUniformLocation(prog, n);
   GL.quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, GL.quad);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
   Object.assign(GL, makeVao());
@@ -5850,8 +5837,11 @@ function mapqAlpha(m) {
 }
 // Bodies paler than this get an outline in the read's color, so a faint (or empty) read still shows
 // where it lies; instance code 10 + the outline's opacity (see the shader).
-const OUTLINE_BELOW = 0.9, ARROW_BP = 5000;
-const bodyCode = a => a < OUTLINE_BELOW ? 10 + Math.min(0.99, Math.max(0.6, a + 0.35)) : 1;
+// Every read body has a thin outline of one pale gray (u_outline), whatever its MAPQ, so a pale or
+// empty read still shows where it lies; instance code 10 (see the shader). Pointed 3' ends from
+// ARROW_BP wide and closer.
+const ARROW_BP = 5000, BODY_CODE = 10.5, OUTLINE_MIX = 0.3; // outline: 30% of the way from background to text color
+const bodyCode = () => BODY_CODE;
 function qualAlpha(q) { if (!P.baseQualityShading || q === 255) return 1; if (q < 5) return 0.2; if (q < 20) return 0.2 + 0.8 * (q - 5) / 15; return 1; }
 function hashStr(s) { let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 
@@ -6019,9 +6009,8 @@ function rebuildTrack(T) {
   // of a pale read (alpha: that outline's opacity, 0 for solid reads), the cut itself is background
   for (const [rec, R, gi] of bodies) {
     const [e0, e1] = readExtent(rec, P.showSoftClips), c = rec.flag & F_REV ? 502 : 500;
-    const bc = bodyCode(mapqAlpha(rec.mapq)), oa = bc >= 10 ? bc - 10 : 0, col = readColor(rec, T);
-    ib.add(e0 - d.start, e1 - d.start, R, gi, 0, 1, c, col, oa);
-    ib.add(e0 - d.start, e1 - d.start, R, gi, 0, 1, c + 1, col, oa);
+    ib.add(e0 - d.start, e1 - d.start, R, gi, 0, 1, c, COL.base[78], 1);
+    ib.add(e0 - d.start, e1 - d.start, R, gi, 0, 1, c + 1, COL.base[78], 1);
   }
   T.shown = { reads, cov, groups, totalRows: rowCursor, sampled, total: td.total };
   if (GL_OK) {
@@ -6477,7 +6466,8 @@ function renderPanel(pn, tp) {
     gl.uniform1f(GL.u.u_mmFade, 1.5);
     // pointed 3' ends only from ARROW_BP wide and closer; further out reads are plain rectangles
     gl.uniform1f(GL.u.u_arrows, W * S.view.bpPerPx <= ARROW_BP ? 1 : 0);
-    { const bg = hexToRgb(COL.css.bg); gl.uniform3f(GL.u.u_bg, bg[0] / 255, bg[1] / 255, bg[2] / 255); }
+    { const bg = hexToRgb(COL.css.bg), fg = hexToRgb(COL.css.fg), ol = bg.map((c, i) => (c + (fg[i] - c) * OUTLINE_MIX) / 255);
+      gl.uniform3f(GL.u.u_bg, bg[0] / 255, bg[1] / 255, bg[2] / 255); gl.uniform3f(GL.u.u_outline, ol[0], ol[1], ol[2]); }
     gl.uniform1f(GL.u.u_dpr, DPR);
     gl.enable(gl.SCISSOR_TEST);
     const clipTop = covTop();
@@ -6497,7 +6487,7 @@ function renderPanel(pn, tp) {
   ctx.save(); ctx.translate(pn.x0, 0); ctx.beginPath(); ctx.rect(0, 0, pn.w, H); ctx.clip();
   const part = (k, f) => { f(); const m = performance.now(); add(k, m - tl); tl = m; };
   part('ruler', () => { ctx.save(); ctx.translate(0, panelHdr()); drawRuler(); drawRefTrack(); ctx.restore(); drawGenes(pn); drawAnnTracks(pn); });
-  drawRubber(); drawMark(pn);
+  drawRubber();
   // tracks: below the ruler only, and only those in sight
   ctx.save(); ctx.beginPath(); ctx.rect(0, covTop(), pn.w, H - covTop()); ctx.clip();
   const inSight = i => { const g = trackGeom(i); return g.end > covTop() && g.y0 < H; };
@@ -7124,7 +7114,7 @@ function renderCard(place) {
   } else cols.push({ title: '', lines: alignmentLines(rec, T), base: baseLines(rec, pos) });
   const seg = paired ? `<div class="seg" role="group" aria-label="${esc(t('card.show'))}"><button class="btn${P.cardPair ? '' : ' on'}" data-pair="0" aria-pressed="${!P.cardPair}">${esc(t('card.showRead'))}</button><button class="btn${P.cardPair ? ' on' : ''}" data-pair="1" aria-pressed="${P.cardPair}">${esc(t('card.showPair'))}</button></div>` : '';
   const goMate = paired && rec.mateRef >= 0 && !(rec.flag & 8);
-  c.classList.toggle('wide', cols.length > 1); c.classList.remove('blatc');
+  c.classList.toggle('wide', cols.length > 1);
   c.classList.remove('narrow');
   // top row: Read / Read and mate on the left, × on the right
   const head = '<div class="card-head">' + seg + '<button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
@@ -7163,7 +7153,7 @@ function mateSampledOut(rec, T) {
   if (!d || v !== d.refId || rec.matePos < d.start || rec.matePos >= d.end || !T.data) return false;
   return T.data.sampled.some(([a, b]) => rec.matePos >= a && rec.matePos < b);
 }
-function hideCard() { $('card').hidden = true; $('card').classList.remove('blatc'); cardState = null; }
+function hideCard() { $('card').hidden = true; cardState = null; }
 // ---- Coverage at a position, as IGV shows it: counts of A, C, G, T, N by strand, deletions and
 // insertions. Counted from every read at that position (read again from the file, so downsampling
 // does not change the numbers); the load-time filters (duplicates, MAPQ ...) apply as in the view.
@@ -7176,7 +7166,7 @@ async function showCoverageCard(T, pos, gx, y) {
   const head = copy => '<div class="card-head"><span class="card-title">' + esc(where) + '</span>' + (copy ? '<button class="btn card-btn" id="copyCov">' + esc(t('card.copy')) + '</button>' : '') +
     '<button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
   cardState = { pn, cov: tok, T, pos };
-  c.classList.remove('wide', 'blatc'); c.classList.add('narrow');
+  c.classList.remove('wide'); c.classList.add('narrow');
   c.innerHTML = head(false) + `<div class="ln"><span class="spin"></span>${esc(t('loading'))}</div>`;
   c.hidden = false; placeCard(gx, y); draw();
   $('closeCard').onclick = () => { hideCard(); draw(); };
@@ -7228,7 +7218,7 @@ function showInsCard(rec, T, f, gx, y) {
   if (qs.length) L.push(['kv', t('ins.qual'), qs.length <= 40 ? qs.join(', ') : 'mean ' + Math.round(qs.reduce((a, b) => a + b, 0) / qs.length)]);
   L.push(['kv', t('card.readName'), rec.name]);
   cardState = { pn: CUR, ins: f, rec, T, pos: f.pos };
-  c.classList.remove('wide', 'blatc'); c.classList.add('narrow');
+  c.classList.remove('wide'); c.classList.add('narrow');
   c.innerHTML = '<div class="card-head"><span class="card-title">' + esc(where) + '</span><button class="btn card-btn" id="copyIns">' + esc(t('card.copy')) + '</button><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' +
     `<div class="ln b">${esc(t('ins.title'))}</div>${linesHtml(L)}`;
   c.hidden = false; placeCard(gx, y);
@@ -7694,7 +7684,6 @@ function openMenu(x, gx, y, hit) {
     `<div class="ms">${esc(t('menu.sortBy', { pos: fmtInt(pos + 1) }))}</div>` +
     ['start', 'base', 'mapq', 'strand', 'insert'].map(v => item('sort', v, P.sortBy === v && (v === 'start' || S.sortPos === pos), t('sort.' + v), 'menuitemradio')).join('');
   m.dataset.pos = pos; m.hidden = false;
-  m.querySelectorAll('[data-act^="blat"]').forEach(x => { x.dataset.gx = gx; x.dataset.gy = y; });
   const r = stage.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
   m.style.left = Math.max(8, Math.min(r.width - w - 8, gx + 2)) + 'px';
   m.style.top = Math.max(8, Math.min(r.height - h - 8, y + 2)) + 'px';
@@ -7722,125 +7711,26 @@ function copyReadSeq(rec, T, act) {
   if (!txt) return;
   navigator.clipboard.writeText(txt).then(() => toast(t('copied.seq', { n: fmtInt(txt.replace(/^>.*$/gm, '').replace(/\s/g, '').length) })), () => toast(t('copyFail')));
 }
-// ---- BLAT at the UCSC Genome Browser: where else a read (or its clipped end) aligns. The sequence
-// is sent to genome.ucsc.edu only on this explicit request (see the guide, Privacy). Results open in
-// a compact card; a click on one shows it in one split panel, reused for every later click.
-const BLAT_MIN = 20, BLAT_MAX = 25000, BLAT_LINK_MAX = 8000;
-// UCSC's REST API answers pages from other sites (hgBlat itself does not), but asks for a personal
-// API key (free, from a Genome Browser account); the key is kept only while the page is open.
-// The UCSC BLAT page itself is offered as a link: it opens there, with the bases filled in.
-const BLAT_API = 'https://api.genome.ucsc.edu/blat/dna', BLAT_PAGE = 'https://genome.ucsc.edu/cgi-bin/hgBlat', BLAT_KEY_PAGE = 'https://genome.ucsc.edu/cgi-bin/hgHubConnect';
-let blatKey = '';
+// ---- BLAT at the UCSC Genome Browser: where else a read (or its clipped end) aligns. UCSC's BLAT
+// server does not answer other web pages (no CORS; its API wants a personal key), so LGV opens the
+// UCSC BLAT page in a new tab with the bases filled in, on this explicit request only (see the
+// guide, Privacy); the results are shown there.
+const BLAT_MIN = 20, BLAT_MAX = 8000; // longer: the bases no longer fit in a web address reliably
+const BLAT_PAGE = 'https://genome.ucsc.edu/cgi-bin/hgBlat';
 // UCSC assembly of the open reference, by the length of chr1 (any naming: chr1, 1)
 function ucscDb() {
   const i = contigId('chr1'); if (i < 0) return null;
   return { 248956422: 'hg38', 249250621: 'hg19', 248387328: 'hs1', 195154279: 'mm39', 195471971: 'mm10' }[S.contigs[i].len] || null;
 }
 function blatItem(a, label, off, tip) { return `<button class="mi" role="menuitem" data-act="${a}" data-val="" title="${esc(tip)}"${off ? ' disabled' : ''}><span class="mk" aria-hidden="true"></span>${esc(label)}</button>`; }
-// PSL rows from UCSC's JSON ({ fields: [...], blat: [[...], ...] }); field order as in PSL when no names
-const PSL_FIELDS = ['matches', 'misMatches', 'repMatches', 'nCount', 'qNumInsert', 'qBaseInsert', 'tNumInsert', 'tBaseInsert', 'strand', 'qName', 'qSize', 'qStart', 'qEnd', 'tName', 'tSize', 'tStart', 'tEnd', 'blockCount', 'blockSizes', 'qStarts', 'tStarts'];
-function parseBlat(j) {
-  if (!j || typeof j !== 'object' || !Array.isArray(j.blat)) throw new CgvError('blatBad');
-  const f = Array.isArray(j.fields) && j.fields.length >= 17 ? j.fields.map(String) : PSL_FIELDS, ix = k => f.indexOf(k);
-  const out = [];
-  for (const row of j.blat.slice(0, 500)) {
-    if (!row || typeof row !== 'object') continue;
-    const get = k => Array.isArray(row) ? row[ix(k)] : Object.prototype.hasOwnProperty.call(row, k) ? row[k] : undefined;
-    const h = {}; for (const k of ['matches', 'misMatches', 'repMatches', 'qNumInsert', 'tNumInsert', 'qSize', 'qStart', 'qEnd', 'tStart', 'tEnd', 'blockCount']) { const v = Number(get(k)); h[k] = Number.isFinite(v) && v >= 0 && v < 1e10 ? v : NaN; }
-    h.strand = String(get('strand') || '').slice(0, 2); h.tName = String(get('tName') || '').slice(0, 200);
-    if (Object.values(h).some(v => typeof v === 'number' && Number.isNaN(v)) || !h.tName || h.tEnd <= h.tStart) continue;
-    // as UCSC's BLAT page: score = matches + repMatches/2 − mismatches − gap opens; identity from pslCalcMilliBad (mRNA rules)
-    h.score = h.matches + (h.repMatches >> 1) - h.misMatches - h.qNumInsert - h.tNumInsert;
-    const qa = h.qEnd - h.qStart, ta = h.tEnd - h.tStart, tot = h.matches + h.repMatches + h.misMatches, dif = Math.max(0, qa - ta);
-    h.ident = tot > 0 ? 100 - (1000 * (h.misMatches + h.qNumInsert + Math.round(3 * Math.log(1 + dif))) / tot) / 10 : 0;
-    out.push(h);
-  }
-  return out.sort((a, b) => b.score - a.score || b.ident - a.ident);
-}
-async function blatRead(rec, T, act, gx, gy) {
+function blatRead(rec, act) {
   const [cl, cr] = clipLens(rec), db = ucscDb(); if (!db) return;
-  const [a, b, what] = act === 'blatLeft' ? [0, cl, t('blat.left')] : act === 'blatRight' ? [rec.lseq - cr, rec.lseq, t('blat.right')] : [0, rec.lseq, t('blat.read')];
+  const [a, b] = act === 'blatLeft' ? [0, cl] : act === 'blatRight' ? [rec.lseq - cr, rec.lseq] : [0, rec.lseq];
   const seq = seqOf(rec, a, b); if (seq.length < BLAT_MIN || seq.length > BLAT_MAX) return;
-  const pn = CUR, tok = {}, c = $('card'), title = `BLAT · ${what} · ${fmtInt(seq.length)} bp · ${db}`;
-  const own = { refId: S.view.refId, s: rec.pos, e: rec.end }; // the read's own place, marked in the list
-  cardState = { pn, blat: tok }; c.classList.remove('narrow', 'wide'); c.classList.add('blatc');
-  const head = '<div class="card-head"><span class="card-title">' + esc(title) + '</span><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
-  // the UCSC page with these bases (a plain link: the browser opens it there; no key needed)
-  const link = seq.length <= BLAT_LINK_MAX ? `<a class="btn" id="blatPage" href="${esc(BLAT_PAGE + '?type=DNA&db=' + db + '&userSeq=' + encodeURIComponent(seq))}" target="_blank" rel="noopener noreferrer">${esc(t('blat.page'))}</a>` : '';
-  const ask = msg => {
-    c.innerHTML = head + (msg ? `<div class="ln b">${esc(msg)}</div>` : '') + `<div class="ln">${esc(t('blat.keyWhy'))} <a href="${esc(BLAT_KEY_PAGE)}" target="_blank" rel="noopener noreferrer">${esc(t('blat.keyWhere'))}</a></div>` +
-      `<div class="card-actions"><input id="blatKey" type="password" autocomplete="off" spellcheck="false" placeholder="${esc(t('blat.keyPh'))}"><button class="btn" id="blatGo">${esc(t('blat.run'))}</button>${link}</div>`;
-    $('closeCard').onclick = () => { hideCard(); draw(); };
-    const go = () => { const v = $('blatKey').value.trim(); if (!/^[A-Za-z0-9_-]{8,128}$/.test(v)) { $('blatKey').focus(); return; } blatKey = v; blatRead(rec, T, act, gx, gy); };
-    $('blatGo').onclick = go; $('blatKey').onkeydown = e => { if (e.key === 'Enter') go(); };
-    $('blatKey').focus();
-  };
-  c.hidden = false;
-  if (!blatKey) { ask(''); placeCard(gx, gy); return; }
-  c.innerHTML = head + `<div class="ln"><span class="spin"></span>${esc(t('blat.wait'))}</div>`;
-  placeCard(gx, gy);
-  $('closeCard').onclick = () => { hideCard(); draw(); };
-  let hits;
-  try {
-    const body = new URLSearchParams({ genome: db, userSeq: seq, apiKey: blatKey, jsonOutputArrays: '1', maxItemsOutput: '200' });
-    const r = await fetch(BLAT_API, { method: 'POST', body, credentials: 'omit', referrerPolicy: 'no-referrer' });
-    if (r.status === 403) { if (cardState && cardState.blat === tok) { blatKey = ''; ask(t('err.blatKey')); } return; }
-    if (!r.ok) throw new CgvError(r.status === 429 ? 'blatBusy' : 'blatHttp', { status: r.status });
-    hits = parseBlat(await r.json());
-  } catch (e) {
-    if (!cardState || cardState.blat !== tok) return;
-    c.innerHTML = head + `<div class="ln">${esc(e instanceof CgvError ? errText(e) : t('err.blatNet'))}</div>` + (link ? `<div class="card-actions">${link}</div>` : '');
-    $('closeCard').onclick = () => { hideCard(); draw(); };
-    return;
-  }
-  if (!cardState || cardState.blat !== tok) return; // closed or replaced meanwhile
-  if (!hits.length) { c.querySelector('.ln:last-child').textContent = t('blat.none'); return; }
-  const rows = hits.map((h, i) => {
-    const id = contigId(h.tName), here = id === own.refId && h.tStart < own.e && h.tEnd > own.s;
-    const tip = t('blat.rowTip', { m: fmtInt(h.matches), mm: fmtInt(h.misMatches), gq: h.qNumInsert, gt: h.tNumInsert, b: h.blockCount, q: fmtInt(h.qSize) });
-    return `<tr data-i="${i}"${id < 0 ? ' class="off"' : ''} title="${esc(tip)}"><td>${here ? '●' : ''}</td><td class="lc">${esc(h.tName)}:${fmtInt(h.tStart + 1)}-${fmtInt(h.tEnd)}</td><td>${esc(h.strand)}</td><td class="n">${fmtInt(h.score)}</td><td class="n">${h.ident.toFixed(1)}%</td><td class="n">${fmtInt(h.qStart + 1)}–${fmtInt(h.qEnd)}</td></tr>`;
-  }).join('');
-  c.innerHTML = head + `<div class="blat"><table><thead><tr><th></th><th>${esc(t('blat.locus'))}</th><th></th><th class="n">${esc(t('blat.score'))}</th><th class="n">${esc(t('blat.ident'))}</th><th class="n">${esc(t('blat.query'))}</th></tr></thead><tbody>${rows}</tbody></table></div>` +
-    `<div class="card-actions"><span class="note">${esc(t('blat.note', { n: hits.length }))}</span>${link}<button class="btn" id="copyBlat">${esc(t('card.copy'))}</button></div>`;
-  $('closeCard').onclick = () => { hideCard(); draw(); };
-  tips(c, { '#copyBlat': 'tip.copyCard' });
-  $('copyBlat').onclick = () => {
-    const txt = [title, ['locus', 'strand', 'score', 'identity', 'query', 'matches', 'mismatches'].join('\t'), ...hits.map(h => [`${h.tName}:${h.tStart + 1}-${h.tEnd}`, h.strand, h.score, h.ident.toFixed(1), `${h.qStart + 1}-${h.qEnd}`, h.matches, h.misMatches].join('\t'))].join('\n');
-    navigator.clipboard.writeText(txt).then(() => toast(t('copied')), () => toast(t('copyFail')));
-  };
-  c.querySelectorAll('tbody tr').forEach(tr => tr.onclick = () => {
-    const h = hits[+tr.dataset.i], id = contigId(h.tName);
-    if (id < 0) { toast(t('blat.noContig', { name: h.tName })); return; }
-    c.querySelectorAll('tr.on').forEach(x => x.classList.remove('on')); tr.classList.add('on');
-    showBlatHit(pn, id, h.tStart, h.tEnd);
-  });
-}
-// One panel for BLAT hits, opened next to the panel the read is in and reused for every later click.
-function showBlatHit(src, id, s, e) {
-  let pn = S.blatPanel && S.panels.includes(S.blatPanel) ? S.blatPanel : null;
-  if (!pn) {
-    if (!S.panels.includes(src)) src = S.active;
-    if (S.panels.length >= maxPanels()) { toast(t('split.full', { n: S.panels.length })); return; }
-    pn = S.blatPanel = newPanel({ refId: id, start: 0, bpPerPx: S.view.bpPerPx });
-    S.panels.splice(S.panels.indexOf(src) + 1, 0, pn);
-    layoutPanels(true);
-  }
-  usePanel(pn); navPush();
-  pn.mark = { refId: id, s, e };
-  const span = Math.max(e - s, 40), pad = Math.max(span * 0.25, 30);
-  goto(id, s - pad, e + pad);
-  S.active = pn; syncLocus(); draw();
-}
-// The BLAT hit shown in a panel: a band over the whole height, stronger on the ruler.
-function drawMark(pn) {
-  const m = pn.mark; if (!m || m.refId !== S.view.refId) return;
-  const x0 = (m.s - S.view.start) / S.view.bpPerPx, x1 = (m.e - S.view.start) / S.view.bpPerPx;
-  if (x1 < 0 || x0 > pn.w) return;
-  const a = Math.max(-2, x0), w = Math.max(2, Math.min(pn.w + 2, x1) - a), top = panelHdr();
-  ctx.save(); ctx.fillStyle = COL.css.accent;
-  ctx.globalAlpha = 0.08; ctx.fillRect(a, top, w, H - top);
-  ctx.globalAlpha = 0.9; ctx.fillRect(a, top, w, 3);
-  ctx.restore();
+  const x = document.createElement('a');
+  x.href = BLAT_PAGE + '?type=DNA&db=' + db + '&userSeq=' + encodeURIComponent(seq);
+  x.target = '_blank'; x.rel = 'noopener noreferrer';
+  document.body.append(x); x.click(); x.remove();
 }
 $('ctx').addEventListener('click', e => {
   const sb = e.target.closest('[data-sig]');
@@ -7851,7 +7741,7 @@ $('ctx').addEventListener('click', e => {
   usePanel(menuState.pn);
   if (act === 'mateSplit') { const h = menuState.hit; closeMenu(); hideCard(); if (h) openMatePanel(h.rec, h.T); draw(); return; }
   if (act.startsWith('copy')) { const h = menuState.hit; closeMenu(); if (h) copyReadSeq(h.rec, h.T, act); return; }
-  if (act.startsWith('blat')) { const h = menuState.hit; closeMenu(); if (h) blatRead(h.rec, h.T, act, +b.dataset.gx || 40, +b.dataset.gy || 80); return; }
+  if (act.startsWith('blat')) { const h = menuState.hit; closeMenu(); if (h) blatRead(h.rec, act); return; }
   if (act === 'pairs') P.viewPairs = !P.viewPairs;
   else if (act === 'clips') { P.showSoftClips = !P.showSoftClips; reloadNeeded = true; }
   else if (act === 'color') P.colorBy = val;
@@ -8263,7 +8153,7 @@ function showAnnCard(a, f, gx, y) {
   }
   const where = `${name}:${fmtInt(f.start + 1)}` + (f.end - f.start > 1 ? `-${fmtInt(f.end)}` : '') + st;
   cardState = { pn: CUR, ann: a };
-  c.classList.remove('wide', 'blatc'); c.classList.add('narrow');
+  c.classList.remove('wide'); c.classList.add('narrow');
   c.innerHTML = '<div class="card-head"><span class="card-title">' + esc(where) + '</span><button class="btn card-btn" id="copyAnn">' + esc(t('card.copy')) + '</button><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' +
     `<div class="ln">${esc(a.name)}</div>${linesHtml(L)}`;
   c.hidden = false; placeCard(gx, y);
