@@ -213,10 +213,10 @@ class BaiIndex {
     const R = this.refs[r]; if (!R) return null;
     if (R.parsed) return R.parsed;
     const dv = this.dv; let p = R.start;
-    const nbin = dv.getInt32(p, true); p += 4; const bins = new Map();
+    const nbin = dv.getInt32(p, true); p += 4; const bins = new Map(); let meta = null;
     for (let b = 0; b < nbin; b++) {
       const bin = dv.getUint32(p, true), nchunk = dv.getInt32(p + 4, true); p += 8;
-      if (bin === 37450) { p += nchunk * 16; continue; }
+      if (bin === 37450) { if (nchunk >= 1) meta = [voffNum(dv, p), voffNum(dv, p + 8)]; p += nchunk * 16; continue; } // pseudo-bin: where this reference's records begin and end
       const list = [];
       for (let c = 0; c < nchunk; c++) { list.push([voffNum(dv, p), voffNum(dv, p + 8)]); p += 16; }
       bins.set(bin, list);
@@ -224,7 +224,7 @@ class BaiIndex {
     const nintv = dv.getInt32(p, true); p += 4;
     const linear = new Float64Array(nintv);
     for (let i = 0; i < nintv; i++) linear[i] = voffNum(dv, p + i * 8);
-    return (R.parsed = { bins, linear });
+    return (R.parsed = { bins, linear, meta });
   }
   chunks(r, beg, end) {
     const R = this.ref(r); if (!R) return [];
@@ -464,6 +464,24 @@ class BamFile {
     }
   }
   // Compressed bytes the index points to for [beg, end): a cheap estimate of the work before reading.
+  // Depth from the index alone, without reading any reads (the idea of indexcov, Pedersen et al.
+  // 2017): the linear index gives the file offset of the first record in each 16 kb window, so the
+  // offsets' differences are the bytes of records starting in each window, which go with depth.
+  // Returns bytes per window for [beg, end), or null when the index has no linear part. The
+  // uncompressed part of an offset (inside a BGZF block) counts at a typical compression ratio.
+  indexDepth(refId, beg, end) {
+    const R = this.index.ref(refId); if (!R || !R.linear.length) return null;
+    const lin = R.linear, n = lin.length, at = v => Math.floor(v / 65536) + (v % 65536) * IDX_RATIO;
+    const o = new Float64Array(n + 1);
+    let first = 0; for (let k = 0; k < n; k++) if (lin[k] > 0) { first = lin[k]; break; }
+    let prev = first;
+    for (let k = 0; k < n; k++) { const v = lin[k] > 0 ? lin[k] : prev; o[k] = at(v); prev = v; }
+    // past the last window: the end of this reference's records (pseudo-bin), else the last offset
+    o[n] = R.meta && R.meta[1] > 0 ? Math.max(o[n - 1], at(R.meta[1])) : o[n - 1];
+    const w0 = Math.floor(beg / IDX_WIN), w1 = Math.ceil(end / IDX_WIN), bytes = new Float64Array(Math.max(0, w1 - w0));
+    for (let k = w0; k < w1 && k < n; k++) bytes[k - w0] = Math.max(0, o[k + 1] - o[k]);
+    return { win: IDX_WIN, w0, bytes };
+  }
   estimateBytes(refId, beg, end) {
     let n = 0;
     for (const c of this.index.chunks(refId, beg, end)) n += Math.floor(c[1] / 65536) - Math.floor(c[0] / 65536) + 65536;
@@ -576,6 +594,7 @@ class SparseCoverage {
   }
 }
 const COV_SUM_BIN = 64;
+const IDX_WIN = 16384, IDX_RATIO = 0.3; // linear index window (BAI); compressed / uncompressed size, typical BAM
 
 // Adds one record to coverage straight from the BAM buffer, without building an object.
 const NIB_IDX = new Uint8Array([4, 0, 1, 4, 2, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4]);
@@ -1315,4 +1334,4 @@ if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && s
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { nameHash, Downsampler, isBgzfHeader, BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, COV_SUM_BIN, NIB_IDX, DepthDiff, CovSummary, covBinFor, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { nameHash, Downsampler, isBgzfHeader, BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, COV_SUM_BIN, IDX_WIN, NIB_IDX, DepthDiff, CovSummary, covBinFor, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

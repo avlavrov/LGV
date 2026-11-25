@@ -57,6 +57,8 @@ const throwsCode = async (f, code) => { try { await f(); return 'no error'; } ca
     cram.decodable = true; // every codec CRAM 3.0 and 3.1 use is read now
     ok(list[list.length - 1].header.eof && recs === 8286, `${f}: ${list.length} containers to the end marker, all checksums correct, ${recs} records (BAM: 8286); block compression: ${methods.join(', ')}`);
     ok(cram.index.slices > 0 && cram.estimateBytes(0, 11000, 13000) > 0 && cram.estimateBytes(0, 0, 1) >= 0, `${f}: index has ${cram.index.slices} slices; size estimate for a window works`);
+    { const ix = cram.indexDepth(0, 0, 40000), tot = ix ? ix.bytes.reduce((x, y) => x + y, 0) : 0, all = cram.estimateBytes(0, 0, 40000);
+      ok(ix && ix.bytes.every(v => Number.isFinite(v) && v >= 0) && tot > 0 && tot <= all + 1, `${f}: depth from the index, ${Math.round(tot)} of ${all} bytes in 0-40 kb`); }
     // ---- records: every read equal to the BAM's (stage 2) ----
     if (!cram.decodable) {
       const why = await throwsCode(() => cram.fetch(0, 11000, 13000), 'cramCodec');

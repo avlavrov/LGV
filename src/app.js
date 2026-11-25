@@ -274,7 +274,7 @@ function initGL() {
   layout(location=1) in vec4 a_x;      // x0, x1, row, grp
   layout(location=2) in vec3 a_y;      // yA, yB, minpx
   layout(location=3) in vec4 a_color;
-  uniform float u_viewInt, u_viewFrac, u_bpPerPx, u_rowH, u_gap, u_grpGap, u_scroll, u_top, u_mmFade, u_dpr;
+  uniform float u_viewInt, u_viewFrac, u_bpPerPx, u_rowH, u_gap, u_grpGap, u_scroll, u_top, u_mmFade, u_dpr, u_arrows;
   uniform vec2 u_size;
   out vec4 v_color;
   out vec3 v_box;   // outlined bodies: position inside the box (px), and the box height
@@ -306,10 +306,14 @@ function initGL() {
       float w = min(h * 0.45, (px1 - px0) * 0.25);
       float e = right > 0.5 ? px1 : px0, dir = right > 0.5 ? -1.0 : 1.0;
       float edge = bottom > 0.5 ? yb : ya, mid = (ya + yb) * 0.5;
-      if (w < 1.5 || h < 4.0) w = 0.0;
+      if (w < 1.5 || h < 4.0 || u_arrows < 0.5) w = 0.0; // zoomed out (see u_arrows): plain rectangles
       // triangle (e + dir*w, edge), (e, edge), (e, mid); the 4th corner repeats the 3rd
       x = a_corner.y > 0.5 ? e : (a_corner.x < 0.5 ? e + dir * w : e);
       y = a_corner.y > 0.5 ? mid : edge;
+      // the cut edge of an outlined read gets its outline: distance to it from the right-angle corner
+      float hh = abs(mid - edge), alt = w * hh / max(sqrt(w * w + hh * hh), 1e-3);
+      bool corner = a_corner.y < 0.5 && a_corner.x > 0.5;
+      v_box = vec3(corner ? 1.0 : 0.0, alt, -1.0); v_out = vec2(0.0, a_color.a);
     } else {
       if (px1 - px0 < minpx) { float c = (px0 + px1) * 0.5; px0 = c - minpx * 0.5; px1 = c + minpx * 0.5; }
       x = mix(px0, px1, a_corner.x); y = mix(ya, yb, a_corner.y);
@@ -322,9 +326,14 @@ function initGL() {
   precision mediump float;
   in vec4 v_color; in vec3 v_box; in vec2 v_out; out vec4 o;
   uniform highp float u_dpr;
+  uniform vec3 u_bg;
   void main() {
     o = v_color;
-    if (v_out.y > 0.0) {
+    if (v_box.z < -0.5) {
+      // strand arrow: the cut-off corner in the background color; on an outlined read a line along the cut
+      bool line = v_out.y > 0.0 && v_box.x * v_box.y < 1.0 / u_dpr;
+      o = vec4(line ? mix(u_bg, v_color.rgb, v_out.y) : u_bg, 1.0);
+    } else if (v_out.y > 0.0) {
       // one device pixel at the edges of the box at the outline's opacity (thin rows: a mix of both)
       float e = 1.0 / u_dpr, h = v_box.z, w = v_out.x;
       bool edge = v_box.x < e || v_box.x > w - e || v_box.y < e || v_box.y > h - e;
@@ -337,7 +346,7 @@ function initGL() {
   gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
   GL.prog = prog;
-  GL.u = {}; for (const n of ['u_viewInt', 'u_viewFrac', 'u_bpPerPx', 'u_rowH', 'u_gap', 'u_grpGap', 'u_scroll', 'u_top', 'u_size', 'u_mmFade', 'u_dpr']) GL.u[n] = gl.getUniformLocation(prog, n);
+  GL.u = {}; for (const n of ['u_viewInt', 'u_viewFrac', 'u_bpPerPx', 'u_rowH', 'u_gap', 'u_grpGap', 'u_scroll', 'u_top', 'u_size', 'u_mmFade', 'u_dpr', 'u_arrows', 'u_bg']) GL.u[n] = gl.getUniformLocation(prog, n);
   GL.quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, GL.quad);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
   Object.assign(GL, makeVao());
@@ -401,7 +410,7 @@ function mapqAlpha(m) {
 }
 // Bodies paler than this get an outline in the read's color, so a faint (or empty) read still shows
 // where it lies; instance code 10 + the outline's opacity (see the shader).
-const OUTLINE_BELOW = 0.9;
+const OUTLINE_BELOW = 0.9, ARROW_BP = 5000;
 const bodyCode = a => a < OUTLINE_BELOW ? 10 + Math.min(0.99, Math.max(0.6, a + 0.35)) : 1;
 function qualAlpha(q) { if (!P.baseQualityShading || q === 255) return 1; if (q < 5) return 0.2; if (q < 20) return 0.2 + 0.8 * (q - 5) / 15; return 1; }
 function hashStr(s) { let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
@@ -565,12 +574,14 @@ function rebuildTrack(T) {
     const [p, q] = u.reads, o0 = Math.max(p.pos, q.pos), o1 = Math.min(p.end, q.end);
     if (o1 > o0) ib.add(o0 - d.start, o1 - d.start, R, gi, 0, 1, 1, COL.overlap, 0.22);
   }
-  // strand arrows last: the 3' end of every read is cut to a point (seen when the row is tall enough)
-  const bgc = hexToRgb(COL.css.bg);
+  // strand arrows last: the 3' end of every read is cut to a point (seen when the row is tall enough
+  // and the view narrow enough, see ARROW_BP); the color is the read's, for the outline along the cut
+  // of a pale read (alpha: that outline's opacity, 0 for solid reads), the cut itself is background
   for (const [rec, R, gi] of bodies) {
     const [e0, e1] = readExtent(rec, P.showSoftClips), c = rec.flag & F_REV ? 502 : 500;
-    ib.add(e0 - d.start, e1 - d.start, R, gi, 0, 1, c, bgc, 1);
-    ib.add(e0 - d.start, e1 - d.start, R, gi, 0, 1, c + 1, bgc, 1);
+    const bc = bodyCode(mapqAlpha(rec.mapq)), oa = bc >= 10 ? bc - 10 : 0, col = readColor(rec, T);
+    ib.add(e0 - d.start, e1 - d.start, R, gi, 0, 1, c, col, oa);
+    ib.add(e0 - d.start, e1 - d.start, R, gi, 0, 1, c + 1, col, oa);
   }
   T.shown = { reads, cov, groups, totalRows: rowCursor, sampled, total: td.total };
   if (GL_OK) {
@@ -817,7 +828,7 @@ async function ensureData() {
   const d = S.data;
   const span0 = ve - vs;
   // a window loaded with depth-only coverage is loaded again in detail when zoomed in below COV_DETAIL_BP
-  if (d && d.refId === S.view.refId && vs >= d.start && ve <= d.end && !(d.depthOnly && span0 <= COV_DETAIL_BP)) return;
+  if (d && d.refId === S.view.refId && vs >= d.start && ve <= d.end && !(d.depthOnly && span0 <= COV_DETAIL_BP) && !(d.estimate && !S.loading && span0 <= DEPTH_EXACT_BP)) return;
   const span = span0, margin = Math.round(Math.min(span, 20000) / 2);
   let ls = Math.max(0, vs - margin); const le = Math.min(refLen(), ve + margin);
   const tracks = S.tracks.slice(), refId = S.view.refId;
@@ -835,11 +846,26 @@ async function ensureData() {
   // is 8 times higher. Once a contig was loaded anyway, it is not asked about again in this panel for
   // windows up to 1.5 times as large (with long reads every window of a short contig needs the
   // same data, and asking again at each zoom helped no one).
+  // wide windows: depth from the indexes at once; past DEPTH_EXACT_BP that is all that is shown
+  let estShown = false;
+  if (tracks.length && span > COV_DETAIL_BP) {
+    const ests = tracks.map(T => T.map[refId] >= 0 ? indexCov(T, T.map[refId], ls, le) : null);
+    if (ests.some(Boolean)) {
+      S.loadToken++;
+      S.data = { refId, start: ls, end: le, ref: new SparseRef(), depthOnly: true, estimate: true };
+      tracks.forEach((T, i) => {
+        T.data = { reads: [], insert: insertSizeBounds([]), cov: ests[i] || new SparseCoverage(ls, le), total: 0, sampled: [] };
+        T.msg = T.map[refId] < 0 ? { text: t('sample.noContig', { name: S.contigs[refId].name }) } : { text: t(span > DEPTH_EXACT_BP ? 'reads.wideEst' : 'reads.wide', { span: fmtBp(COV_DETAIL_BP), exact: fmtBp(DEPTH_EXACT_BP) }) };
+      });
+      S.msg = null; S.loading = false; rebuildPanel(); draw(); estShown = true;
+      if (span > DEPTH_EXACT_BP) return;
+    }
+  }
   const est = tracks.reduce((a, T) => a + (T.map[refId] >= 0 ? T.bam.estimateBytes(T.map[refId], ls, le) * (T.remote ? 1 : 1 / 8) : 0), 0);
   const ok = S.approved && S.approved.refId === refId && est <= S.approved.bytes * 1.5;
   if (S.forceLoad) S.approved = { refId, bytes: est };
   if (est > P.maxLoadMB * 1048576 && !S.forceLoad && !ok) {
-    clear();
+    if (!estShown) clear();
     const size = fmtBytes(tracks.reduce((a, T) => a + (T.map[refId] >= 0 ? T.bam.estimateBytes(T.map[refId], ls, le) : 0), 0));
     S.msg = { text: t('wide', { span: fmtBp(span), size }), action: t('wide.btn', { size }) };
     draw(); return;
@@ -892,6 +918,7 @@ async function ensureData() {
       T.msg = msg ? { text: msg, error: !!error } : res && depthOnly && res.total ? { text: t('reads.wide', { span: fmtBp(COV_DETAIL_BP) }) }
         : res && res.tooMany ? { text: t('reads.tooMany', { n: fmtInt(P.maxReads) }) } : null;
     }
+    if (!depthOnly) for (const { T, res } of results) if (res && T.map[refId] >= 0) calibrateIdx(T, T.map[refId], res.cov, ls, le);
     S.stats.loadMs = performance.now() - t0;
     S.loading = false;
     // the records were replaced: a selection in this panel no longer points at them
@@ -908,6 +935,34 @@ async function ensureData() {
 // Filters and downsampling act while reading, so changing them re-reads the window.
 const REF_VIEW_BP = 200000; // windows up to this size also load the reference between reads
 const COV_DETAIL_BP = 1000000; // wider views count coverage depth only (no allele colors), which loads several times faster
+// Wider views than COV_DETAIL_BP first show depth estimated from the index (at once, nothing read);
+// up to DEPTH_EXACT_BP the exact depth is then read and replaces it.
+const DEPTH_EXACT_BP = 10000000;
+// Index estimate of a sample's depth over [ls, le): bytes per 16 kb window from the index, turned
+// into depth with the bytes per depth-base this file showed in windows read in detail (T.bam.idxCal);
+// before any such window, relative units. null when the index cannot tell.
+function indexCov(T, br, ls, le) {
+  let x = null; try { x = T.bam.indexDepth ? T.bam.indexDepth(br, ls, le) : null; } catch (e) { x = null; }
+  if (!x || !x.bytes.length) return null;
+  const cal = T.bam.idxCal, f = cal && cal.d > 0 ? cal.b / cal.d : 0;
+  const sm = new CovSummary(ls, le, x.win), m = new Float32Array(sm.max5.length);
+  for (let i = 0; i < m.length; i++) { const k = sm.b0 + i - x.w0; if (k >= 0 && k < x.bytes.length) m[i] = f ? x.bytes[k] / (f * x.win) : x.bytes[k]; }
+  sm.max5 = sm.max6 = m;
+  const cov = new SparseCoverage(ls, le); cov.depthOnly = true; cov._sum = sm; cov.estimate = f ? 'depth' : 'relative';
+  return cov;
+}
+// After a window read in detail: its mean depth and the index's bytes over the same 16 kb windows
+// (whole ones only), added up per file; their ratio converts later index estimates into depth.
+function calibrateIdx(T, br, cov, ls, le) {
+  if (!T.bam.indexDepth || cov.depthOnly || le - ls < 2000) return;
+  let x = null; try { x = T.bam.indexDepth(br, ls, le); } catch (e) { return; }
+  if (!x) return;
+  // windows only partly inside count for that part
+  let b = 0; x.bytes.forEach((v, i) => { const a = (x.w0 + i) * x.win, z = a + x.win; b += v * Math.max(0, Math.min(z, le) - Math.max(a, ls)) / x.win; });
+  let d = 0; cov.forEach(ls, le, (pos, blk, o) => { d += blk[o] + blk[o + 1] + blk[o + 2] + blk[o + 3] + blk[o + 4]; });
+  if (b <= 0 || d <= 0) return;
+  const c = T.bam.idxCal || (T.bam.idxCal = { b: 0, d: 0 }); c.b += b; c.d += d;
+}
 function reloadData() { if (!S.contigs) return; forEachPanel(() => { S.data = null; for (const T of S.tracks) { T.data = null; T.shown = null; T.n = 0; } }); S.selected = null; hideCard(); loadAll(); }
 // Scrolls each track of the current panel so that a read with this name is in sight (a mate just
 // opened in its own panel).
@@ -980,6 +1035,9 @@ function renderPanel(pn, tp) {
     gl.uniform1f(GL.u.u_grpGap, groupGap());
     gl.uniform2f(GL.u.u_size, vw / DPR, H);
     gl.uniform1f(GL.u.u_mmFade, 1.5);
+    // pointed 3' ends only from ARROW_BP wide and closer; further out reads are plain rectangles
+    gl.uniform1f(GL.u.u_arrows, W * S.view.bpPerPx <= ARROW_BP ? 1 : 0);
+    { const bg = hexToRgb(COL.css.bg); gl.uniform3f(GL.u.u_bg, bg[0] / 255, bg[1] / 255, bg[2] / 255); }
     gl.uniform1f(GL.u.u_dpr, DPR);
     gl.enable(gl.SCISSOR_TEST);
     const clipTop = covTop();
@@ -1151,7 +1209,7 @@ function drawCoverage(T, g) {
     }
   }
   ctx.fillStyle = COL.css.muted; ctx.font = '10.5px ' + MONO; ctx.textAlign = 'left';
-  ctx.fillText('0–' + fmtInt(maxD) + '×', 6, top + 10);
+  ctx.fillText(cov.estimate === 'relative' ? t('cov.relative') : (cov.estimate ? '≈ ' : '') + '0–' + fmtInt(Math.round(maxD)) + '×', 6, top + 10);
   ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, base + 3.5); ctx.lineTo(W, base + 3.5); ctx.stroke();
   // the position the coverage card is about
   if (cardState && cardState.cov && cardState.T === T && cardState.pn === CUR) {
@@ -1408,7 +1466,7 @@ function zoneOf(L) {
   { const a = annAt(L.y); if (a) return a.lbl && L.x > W - 24 && CUR === S.panels[S.panels.length - 1] ? 'tip.closeTrack' : a.kind === 'signal' ? 'tip.signal' : 'tip.ann'; }
   const ti = trackAtY(L.y); if (ti < 0) return '';
   const g = trackGeom(ti);
-  if (L.y >= g.covTop && L.y < g.covTop + g.covH + 4) return 'tip.cov';
+  if (L.y >= g.covTop && L.y < g.covTop + g.covH + 4) { const sh = S.tracks[ti].shown; return sh && sh.cov.estimate ? 'tip.covEst' : 'tip.cov'; }
   if (g.lbl && L.y >= g.readsTop && L.y < g.readsTop + LABEL_H && L.x > W - 24 && CUR === S.panels[S.panels.length - 1]) return 'tip.closeSample';
   return '';
 }
@@ -2227,7 +2285,12 @@ function copyReadSeq(rec, T, act) {
 // ---- BLAT at the UCSC Genome Browser: where else a read (or its clipped end) aligns. The sequence
 // is sent to genome.ucsc.edu only on this explicit request (see the guide, Privacy). Results open in
 // a compact card; a click on one shows it in one split panel, reused for every later click.
-const BLAT_MIN = 20, BLAT_MAX = 25000, BLAT_URL = 'https://genome.ucsc.edu/cgi-bin/hgBlat';
+const BLAT_MIN = 20, BLAT_MAX = 25000, BLAT_LINK_MAX = 8000;
+// UCSC's REST API answers pages from other sites (hgBlat itself does not), but asks for a personal
+// API key (free, from a Genome Browser account); the key is kept only while the page is open.
+// The UCSC BLAT page itself is offered as a link: it opens there, with the bases filled in.
+const BLAT_API = 'https://api.genome.ucsc.edu/blat/dna', BLAT_PAGE = 'https://genome.ucsc.edu/cgi-bin/hgBlat', BLAT_KEY_PAGE = 'https://genome.ucsc.edu/cgi-bin/hgHubConnect';
+let blatKey = '';
 // UCSC assembly of the open reference, by the length of chr1 (any naming: chr1, 1)
 function ucscDb() {
   const i = contigId('chr1'); if (i < 0) return null;
@@ -2239,12 +2302,12 @@ const PSL_FIELDS = ['matches', 'misMatches', 'repMatches', 'nCount', 'qNumInsert
 function parseBlat(j) {
   if (!j || typeof j !== 'object' || !Array.isArray(j.blat)) throw new CgvError('blatBad');
   const f = Array.isArray(j.fields) && j.fields.length >= 17 ? j.fields.map(String) : PSL_FIELDS, ix = k => f.indexOf(k);
-  const num = (row, k) => { const v = Number(row[ix(k)]); return Number.isFinite(v) && v >= 0 && v < 1e10 ? v : NaN; };
   const out = [];
   for (const row of j.blat.slice(0, 500)) {
-    if (!Array.isArray(row)) continue;
-    const h = {}; for (const k of ['matches', 'misMatches', 'repMatches', 'qNumInsert', 'tNumInsert', 'qSize', 'qStart', 'qEnd', 'tStart', 'tEnd', 'blockCount']) h[k] = num(row, k);
-    h.strand = String(row[ix('strand')] || '').slice(0, 2); h.tName = String(row[ix('tName')] || '').slice(0, 200);
+    if (!row || typeof row !== 'object') continue;
+    const get = k => Array.isArray(row) ? row[ix(k)] : Object.prototype.hasOwnProperty.call(row, k) ? row[k] : undefined;
+    const h = {}; for (const k of ['matches', 'misMatches', 'repMatches', 'qNumInsert', 'tNumInsert', 'qSize', 'qStart', 'qEnd', 'tStart', 'tEnd', 'blockCount']) { const v = Number(get(k)); h[k] = Number.isFinite(v) && v >= 0 && v < 1e10 ? v : NaN; }
+    h.strand = String(get('strand') || '').slice(0, 2); h.tName = String(get('tName') || '').slice(0, 200);
     if (Object.values(h).some(v => typeof v === 'number' && Number.isNaN(v)) || !h.tName || h.tEnd <= h.tStart) continue;
     // as UCSC's BLAT page: score = matches + repMatches/2 − mismatches − gap opens; identity from pslCalcMilliBad (mRNA rules)
     h.score = h.matches + (h.repMatches >> 1) - h.misMatches - h.qNumInsert - h.tNumInsert;
@@ -2262,17 +2325,32 @@ async function blatRead(rec, T, act, gx, gy) {
   const own = { refId: S.view.refId, s: rec.pos, e: rec.end }; // the read's own place, marked in the list
   cardState = { pn, blat: tok }; c.classList.remove('narrow', 'wide'); c.classList.add('blatc');
   const head = '<div class="card-head"><span class="card-title">' + esc(title) + '</span><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
+  // the UCSC page with these bases (a plain link: the browser opens it there; no key needed)
+  const link = seq.length <= BLAT_LINK_MAX ? `<a class="btn" id="blatPage" href="${esc(BLAT_PAGE + '?type=DNA&db=' + db + '&userSeq=' + encodeURIComponent(seq))}" target="_blank" rel="noopener noreferrer">${esc(t('blat.page'))}</a>` : '';
+  const ask = msg => {
+    c.innerHTML = head + (msg ? `<div class="ln b">${esc(msg)}</div>` : '') + `<div class="ln">${esc(t('blat.keyWhy'))} <a href="${esc(BLAT_KEY_PAGE)}" target="_blank" rel="noopener noreferrer">${esc(t('blat.keyWhere'))}</a></div>` +
+      `<div class="card-actions"><input id="blatKey" type="password" autocomplete="off" spellcheck="false" placeholder="${esc(t('blat.keyPh'))}"><button class="btn" id="blatGo">${esc(t('blat.run'))}</button>${link}</div>`;
+    $('closeCard').onclick = () => { hideCard(); draw(); };
+    const go = () => { const v = $('blatKey').value.trim(); if (!/^[A-Za-z0-9_-]{8,128}$/.test(v)) { $('blatKey').focus(); return; } blatKey = v; blatRead(rec, T, act, gx, gy); };
+    $('blatGo').onclick = go; $('blatKey').onkeydown = e => { if (e.key === 'Enter') go(); };
+    $('blatKey').focus();
+  };
+  c.hidden = false;
+  if (!blatKey) { ask(''); placeCard(gx, gy); return; }
   c.innerHTML = head + `<div class="ln"><span class="spin"></span>${esc(t('blat.wait'))}</div>`;
-  c.hidden = false; placeCard(gx, gy);
+  placeCard(gx, gy);
   $('closeCard').onclick = () => { hideCard(); draw(); };
   let hits;
   try {
-    const r = await fetch(`${BLAT_URL}?userSeq=${encodeURIComponent(seq)}&type=DNA&db=${db}&output=json`, { credentials: 'omit', referrerPolicy: 'no-referrer' });
-    if (!r.ok) throw new CgvError('blatHttp', { status: r.status });
+    const body = new URLSearchParams({ genome: db, userSeq: seq, apiKey: blatKey, jsonOutputArrays: '1', maxItemsOutput: '200' });
+    const r = await fetch(BLAT_API, { method: 'POST', body, credentials: 'omit', referrerPolicy: 'no-referrer' });
+    if (r.status === 403) { if (cardState && cardState.blat === tok) { blatKey = ''; ask(t('err.blatKey')); } return; }
+    if (!r.ok) throw new CgvError(r.status === 429 ? 'blatBusy' : 'blatHttp', { status: r.status });
     hits = parseBlat(await r.json());
   } catch (e) {
     if (!cardState || cardState.blat !== tok) return;
-    c.querySelector('.ln:last-child').textContent = e instanceof CgvError ? errText(e) : t('err.blatNet');
+    c.innerHTML = head + `<div class="ln">${esc(e instanceof CgvError ? errText(e) : t('err.blatNet'))}</div>` + (link ? `<div class="card-actions">${link}</div>` : '');
+    $('closeCard').onclick = () => { hideCard(); draw(); };
     return;
   }
   if (!cardState || cardState.blat !== tok) return; // closed or replaced meanwhile
@@ -2283,7 +2361,7 @@ async function blatRead(rec, T, act, gx, gy) {
     return `<tr data-i="${i}"${id < 0 ? ' class="off"' : ''} title="${esc(tip)}"><td>${here ? '●' : ''}</td><td class="lc">${esc(h.tName)}:${fmtInt(h.tStart + 1)}-${fmtInt(h.tEnd)}</td><td>${esc(h.strand)}</td><td class="n">${fmtInt(h.score)}</td><td class="n">${h.ident.toFixed(1)}%</td><td class="n">${fmtInt(h.qStart + 1)}–${fmtInt(h.qEnd)}</td></tr>`;
   }).join('');
   c.innerHTML = head + `<div class="blat"><table><thead><tr><th></th><th>${esc(t('blat.locus'))}</th><th></th><th class="n">${esc(t('blat.score'))}</th><th class="n">${esc(t('blat.ident'))}</th><th class="n">${esc(t('blat.query'))}</th></tr></thead><tbody>${rows}</tbody></table></div>` +
-    `<div class="card-actions"><span class="note">${esc(t('blat.note', { n: hits.length }))}</span><button class="btn" id="copyBlat">${esc(t('card.copy'))}</button></div>`;
+    `<div class="card-actions"><span class="note">${esc(t('blat.note', { n: hits.length }))}</span>${link}<button class="btn" id="copyBlat">${esc(t('card.copy'))}</button></div>`;
   $('closeCard').onclick = () => { hideCard(); draw(); };
   tips(c, { '#copyBlat': 'tip.copyCard' });
   $('copyBlat').onclick = () => {

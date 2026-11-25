@@ -16,8 +16,9 @@ user chose and the user's device.** LGV sends nothing anywhere by itself.
    from the IGV team's public bucket; View → "At start open" changes it or turns it off). Gene search
    needs no network: the MANE gene table is bundled with LGV, so typed gene names never leave the
    computer. The one other call is **BLAT**, made only when the user picks it in the read's
-   right-click menu: the bases of that read (or clipped end) go to genome.ucsc.edu (`BLAT_URL`,
-   without credentials or referrer), and the answer is read as untrusted data (fields checked,
+   right-click menu: the bases of that read (or clipped end) go to UCSC's API
+   (`BLAT_API`, api.genome.ucsc.edu, with the user's API key, kept in memory only; no cookies or
+   referrer), or the user opens the UCSC BLAT page by a plain link (`BLAT_PAGE`), and the answer is read as untrusted data (fields checked,
    at most 500 rows, text shown escaped). No telemetry, no CDN, no
    fonts from the web. The local build carries a strict Content Security Policy
    (`default-src 'none'`, no `unsafe-eval`, connections only over HTTPS or to this computer).

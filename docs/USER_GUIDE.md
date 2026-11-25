@@ -280,6 +280,12 @@ bar shows colored parts by base.
   stopped and the new view does not wait for it. A wide window is read in parts by several of the
   browser's worker threads at once, and its coverage is kept as the highest depth per short bin
   (16–64 bp), so moving around it draws at once.
+- **Above 1 Mb the coverage first appears at once as an estimate from the index** (nothing is read:
+  the index tells how many bytes of reads start in each 16 kb, which goes with depth). The scale reads
+  `≈ 0–31×`; it is converted into depth by the windows of this file already seen in detail (before
+  any, it is in relative units). It is the mean over 16 kb, not the peak. Up to 10 Mb the exact depth
+  is then read and replaces it; wider views keep the estimate. Clicking the coverage still gives the
+  exact counts at a base.
 - **Click the coverage** for the counts at that base. The top row shows the position,
   **Copy** and **×**; then:
 
@@ -375,7 +381,11 @@ Right click on the reads:
 - **BLAT read sequence**, **BLAT left / right soft clip**: where else these bases align, from the
   BLAT server of the UCSC Genome Browser. Works when the open reference is one UCSC knows (hg38,
   hg19, T2T hs1, mm39, mm10) and the sequence has 20–25,000 bases; otherwise the item is grayed out
-  and its tooltip says why. **The bases are sent to genome.ucsc.edu** (see Privacy).
+  and its tooltip says why. **The bases are sent to UCSC** (see Privacy).
+  UCSC lets other pages use BLAT only through its API, with a personal **API key** (free: log in at
+  genome.ucsc.edu, My Data → Track Hubs → Hub Development). The first BLAT asks for it; it is kept
+  only until the page is closed. **Open at UCSC** opens the UCSC BLAT page with the bases filled in
+  instead (no key needed, results stay there; up to 8,000 bases).
   The results open in a small table: locus, strand, score, identity and the part of the query that
   aligned, best first; ● marks the read's own place; the tooltip of a row gives matches,
   mismatches, gaps and blocks. **Click a row** to show that alignment (marked with a band) in a
@@ -405,7 +415,8 @@ copied as JSON, pasted from someone else and applied, or reset.
 
 - **Reads**: read height (1–24 px), color, tag for color, fade low-quality bases, show soft clips,
   MAPQ transparency (from / to MQ, transparency at low MQ: 0% is a solid read, 100% leaves only its
-  outline). Pale reads keep a thin outline in their color so they still show where they lie, even
+  outline; the pointed 3' end is drawn only in views up to 5 kb wide, further out reads are
+  rectangles). Pale reads keep a thin outline in their color so they still show where they lie, even
   zoomed out. Mismatches, insertions and clips are never paled by MAPQ: their color depends only on
   the base's own quality.
 - **Group and sort**: group by strand, first / second of pair, pair orientation or a tag; sort rows.
@@ -493,8 +504,9 @@ copied as JSON, pasted from someone else and applied, or reset.
   anywhere; the only connection it makes by itself is loading the reference chosen to open at
   start (sequence only).
 - The one exception is **BLAT**, and only when you choose it in the right-click menu: the bases of
-  that read (or of its clipped end) are sent to the UCSC Genome Browser (genome.ucsc.edu), nothing
-  else (no read name, file name or position). Do not use it for data that must not leave your
+  that read (or of its clipped end) are sent to the UCSC Genome Browser (api.genome.ucsc.edu, with
+  your API key; or genome.ucsc.edu when you open the UCSC page), nothing else (no read name, file
+  name or position). Do not use it for data that must not leave your
   computer.
 - Gene search and the gene track are built in: typed gene names are not sent anywhere.
 - Only the display profile is saved in the browser. Tokens, links and folder access are never

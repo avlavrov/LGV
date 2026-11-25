@@ -25,11 +25,11 @@ const FORBIDDEN = [
 const PLACES = [
   // a call of the browser's global fetch (methods named fetch on our own classes are not network calls)
   [code => /(^|[^.\w$])fetch\s*\(/.test(code.replace(/\basync\s+fetch\s*\(/g, '')),
-    (f, code) => (f === 'src/core.js' && /\bfetch\s*\(\s*this\.url/.test(code)) || (f === 'src/app.js' && /\bfetch\s*\(\s*`\$\{BLAT_URL\}/.test(code)),
+    (f, code) => (f === 'src/core.js' && /\bfetch\s*\(\s*this\.url/.test(code)) || (f === 'src/app.js' && /\bfetch\s*\(\s*BLAT_API\b/.test(code)),
     'network request outside UrlSource and BLAT (only links the user gave are read; BLAT on request)'],
   [code => /localStorage/.test(code), (f, code) => (f === 'src/app.js' && /PROFILE_KEY/.test(code)) || (f === 'src/signalview.js' && /SIG_PREF_KEY/.test(code)), 'browser storage other than the display profile and the signal tracks\' drawing choices'],
   [code => /https?:\/\/[^\s'"`)…]/.test(code),
-    (f, code, line) => (f === 'src/app.js' && /^\s*(hg38|hg19|chm13):/.test(line)) || (f === 'src/app.js' && /BLAT_URL = 'https:\/\/genome\.ucsc\.edu\/cgi-bin\/hgBlat'/.test(line)) || (f === 'src/i18n.js') || (f === 'src/index.html' && /placeholder=/.test(line)),
+    (f, code, line) => (f === 'src/app.js' && /^\s*(hg38|hg19|chm13):/.test(line)) || (f === 'src/app.js' && /^const BLAT_API = 'https:\/\/api\.genome\.ucsc\.edu\/blat\/dna', BLAT_PAGE = 'https:\/\/genome\.ucsc\.edu\/cgi-bin\/hgBlat', BLAT_KEY_PAGE = 'https:\/\/genome\.ucsc\.edu\/cgi-bin\/hgHubConnect';$/.test(line)) || (f === 'src/i18n.js') || (f === 'src/index.html' && /placeholder=/.test(line)),
     'a fixed web address (allowed: the public reference presets and UCSC BLAT only)'],
 ];
 const reviewed = []; // innerHTML lines: each must pass every value through esc()
@@ -44,7 +44,7 @@ for (const f of files) {
     if (/innerHTML\s*=/.test(code)) {
       // every ${...} on the line is esc(...), a number/boolean we built, or an already-escaped fragment
       const parts = [...code.matchAll(/\$\{([^}]*)\}/g)].map(m => m[1].trim());
-      const loose = parts.filter(x => !/^esc\(/.test(x) && !/^(cols\.length|rows|code|i|kind|on|act|val|\(?on \?|P\.cardPair|!P\.cardPair|cls \?|P\.cardPair \?)/.test(x) && !/^col\.title \?|^goMate \?|^linesHtml\(/.test(x));
+      const loose = parts.filter(x => !/^esc\(/.test(x) && !/^(cols\.length|rows|code|i|kind|on|act|val|link|\(?on \?|P\.cardPair|!P\.cardPair|cls \?|P\.cardPair \?)/.test(x) && !/^col\.title \?|^goMate \?|^linesHtml\(/.test(x));
       reviewed.push(`${f}:${n}`);
       if (loose.length) fail(f, n, line, 'innerHTML with a value not passed through esc(): ' + loose.join(', '));
     }

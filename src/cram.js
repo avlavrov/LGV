@@ -286,6 +286,18 @@ class CramFile {
     return out;
   }
   estimateBytes(refId, beg, end) { let n = 0; for (const e of this.slices(refId, beg, end)) n += e.size; return n; }
+  // Depth from the index alone (see BamFile.indexDepth): each slice's size spread evenly over the
+  // stretch of the reference it covers, summed per 16 kb window.
+  indexDepth(refId, beg, end) {
+    const list = this.index.byRef.get(refId); if (!list || !list.length) return null;
+    const w0 = Math.floor(beg / IDX_WIN), w1 = Math.ceil(end / IDX_WIN), bytes = new Float64Array(Math.max(0, w1 - w0));
+    for (const e of list) {
+      if (e.start >= w1 * IDX_WIN || e.start + e.span <= w0 * IDX_WIN || e.span <= 0 || e.size <= 0) continue;
+      const per = e.size / e.span, a = Math.max(e.start, w0 * IDX_WIN), b = Math.min(e.start + e.span, w1 * IDX_WIN);
+      for (let k = Math.floor(a / IDX_WIN); k * IDX_WIN < b; k++) bytes[k - w0] += per * (Math.min(b, (k + 1) * IDX_WIN) - Math.max(a, k * IDX_WIN));
+    }
+    return { win: IDX_WIN, w0, bytes };
+  }
   // Walks every container from the first one to the end-of-file marker, checking headers, blocks and
   // checksums. Used by the tests; a check of the file's structure, not needed for viewing.
   async scan(limit) {

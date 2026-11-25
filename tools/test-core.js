@@ -159,6 +159,8 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
       const ds = cv.summary();
       ok(ds.maxIn(1000, 2000) === 1 && ds.maxIn(130000, 140000) === 1 && ds.maxIn(150000, 150100) === 2 && ds.maxIn(201024, 299000) === 0 && ds.maxIn(300000, 300050) === 1 && ds.maxIn(0, 960) === 0, 'depth-only: a long read keeps its depth through empty 64 kb blocks');
       ok(dep.reads.length === 0, 'a depth-only (wide) window returns no reads');
+      const ix = bam.indexDepth(0, 0, 40000);
+      ok(ix && ix.win === 16384 && ix.bytes.length === 3 && ix.bytes.every(v => Number.isFinite(v) && v >= 0) && ix.bytes.reduce((x, y) => x + y, 0) > 0, 'depth from the index: bytes per 16 kb window (' + (ix ? [...ix.bytes].map(Math.round).join(', ') : 'none') + ')');
       const capped = await bam.fetch(0, 5000, 30000, { filters: flt, maxReads: 1000 });
       let same3 = true; for (let j = 5000; j < 30000; j += 7) for (let k = 0; k < 6; k++) if (capped.cov.get(j, k) !== fullC.cov.get(j, k)) same3 = false;
       ok(capped.tooMany && capped.reads.length === 0 && same3 && capped.total === fullC.total, `past maxReads (${fullC.reads.length} > 1000): no reads, the limit is reported, coverage complete`);
