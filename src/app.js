@@ -3,14 +3,14 @@
 
 // ======================= Display profile =======================
 const DEFAULT_PROFILE = {
-  version: 2,
+  version: 3,
   readHeight: 10,                // px, smooth 1–24
   colorBy: 'pair',               // none | strand | pair | tag
   colorTag: 'HP',
   groupBy: 'none',               // none | strand | pair | tag | firstOfPair
   groupTag: 'HP',
   sortBy: 'start',               // start | base | mapq | strand | insert
-  mapqAlpha: { low: 0, high: 30, minAlpha: 0.18 },
+  mapqAlpha: { low: 0, high: 30, transparency: 0.8 }, // reads at MQ ≤ low are this transparent (1: only an outline), opaque from high
   baseQualityShading: true,
   filters: { minMapq: 0, hideDuplicates: true, hideSecondary: true, hideSupplementary: false, hideQcFail: true },
   showSoftClips: true,
@@ -31,6 +31,9 @@ const PROFILE_KEY = 'cgv.profile.v1';
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 function mergeProfile(base, over) {
   const out = clone(base);
+  // up to profile v2 the setting was the opacity of low-MAPQ reads
+  const mq = over && over.mapqAlpha;
+  if (mq && typeof mq === 'object' && typeof mq.minAlpha === 'number' && mq.transparency === undefined) over = Object.assign({}, over, { mapqAlpha: Object.assign({}, mq, { transparency: 1 - mq.minAlpha }) });
   for (const k of Object.keys(over || {})) {
     if (!Object.prototype.hasOwnProperty.call(base, k)) continue; // own keys only: "__proto__" or "constructor" from a pasted profile are ignored
     if (base[k] && typeof base[k] === 'object' && !Array.isArray(base[k])) out[k] = Object.assign({}, base[k], over[k] && typeof over[k] === 'object' ? over[k] : {});
@@ -41,7 +44,7 @@ function mergeProfile(base, over) {
 // Allowed values for a profile pasted or stored by the user: numbers are clamped to a sane range,
 // choices must be one of the listed ones, tags two characters. Anything else keeps the default.
 const PROFILE_RULES = {
-  readHeight: [1, 24], 'mapqAlpha.low': [0, 255], 'mapqAlpha.high': [0, 255], 'mapqAlpha.minAlpha': [0, 1],
+  readHeight: [1, 24], 'mapqAlpha.low': [0, 255], 'mapqAlpha.high': [0, 255], 'mapqAlpha.transparency': [0, 1],
   'filters.minMapq': [0, 255], 'coverage.height': [14, 400], 'coverage.alleleThreshold': [0, 1],
   'downsample.maxReads': [1, 100000], 'downsample.window': [1, 1000000], maxReads: [1000, 5000000],
   maxLoadMB: [1, 4096], trackMinHeight: [80, 2000], startReference: ['hg38', 'hg19', 'chm13', 'demo', 'none'], 'pairs.maxSpan': [0, 10000000], version: [0, 1000],
@@ -67,7 +70,7 @@ let P = DEFAULT_PROFILE;
 try { const s = localStorage.getItem(PROFILE_KEY); if (s) P = mergeProfile(DEFAULT_PROFILE, JSON.parse(s)); } catch (e) { P = clone(DEFAULT_PROFILE); }
 if (P === DEFAULT_PROFILE) P = clone(DEFAULT_PROFILE);
 // profile v1 kept the old 8 px default read height; v2 defaults to 10 px
-if (P.version < 2) { if (P.readHeight === 8) P.readHeight = 10; P.version = 2; try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
+if (P.version < 3) { if (P.version < 2 && P.readHeight === 8) P.readHeight = 10; P.version = 3; try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
 function saveProfile() { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable: the profile lives until reload */ } }
 
 // ======================= State =======================
@@ -274,9 +277,14 @@ function initGL() {
   uniform float u_viewInt, u_viewFrac, u_bpPerPx, u_rowH, u_gap, u_grpGap, u_scroll, u_top, u_mmFade, u_dpr;
   uniform vec2 u_size;
   out vec4 v_color;
+  out vec3 v_box;   // outlined bodies: position inside the box (px), and the box height
+  out vec2 v_out;   // outlined bodies: box width (px), outline opacity (0: no outline)
   void main() {
-    // minpx < 0: an isolated mismatch that fades when zoomed out
-    float minpx = abs(a_y.z);
+    // minpx < 0: an isolated mismatch that fades when zoomed out; 10..11: a body with an outline whose
+    // opacity is the fraction (pale reads, see bodyCode)
+    bool outl = a_y.z >= 9.5 && a_y.z < 499.0;
+    float minpx = outl ? 1.0 : abs(a_y.z);
+    v_out = vec2(0.0); v_box = vec3(0.0);
     float fade = a_y.z < 0.0 ? clamp(u_mmFade / u_bpPerPx, 0.0, 1.0) : 1.0;
     // positions are whole numbers relative to the window start; the view start comes as a whole part
     // and a fraction, so the subtraction stays exact in 32-bit floats even far into a large window
@@ -305,14 +313,25 @@ function initGL() {
     } else {
       if (px1 - px0 < minpx) { float c = (px0 + px1) * 0.5; px0 = c - minpx * 0.5; px1 = c + minpx * 0.5; }
       x = mix(px0, px1, a_corner.x); y = mix(ya, yb, a_corner.y);
+      if (outl) { v_box = vec3((x - px0), (y - ya), yb - ya); v_out = vec2(px1 - px0, fract(a_y.z)); }
     }
     gl_Position = vec4(x / u_size.x * 2.0 - 1.0, 1.0 - y / u_size.y * 2.0, 0.0, 1.0);
     v_color = vec4(a_color.rgb, a_color.a * fade);
   }`;
   const fs = `#version 300 es
   precision mediump float;
-  in vec4 v_color; out vec4 o;
-  void main() { o = v_color; }`;
+  in vec4 v_color; in vec3 v_box; in vec2 v_out; out vec4 o;
+  uniform highp float u_dpr;
+  void main() {
+    o = v_color;
+    if (v_out.y > 0.0) {
+      // one device pixel at the edges of the box at the outline's opacity (thin rows: a mix of both)
+      float e = 1.0 / u_dpr, h = v_box.z, w = v_out.x;
+      bool edge = v_box.x < e || v_box.x > w - e || v_box.y < e || v_box.y > h - e;
+      float a = h * u_dpr < 4.0 || w * u_dpr < 4.0 ? max(v_color.a, v_out.y * 0.7) : edge ? max(v_color.a, v_out.y) : v_color.a;
+      o = vec4(v_color.rgb, a);
+    }
+  }`;
   const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
   const prog = gl.createProgram();
   gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
@@ -372,12 +391,18 @@ class InstBuf {
 }
 
 // ======================= Derived data =======================
+// Opacity of a read body by its mapping quality (the transparency setting at MQ ≤ low, opaque from high).
+// Only the body: mismatches, insertions and clips keep their own colors (base quality alone pales them).
 function mapqAlpha(m) {
-  const { low, high, minAlpha } = P.mapqAlpha;
+  const { low, high } = P.mapqAlpha, minAlpha = 1 - P.mapqAlpha.transparency;
   if (high <= low) return m >= high ? 1 : minAlpha;
   const t = Math.min(1, Math.max(0, (m - low) / (high - low)));
   return minAlpha + (1 - minAlpha) * t;
 }
+// Bodies paler than this get an outline in the read's color, so a faint (or empty) read still shows
+// where it lies; instance code 10 + the outline's opacity (see the shader).
+const OUTLINE_BELOW = 0.9;
+const bodyCode = a => a < OUTLINE_BELOW ? 10 + Math.min(0.99, Math.max(0.6, a + 0.35)) : 1;
 function qualAlpha(q) { if (!P.baseQualityShading || q === 255) return 1; if (q < 5) return 0.2; if (q < 20) return 0.2 + 0.8 * (q - 5) / 15; return 1; }
 function hashStr(s) { let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 
@@ -496,7 +521,7 @@ function rebuildTrack(T) {
   const ib = new InstBuf(need);
   // pair view: a line between mates (to the mate's place when it is not loaded); overlap of mates shaded
   for (const [u, R, gi] of links) {
-    const a = mapqAlpha(Math.min(...u.reads.map(r => r.mapq)));
+    const a = Math.max(0.4, mapqAlpha(Math.min(...u.reads.map(r => r.mapq))));
     if (u.reads.length === 2) {
       const [l, r] = u.reads[0].pos <= u.reads[1].pos ? u.reads : [u.reads[1], u.reads[0]];
       if (r.pos > l.end) ib.add(l.end - d.start, r.pos - d.start, R, gi, 0.47, 0.53, 0, COL.link, a);
@@ -507,34 +532,33 @@ function rebuildTrack(T) {
     }
   }
   for (const [rec, R, gi] of bodies) {
-    const col = readColor(rec, T), a = mapqAlpha(rec.mapq);
+    const col = readColor(rec, T), a = mapqAlpha(rec.mapq), bc = bodyCode(a);
     // bodies per aligned block, broken at D/N
     let r = rec.pos, segStart = rec.pos;
     for (const c of rec.cigar) {
       const op = c & 15, n = c >>> 4;
       if (op === 0 || op === 7 || op === 8) r += n;
       else if (op === 2 || op === 3) {
-        if (r > segStart) ib.add(segStart - d.start, r - d.start, R, gi, 0, 1, 1, col, a);
-        marks.push([op === 2 ? 2 : 3, r, r + n, R, gi, a]);
+        if (r > segStart) ib.add(segStart - d.start, r - d.start, R, gi, 0, 1, bc, col, a);
+        marks.push([op === 2 ? 2 : 3, r, r + n, R, gi, Math.max(a, 0.55)]);
         r += n; segStart = r;
       }
     }
-    if (r > segStart) ib.add(segStart - d.start, r - d.start, R, gi, 0, 1, 1, col, a);
+    if (r > segStart) ib.add(segStart - d.start, r - d.start, R, gi, 0, 1, bc, col, a);
     if (P.showSoftClips) { // clipped bases: the read's own color, a little thinner so the clip boundary shows
       const [L, Rc] = clipLens(rec);
-      if (L) ib.add(rec.pos - L - d.start, rec.pos - d.start, R, gi, 0.12, 0.88, 1, col, a);
-      if (Rc) ib.add(rec.end - d.start, rec.end + Rc - d.start, R, gi, 0.12, 0.88, 1, col, a);
+      if (L) ib.add(rec.pos - L - d.start, rec.pos - d.start, R, gi, 0.12, 0.88, bc, col, a);
+      if (Rc) ib.add(rec.end - d.start, rec.end + Rc - d.start, R, gi, 0.12, 0.88, bc, col, a);
     }
   }
   for (const [t, x0, x1, R, gi, a] of marks) ib.add(x0 - d.start, x1 - d.start, R, gi, t === 2 ? 0.44 : 0.48, t === 2 ? 0.56 : 0.52, 0, t === 2 ? COL.del : COL.skip, a);
   for (const [rec, R, gi] of bodies) {
-    const a = mapqAlpha(rec.mapq);
     for (const f of feats(rec)) {
-      if (f.t === 0) ib.add(f.pos - d.start, f.pos + 1 - d.start, R, gi, 0, 1, flaggedPos(cov, d, f.pos) ? 1 : -1, COL.base[f.b] || COL.base[78], a * qualAlpha(f.q));
-      else if (f.t === 1) ib.add(f.pos - d.start, f.pos - d.start, R, gi, -0.08, 1.08, 2, COL.ins, Math.max(a, 0.6));
-      else if ((f.t === 4 || f.t === 5) && !P.showSoftClips && f.len >= 1) ib.add(f.pos - d.start, f.pos - d.start, R, gi, 0, 1, 1.5, COL.clip, Math.max(a, 0.7));
+      if (f.t === 0) ib.add(f.pos - d.start, f.pos + 1 - d.start, R, gi, 0, 1, flaggedPos(cov, d, f.pos) ? 1 : -1, COL.base[f.b] || COL.base[78], qualAlpha(f.q));
+      else if (f.t === 1) ib.add(f.pos - d.start, f.pos - d.start, R, gi, -0.08, 1.08, 2, COL.ins, 1);
+      else if ((f.t === 4 || f.t === 5) && !P.showSoftClips && f.len >= 1) ib.add(f.pos - d.start, f.pos - d.start, R, gi, 0, 1, 1.5, COL.clip, 1);
     }
-    if (P.showSoftClips) for (const m of clipMismatches(rec)) ib.add(m.pos - d.start, m.pos + 1 - d.start, R, gi, 0.1, 0.9, -1, COL.base[m.b] || COL.base[78], a * qualAlpha(m.q));
+    if (P.showSoftClips) for (const m of clipMismatches(rec)) ib.add(m.pos - d.start, m.pos + 1 - d.start, R, gi, 0.1, 0.9, -1, COL.base[m.b] || COL.base[78], qualAlpha(m.q));
   }
   for (const [u, R, gi] of links) {
     if (u.reads.length !== 2) continue;
@@ -649,7 +673,7 @@ function failWorker(w, code, ms) {
   try { w.terminate(); } catch (e) { /* already gone */ }
   try { POOL.workers[i] = makeWorker(); } catch (e) { POOL.workers.splice(i, 1); }
   // tracks that used it open their file again in a new worker before their next read
-  for (const T of S.tracks) if (T.worker === w) { T.worker = null; T.reattach = true; }
+  for (const T of S.tracks) { if (T.worker === w) { T.worker = null; T.reattach = true; } if (T.helpers) T.helpers.delete(w); }
 }
 function workerPool() {
   if (POOL.ok !== null) return POOL.ok && POOL.workers.length > 0;
@@ -700,8 +724,9 @@ function trackFetch(T, br, ls, le, opts, slot) {
   // window, over 2 s so far: shorter ones are cheaper to finish than a restart) and its worker serves
   // nobody else at the moment — the new view need not wait for it
   if (q.cur && q.cur.pn === pn && performance.now() - q.cur.t0 > 2000 && T.worker) {
-    const w = T.worker; let n = 0; for (const x of POOL.wait.values()) if (x.w === w) n++;
-    if (n === 1) failWorker(w, 'superseded', performance.now() - q.cur.t0);
+    const ws = q.cur.ws || [T.worker], busy = new Map();
+    for (const x of POOL.wait.values()) busy.set(x.w, (busy.get(x.w) || 0) + 1);
+    if (ws.every(w => (busy.get(w) || 0) <= 1)) for (const w of ws) if (busy.get(w)) failWorker(w, 'superseded', performance.now() - q.cur.t0);
   }
   return new Promise((resolve, reject) => {
     q.wait.set(pn, { resolve, reject, args: [br, ls, le, opts] });
@@ -719,16 +744,62 @@ function pumpFetch(T) {
     e => { diag('load', `${T.name} failed after ${Math.round(performance.now() - t0)} ms: ${e && (e.code || e.message)}`); job.reject(e); })
     .finally(() => { q.busy = false; q.cur = null; pumpFetch(T); });
 }
+// A worker's answer back into the page's coverage object.
+function covFromWorker(c) {
+  const cov = new SparseCoverage(c.start, c.end);
+  for (const [bi, blk] of c.blocks) cov.blocks.set(bi, blk);
+  if (c.depthOnly) cov.depthOnly = true;
+  if (c.sum) { const sm = new CovSummary(c.start, c.end, c.sum.bin); sm.max5 = sm.max6 = c.sum.max5; cov._sum = sm; }
+  return cov;
+}
+// The worker of a track plus others with the same file open, for reading a wide window in parts.
+async function helperWorkers(T, k) {
+  if (!T.helpers) T.helpers = new Map();
+  const out = [T.worker];
+  for (const w of POOL.workers) {
+    if (out.length >= k) break;
+    if (w === T.worker) continue;
+    let p = T.helpers.get(w);
+    if (!p) { p = callWorker(w, { op: 'open', key: T.id, cram: !!T.bam.isCram, bam: srcDesc(T.bam.src), bai: srcDesc(T.bam.baiSrc) }).then(() => true, () => false); T.helpers.set(w, p); }
+    if (await p) out.push(w);
+  }
+  return out;
+}
+const DEPTH_PART_BP = 2e6; // a depth-only window wider than two of these is read in parts by several workers
 async function fetchNow(T, br, ls, le, opts) {
   if (T.reattach) { T.reattach = false; await attachWorker(T); }
   if (T.worker) {
     try {
+      // depth-only (wide) windows: the same bins for the whole window, read in parts side by side —
+      // decompressing is most of the time, and each worker takes its own part
+      if (opts.depthOnly) {
+        const bin = covBinFor(le - ls), want = Math.min(POOL.workers.length, Math.floor((le - ls) / DEPTH_PART_BP));
+        opts = Object.assign({}, opts, { covBin: bin });
+        if (want >= 2) {
+          const ws = await helperWorkers(T, want), n = ws.length, cuts = [ls];
+          for (let i = 1; i < n; i++) cuts.push(Math.floor((ls + (le - ls) * i / n) / bin) * bin);
+          cuts.push(le);
+          let parts = null;
+          if (n >= 2) {
+            if (T.fq && T.fq.cur) T.fq.cur.ws = ws;
+            try { parts = await Promise.all(ws.map((w, i) => callWorker(w, { op: 'fetch', key: T.id, args: [br, cuts[i], cuts[i + 1], opts] }))); }
+            catch (e) { if (e.code !== 'worker' || !T.worker) throw e; } // a helper died: read it whole below
+          }
+          if (parts) {
+            const sm = new CovSummary(ls, le, bin), m = sm.max5; let total = 0;
+            parts.forEach((p, i) => {
+              T.bam.maxSpan = Math.max(T.bam.maxSpan, p.maxSpan || 0); total += p.res.total;
+              const off = Math.floor(cuts[i] / bin) - sm.b0, src = p.res.cov.sum.max5;
+              for (let j = 0; j < src.length; j++) if (src[j] > m[off + j]) m[off + j] = src[j];
+            });
+            const cov = new SparseCoverage(ls, le); cov.depthOnly = true; cov._sum = sm;
+            return { reads: [], total, sampled: [], cov, tooMany: false };
+          }
+        }
+      }
       const m = await callWorker(T.worker, { op: 'fetch', key: T.id, args: [br, ls, le, opts] });
       T.bam.maxSpan = Math.max(T.bam.maxSpan, m.maxSpan || 0);
-      const c = m.res.cov, cov = new SparseCoverage(c.start, c.end);
-      for (const [bi, blk] of c.blocks) cov.blocks.set(bi, blk);
-      if (c.depthOnly) cov.depthOnly = true;
-      return { reads: m.res.reads, total: m.res.total, sampled: m.res.sampled, cov, tooMany: !!m.res.tooMany };
+      return { reads: m.res.reads, total: m.res.total, sampled: m.res.sampled, cov: covFromWorker(m.res.cov), tooMany: !!m.res.tooMany };
     } catch (e) { if (e.code !== 'worker') throw e; T.worker = null; } // the worker died: read on the page
   }
   return T.bam.fetch(br, ls, le, opts);
@@ -928,7 +999,7 @@ function renderPanel(pn, tp) {
   ctx.save(); ctx.translate(pn.x0, 0); ctx.beginPath(); ctx.rect(0, 0, pn.w, H); ctx.clip();
   const part = (k, f) => { f(); const m = performance.now(); add(k, m - tl); tl = m; };
   part('ruler', () => { ctx.save(); ctx.translate(0, panelHdr()); drawRuler(); drawRefTrack(); ctx.restore(); drawGenes(pn); drawAnnTracks(pn); });
-  drawRubber();
+  drawRubber(); drawMark(pn);
   // tracks: below the ruler only, and only those in sight
   ctx.save(); ctx.beginPath(); ctx.rect(0, covTop(), pn.w, H - covTop()); ctx.clip();
   const inSight = i => { const g = trackGeom(i); return g.end > covTop() && g.y0 < H; };
@@ -1023,24 +1094,53 @@ function drawRefTrack() {
   }
 }
 
+// First position in each summary bin where the bar splits by base (flaggedPos), or -1; worked out per
+// bin when first drawn and kept with the coverage while the threshold and the loaded reference stay.
+function binFlag(cov, d, sm, k) {
+  const key = P.coverage.alleleThreshold + '|' + d.ref.segs.length;
+  if (!cov._flags || cov._flags.key !== key) { cov._flags = { key, a: new Int32Array(sm.max5.length).fill(-2) }; }
+  const a = cov._flags.a;
+  if (a[k] === -2) {
+    a[k] = -1;
+    if (sm.max5[k] >= 2) { const p0 = (sm.b0 + k) * sm.bin, p1 = Math.min(cov.end, p0 + sm.bin); for (let p = Math.max(p0, cov.start); p < p1; p++) if (flaggedPos(cov, d, p)) { a[k] = p; break; } }
+  }
+  return a[k];
+}
 function drawCoverage(T, g) {
   const sh = T.shown, d = S.data; if (!sh || !d) return;
   const top = g.covTop, h = g.covH, bpp = S.view.bpPerPx, ppb = 1 / bpp;
   const cov = sh.cov;
   const b0 = Math.max(d.start, Math.floor(S.view.start)), b1 = Math.min(d.end, Math.ceil(viewEnd()));
+  // wide views draw from the per-bin summary (made once per load), not base by base every frame
+  const sm = cov.depthOnly || bpp >= COV_SUM_BIN || b1 - b0 > 200000 ? cov.summary() : null;
+  const useBins = sm && (cov.depthOnly || bpp >= sm.bin);
   let maxD = 1;
-  cov.forEach(b0, b1, (pos, blk, o) => { const t = blk[o] + blk[o + 1] + blk[o + 2] + blk[o + 3] + blk[o + 4] + blk[o + 5]; if (t > maxD) maxD = t; });
+  if (sm) maxD = Math.max(1, sm.maxIn(b0, b1, true));
+  else cov.forEach(b0, b1, (pos, blk, o) => { const t = blk[o] + blk[o + 1] + blk[o + 2] + blk[o + 3] + blk[o + 4] + blk[o + 5]; if (t > maxD) maxD = t; });
   const scale = Math.max(1, h - 10) / maxD, base = top + h;
   const drawStack = (x, w, pos) => {
     const c = cov.counts(pos, CNT2); let y = base;
     for (const [k, ch] of [[0, 65], [1, 67], [2, 71], [3, 84]]) { const hh = c[k] * scale; if (hh > 0) { ctx.fillStyle = COL.baseCss[ch]; ctx.fillRect(x, y - hh, w, hh); y -= hh; } }
   };
-  if (ppb >= 1) {
+  if (ppb >= 1 && !cov.depthOnly) {
     cov.forEach(b0, b1, (pos, blk, o) => {
       const x = (pos - S.view.start) * ppb, w = Math.max(1, ppb - (ppb > 4 ? 1 : 0));
       if (flaggedPos(cov, d, pos)) drawStack(x, w, pos);
       else { const t = blk[o] + blk[o + 1] + blk[o + 2] + blk[o + 3] + blk[o + 4]; if (t) { ctx.fillStyle = COL.css.cov; ctx.fillRect(x, base - t * scale, w, t * scale); } }
     });
+  } else if (useBins) {
+    // plain bars are gathered into one path; bars split by base are drawn on top
+    const m = sm.max5, flags = !cov.depthOnly, split = [];
+    ctx.fillStyle = COL.css.cov; ctx.beginPath();
+    for (let px = 0; px < W; px++) {
+      const s0 = S.view.start + px * bpp, e0 = Math.max(S.view.start + (px + 1) * bpp, s0 + 1);
+      const [i0, i1] = sm.range(Math.floor(s0), Math.ceil(e0));
+      let mx = 0, fpos = -1;
+      for (let k = i0; k < i1; k++) { if (m[k] > mx) mx = m[k]; if (flags && fpos < 0 && m[k]) fpos = binFlag(cov, d, sm, k); }
+      if (fpos >= 0) split.push(px, fpos); else if (mx) ctx.rect(px, base - mx * scale, 1, mx * scale);
+    }
+    ctx.fill();
+    for (let i = 0; i < split.length; i += 2) drawStack(split[i], 1, split[i + 1]);
   } else {
     for (let px = 0; px < W; px++) {
       const s0 = Math.floor(S.view.start + px * bpp), e0 = Math.max(Math.floor(S.view.start + (px + 1) * bpp), s0 + 1);
@@ -1105,10 +1205,9 @@ function drawReadsOverlay(T, g) {
         const y = rt + gg + (g.start + ri) * rh + gi * gg - scroll + (rh - (rh >= 5 ? 1 : 0)) / 2;
         for (const rec of g.rows[ri].flatMap(readsOf)) {
           if (rec.end < vs || rec.pos > ve) continue;
-          const a = mapqAlpha(rec.mapq);
-          if (P.showSoftClips) for (const m of clipMismatches(rec)) { ctx.globalAlpha = a * qualAlpha(m.q); ctx.fillStyle = '#fff'; ctx.fillText(String.fromCharCode(m.b), (m.pos - vs + 0.5) * ppb, y + 0.5); }
+          if (P.showSoftClips) for (const m of clipMismatches(rec)) { ctx.globalAlpha = qualAlpha(m.q); ctx.fillStyle = '#fff'; ctx.fillText(String.fromCharCode(m.b), (m.pos - vs + 0.5) * ppb, y + 0.5); }
           for (const f of feats(rec)) {
-            if (f.t === 0) { ctx.globalAlpha = a * qualAlpha(f.q); ctx.fillStyle = '#fff'; ctx.fillText(String.fromCharCode(f.b), (f.pos - vs + 0.5) * ppb, y + 0.5); }
+            if (f.t === 0) { ctx.globalAlpha = qualAlpha(f.q); ctx.fillStyle = '#fff'; ctx.fillText(String.fromCharCode(f.b), (f.pos - vs + 0.5) * ppb, y + 0.5); }
             else if (f.t === 1 && ppb >= 10) { ctx.globalAlpha = 1; ctx.fillStyle = COL.css.fg; ctx.font = '600 9px ' + MONO; ctx.fillText(String(f.len), (f.pos - vs) * ppb, y - rh / 2 - 1); ctx.font = '600 ' + Math.min(12, rh - 1) + 'px ' + MONO; }
           }
         }
@@ -1527,7 +1626,7 @@ function renderCard(place) {
   } else cols.push({ title: '', lines: alignmentLines(rec, T), base: baseLines(rec, pos) });
   const seg = paired ? `<div class="seg" role="group" aria-label="${esc(t('card.show'))}"><button class="btn${P.cardPair ? '' : ' on'}" data-pair="0" aria-pressed="${!P.cardPair}">${esc(t('card.showRead'))}</button><button class="btn${P.cardPair ? ' on' : ''}" data-pair="1" aria-pressed="${P.cardPair}">${esc(t('card.showPair'))}</button></div>` : '';
   const goMate = paired && rec.mateRef >= 0 && !(rec.flag & 8);
-  c.classList.toggle('wide', cols.length > 1);
+  c.classList.toggle('wide', cols.length > 1); c.classList.remove('blatc');
   c.classList.remove('narrow');
   // top row: Read / Read and mate on the left, × on the right
   const head = '<div class="card-head">' + seg + '<button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
@@ -1566,7 +1665,7 @@ function mateSampledOut(rec, T) {
   if (!d || v !== d.refId || rec.matePos < d.start || rec.matePos >= d.end || !T.data) return false;
   return T.data.sampled.some(([a, b]) => rec.matePos >= a && rec.matePos < b);
 }
-function hideCard() { $('card').hidden = true; cardState = null; }
+function hideCard() { $('card').hidden = true; $('card').classList.remove('blatc'); cardState = null; }
 // ---- Coverage at a position, as IGV shows it: counts of A, C, G, T, N by strand, deletions and
 // insertions. Counted from every read at that position (read again from the file, so downsampling
 // does not change the numbers); the load-time filters (duplicates, MAPQ ...) apply as in the view.
@@ -1579,7 +1678,7 @@ async function showCoverageCard(T, pos, gx, y) {
   const head = copy => '<div class="card-head"><span class="card-title">' + esc(where) + '</span>' + (copy ? '<button class="btn card-btn" id="copyCov">' + esc(t('card.copy')) + '</button>' : '') +
     '<button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
   cardState = { pn, cov: tok, T, pos };
-  c.classList.remove('wide'); c.classList.add('narrow');
+  c.classList.remove('wide', 'blatc'); c.classList.add('narrow');
   c.innerHTML = head(false) + `<div class="ln"><span class="spin"></span>${esc(t('loading'))}</div>`;
   c.hidden = false; placeCard(gx, y); draw();
   $('closeCard').onclick = () => { hideCard(); draw(); };
@@ -1631,7 +1730,7 @@ function showInsCard(rec, T, f, gx, y) {
   if (qs.length) L.push(['kv', t('ins.qual'), qs.length <= 40 ? qs.join(', ') : 'mean ' + Math.round(qs.reduce((a, b) => a + b, 0) / qs.length)]);
   L.push(['kv', t('card.readName'), rec.name]);
   cardState = { pn: CUR, ins: f, rec, T, pos: f.pos };
-  c.classList.remove('wide'); c.classList.add('narrow');
+  c.classList.remove('wide', 'blatc'); c.classList.add('narrow');
   c.innerHTML = '<div class="card-head"><span class="card-title">' + esc(where) + '</span><button class="btn card-btn" id="copyIns">' + esc(t('card.copy')) + '</button><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' +
     `<div class="ln b">${esc(t('ins.title'))}</div>${linesHtml(L)}`;
   c.hidden = false; placeCard(gx, y);
@@ -1806,11 +1905,12 @@ function closeTrack(T) {
   const i = S.tracks.indexOf(T); if (i < 0) return;
   S.tracks.splice(i, 1); forEachPanel(pn => { freeVao(T); pn.ts.delete(T.id); });
   if (T.worker) T.worker.postMessage({ op: 'close', key: T.id });
+  if (T.helpers) for (const w of T.helpers.keys()) w.postMessage({ op: 'close', key: T.id });
   if (S.selected && S.selected.T === T) { S.selected = null; hideCard(); }
   $('examples').hidden = !S.tracks.some(x => x.demo);
   updateFileLabel(); clampScroll(); rebuild(); draw();
 }
-function closeAllTracks() { for (const T of S.tracks) { forEachPanel(pn => { freeVao(T); pn.ts.delete(T.id); }); if (T.worker) T.worker.postMessage({ op: 'close', key: T.id }); } S.tracks = []; S.selected = null; S.hl = null; hideCard(); }
+function closeAllTracks() { for (const T of S.tracks) { forEachPanel(pn => { freeVao(T); pn.ts.delete(T.id); }); if (T.worker) T.worker.postMessage({ op: 'close', key: T.id }); if (T.helpers) for (const w of T.helpers.keys()) w.postMessage({ op: 'close', key: T.id }); } S.tracks = []; S.selected = null; S.hl = null; hideCard(); }
 function updateFileLabel() {
   const parts = [];
   if (S.fasta) parts.push(S.fasta.name);
@@ -2082,6 +2182,9 @@ function openMenu(x, gx, y, hit) {
     const [cl, cr] = clipLens(r0), noSeq = !r0.lseq, mate = (r0.flag & 1) ? findMate(r0, hit.T) : null;
     copy = act('copySeq', t('menu.copySeq'), noSeq) + act('copyLeft', t('menu.copyLeft'), noSeq || !cl) + act('copyRight', t('menu.copyRight'), noSeq || !cr) +
       act('copyPair', t(mate || !(r0.flag & 1) ? 'menu.copyPair' : 'menu.copyPairNo'), noSeq || !mate || !mate.lseq) + '<div class="msep"></div>';
+    // BLAT (UCSC) of the read or a clipped end: needs a reference UCSC knows and 20+ bases
+    const db = ucscDb(), bl = (a, k, n) => blatItem(a, t(k), noSeq || !db || n < BLAT_MIN || n > BLAT_MAX, !db ? t('blat.noDb') : !n ? t('blat.noClip') : n < BLAT_MIN ? t('blat.short', { n: BLAT_MIN }) : n > BLAT_MAX ? t('blat.long', { n: fmtInt(BLAT_MAX) }) : t('blat.tip', { db: db || '' }));
+    copy += bl('blatSeq', 'menu.blatSeq', r0.lseq) + bl('blatLeft', 'menu.blatLeft', cl) + bl('blatRight', 'menu.blatRight', cr) + '<div class="msep"></div>';
   }
   m.innerHTML =
     (mateOk ? act('mateSplit', t('menu.mateSplit')) + '<div class="msep"></div>' : '') + copy +
@@ -2093,6 +2196,7 @@ function openMenu(x, gx, y, hit) {
     `<div class="ms">${esc(t('menu.sortBy', { pos: fmtInt(pos + 1) }))}</div>` +
     ['start', 'base', 'mapq', 'strand', 'insert'].map(v => item('sort', v, P.sortBy === v && (v === 'start' || S.sortPos === pos), t('sort.' + v), 'menuitemradio')).join('');
   m.dataset.pos = pos; m.hidden = false;
+  m.querySelectorAll('[data-act^="blat"]').forEach(x => { x.dataset.gx = gx; x.dataset.gy = y; });
   const r = stage.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
   m.style.left = Math.max(8, Math.min(r.width - w - 8, gx + 2)) + 'px';
   m.style.top = Math.max(8, Math.min(r.height - h - 8, y + 2)) + 'px';
@@ -2120,6 +2224,106 @@ function copyReadSeq(rec, T, act) {
   if (!txt) return;
   navigator.clipboard.writeText(txt).then(() => toast(t('copied.seq', { n: fmtInt(txt.replace(/^>.*$/gm, '').replace(/\s/g, '').length) })), () => toast(t('copyFail')));
 }
+// ---- BLAT at the UCSC Genome Browser: where else a read (or its clipped end) aligns. The sequence
+// is sent to genome.ucsc.edu only on this explicit request (see the guide, Privacy). Results open in
+// a compact card; a click on one shows it in one split panel, reused for every later click.
+const BLAT_MIN = 20, BLAT_MAX = 25000, BLAT_URL = 'https://genome.ucsc.edu/cgi-bin/hgBlat';
+// UCSC assembly of the open reference, by the length of chr1 (any naming: chr1, 1)
+function ucscDb() {
+  const i = contigId('chr1'); if (i < 0) return null;
+  return { 248956422: 'hg38', 249250621: 'hg19', 248387328: 'hs1', 195154279: 'mm39', 195471971: 'mm10' }[S.contigs[i].len] || null;
+}
+function blatItem(a, label, off, tip) { return `<button class="mi" role="menuitem" data-act="${a}" data-val="" title="${esc(tip)}"${off ? ' disabled' : ''}><span class="mk" aria-hidden="true"></span>${esc(label)}</button>`; }
+// PSL rows from UCSC's JSON ({ fields: [...], blat: [[...], ...] }); field order as in PSL when no names
+const PSL_FIELDS = ['matches', 'misMatches', 'repMatches', 'nCount', 'qNumInsert', 'qBaseInsert', 'tNumInsert', 'tBaseInsert', 'strand', 'qName', 'qSize', 'qStart', 'qEnd', 'tName', 'tSize', 'tStart', 'tEnd', 'blockCount', 'blockSizes', 'qStarts', 'tStarts'];
+function parseBlat(j) {
+  if (!j || typeof j !== 'object' || !Array.isArray(j.blat)) throw new CgvError('blatBad');
+  const f = Array.isArray(j.fields) && j.fields.length >= 17 ? j.fields.map(String) : PSL_FIELDS, ix = k => f.indexOf(k);
+  const num = (row, k) => { const v = Number(row[ix(k)]); return Number.isFinite(v) && v >= 0 && v < 1e10 ? v : NaN; };
+  const out = [];
+  for (const row of j.blat.slice(0, 500)) {
+    if (!Array.isArray(row)) continue;
+    const h = {}; for (const k of ['matches', 'misMatches', 'repMatches', 'qNumInsert', 'tNumInsert', 'qSize', 'qStart', 'qEnd', 'tStart', 'tEnd', 'blockCount']) h[k] = num(row, k);
+    h.strand = String(row[ix('strand')] || '').slice(0, 2); h.tName = String(row[ix('tName')] || '').slice(0, 200);
+    if (Object.values(h).some(v => typeof v === 'number' && Number.isNaN(v)) || !h.tName || h.tEnd <= h.tStart) continue;
+    // as UCSC's BLAT page: score = matches + repMatches/2 − mismatches − gap opens; identity from pslCalcMilliBad (mRNA rules)
+    h.score = h.matches + (h.repMatches >> 1) - h.misMatches - h.qNumInsert - h.tNumInsert;
+    const qa = h.qEnd - h.qStart, ta = h.tEnd - h.tStart, tot = h.matches + h.repMatches + h.misMatches, dif = Math.max(0, qa - ta);
+    h.ident = tot > 0 ? 100 - (1000 * (h.misMatches + h.qNumInsert + Math.round(3 * Math.log(1 + dif))) / tot) / 10 : 0;
+    out.push(h);
+  }
+  return out.sort((a, b) => b.score - a.score || b.ident - a.ident);
+}
+async function blatRead(rec, T, act, gx, gy) {
+  const [cl, cr] = clipLens(rec), db = ucscDb(); if (!db) return;
+  const [a, b, what] = act === 'blatLeft' ? [0, cl, t('blat.left')] : act === 'blatRight' ? [rec.lseq - cr, rec.lseq, t('blat.right')] : [0, rec.lseq, t('blat.read')];
+  const seq = seqOf(rec, a, b); if (seq.length < BLAT_MIN || seq.length > BLAT_MAX) return;
+  const pn = CUR, tok = {}, c = $('card'), title = `BLAT · ${what} · ${fmtInt(seq.length)} bp · ${db}`;
+  const own = { refId: S.view.refId, s: rec.pos, e: rec.end }; // the read's own place, marked in the list
+  cardState = { pn, blat: tok }; c.classList.remove('narrow', 'wide'); c.classList.add('blatc');
+  const head = '<div class="card-head"><span class="card-title">' + esc(title) + '</span><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>';
+  c.innerHTML = head + `<div class="ln"><span class="spin"></span>${esc(t('blat.wait'))}</div>`;
+  c.hidden = false; placeCard(gx, gy);
+  $('closeCard').onclick = () => { hideCard(); draw(); };
+  let hits;
+  try {
+    const r = await fetch(`${BLAT_URL}?userSeq=${encodeURIComponent(seq)}&type=DNA&db=${db}&output=json`, { credentials: 'omit', referrerPolicy: 'no-referrer' });
+    if (!r.ok) throw new CgvError('blatHttp', { status: r.status });
+    hits = parseBlat(await r.json());
+  } catch (e) {
+    if (!cardState || cardState.blat !== tok) return;
+    c.querySelector('.ln:last-child').textContent = e instanceof CgvError ? errText(e) : t('err.blatNet');
+    return;
+  }
+  if (!cardState || cardState.blat !== tok) return; // closed or replaced meanwhile
+  if (!hits.length) { c.querySelector('.ln:last-child').textContent = t('blat.none'); return; }
+  const rows = hits.map((h, i) => {
+    const id = contigId(h.tName), here = id === own.refId && h.tStart < own.e && h.tEnd > own.s;
+    const tip = t('blat.rowTip', { m: fmtInt(h.matches), mm: fmtInt(h.misMatches), gq: h.qNumInsert, gt: h.tNumInsert, b: h.blockCount, q: fmtInt(h.qSize) });
+    return `<tr data-i="${i}"${id < 0 ? ' class="off"' : ''} title="${esc(tip)}"><td>${here ? '●' : ''}</td><td class="lc">${esc(h.tName)}:${fmtInt(h.tStart + 1)}-${fmtInt(h.tEnd)}</td><td>${esc(h.strand)}</td><td class="n">${fmtInt(h.score)}</td><td class="n">${h.ident.toFixed(1)}%</td><td class="n">${fmtInt(h.qStart + 1)}–${fmtInt(h.qEnd)}</td></tr>`;
+  }).join('');
+  c.innerHTML = head + `<div class="blat"><table><thead><tr><th></th><th>${esc(t('blat.locus'))}</th><th></th><th class="n">${esc(t('blat.score'))}</th><th class="n">${esc(t('blat.ident'))}</th><th class="n">${esc(t('blat.query'))}</th></tr></thead><tbody>${rows}</tbody></table></div>` +
+    `<div class="card-actions"><span class="note">${esc(t('blat.note', { n: hits.length }))}</span><button class="btn" id="copyBlat">${esc(t('card.copy'))}</button></div>`;
+  $('closeCard').onclick = () => { hideCard(); draw(); };
+  tips(c, { '#copyBlat': 'tip.copyCard' });
+  $('copyBlat').onclick = () => {
+    const txt = [title, ['locus', 'strand', 'score', 'identity', 'query', 'matches', 'mismatches'].join('\t'), ...hits.map(h => [`${h.tName}:${h.tStart + 1}-${h.tEnd}`, h.strand, h.score, h.ident.toFixed(1), `${h.qStart + 1}-${h.qEnd}`, h.matches, h.misMatches].join('\t'))].join('\n');
+    navigator.clipboard.writeText(txt).then(() => toast(t('copied')), () => toast(t('copyFail')));
+  };
+  c.querySelectorAll('tbody tr').forEach(tr => tr.onclick = () => {
+    const h = hits[+tr.dataset.i], id = contigId(h.tName);
+    if (id < 0) { toast(t('blat.noContig', { name: h.tName })); return; }
+    c.querySelectorAll('tr.on').forEach(x => x.classList.remove('on')); tr.classList.add('on');
+    showBlatHit(pn, id, h.tStart, h.tEnd);
+  });
+}
+// One panel for BLAT hits, opened next to the panel the read is in and reused for every later click.
+function showBlatHit(src, id, s, e) {
+  let pn = S.blatPanel && S.panels.includes(S.blatPanel) ? S.blatPanel : null;
+  if (!pn) {
+    if (!S.panels.includes(src)) src = S.active;
+    if (S.panels.length >= maxPanels()) { toast(t('split.full', { n: S.panels.length })); return; }
+    pn = S.blatPanel = newPanel({ refId: id, start: 0, bpPerPx: S.view.bpPerPx });
+    S.panels.splice(S.panels.indexOf(src) + 1, 0, pn);
+    layoutPanels(true);
+  }
+  usePanel(pn); navPush();
+  pn.mark = { refId: id, s, e };
+  const span = Math.max(e - s, 40), pad = Math.max(span * 0.25, 30);
+  goto(id, s - pad, e + pad);
+  S.active = pn; syncLocus(); draw();
+}
+// The BLAT hit shown in a panel: a band over the whole height, stronger on the ruler.
+function drawMark(pn) {
+  const m = pn.mark; if (!m || m.refId !== S.view.refId) return;
+  const x0 = (m.s - S.view.start) / S.view.bpPerPx, x1 = (m.e - S.view.start) / S.view.bpPerPx;
+  if (x1 < 0 || x0 > pn.w) return;
+  const a = Math.max(-2, x0), w = Math.max(2, Math.min(pn.w + 2, x1) - a), top = panelHdr();
+  ctx.save(); ctx.fillStyle = COL.css.accent;
+  ctx.globalAlpha = 0.08; ctx.fillRect(a, top, w, H - top);
+  ctx.globalAlpha = 0.9; ctx.fillRect(a, top, w, 3);
+  ctx.restore();
+}
 $('ctx').addEventListener('click', e => {
   const sb = e.target.closest('[data-sig]');
   if (sb) { const a = menuState && menuState.sig; closeMenu(); if (a && ANN.tracks.includes(a)) signalMenuAct(a, sb.dataset.sig, sb.dataset.val); return; }
@@ -2129,6 +2333,7 @@ $('ctx').addEventListener('click', e => {
   usePanel(menuState.pn);
   if (act === 'mateSplit') { const h = menuState.hit; closeMenu(); hideCard(); if (h) openMatePanel(h.rec, h.T); draw(); return; }
   if (act.startsWith('copy')) { const h = menuState.hit; closeMenu(); if (h) copyReadSeq(h.rec, h.T, act); return; }
+  if (act.startsWith('blat')) { const h = menuState.hit; closeMenu(); if (h) blatRead(h.rec, h.T, act, +b.dataset.gx || 40, +b.dataset.gy || 80); return; }
   if (act === 'pairs') P.viewPairs = !P.viewPairs;
   else if (act === 'clips') { P.showSoftClips = !P.showSoftClips; reloadNeeded = true; }
   else if (act === 'color') P.colorBy = val;
@@ -2247,7 +2452,7 @@ const CONTROLS = [
   ['colorBy', 'colorBy', 'str', 'rebuild'], ['colorTag', 'colorTag', 'str', 'rebuild'],
   ['groupBy', 'groupBy', 'str', 'rebuild'], ['groupTag', 'groupTag', 'str', 'rebuild'],
   ['sortBy', 'sortBy', 'str', 'rebuild'],
-  ['mqLow', 'mapqAlpha.low', 'num', 'rebuild'], ['mqHigh', 'mapqAlpha.high', 'num', 'rebuild'], ['mqMinAlpha', 'mapqAlpha.minAlpha', 'num', 'rebuild'],
+  ['mqLow', 'mapqAlpha.low', 'num', 'rebuild'], ['mqHigh', 'mapqAlpha.high', 'num', 'rebuild'], ['mqTransp', 'mapqAlpha.transparency', 'num', 'rebuild'],
   ['bqShade', 'baseQualityShading', 'bool', 'rebuild'], ['softClips', 'showSoftClips', 'bool', 'reload'],
   ['minMapq', 'filters.minMapq', 'num', 'reload'], ['hideDup', 'filters.hideDuplicates', 'bool', 'reload'],
   ['hideSec', 'filters.hideSecondary', 'bool', 'reload'], ['hideSupp', 'filters.hideSupplementary', 'bool', 'reload'], ['hideQc', 'filters.hideQcFail', 'bool', 'reload'],
@@ -2260,7 +2465,7 @@ const setPath = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.redu
 function syncPanel() {
   for (const [id, path, type] of CONTROLS) { const el = $(id); if (!el) continue; const v = getPath(P, path); if (type === 'bool') el.checked = v; else el.value = v; }
   $('readHeightOut').textContent = (+P.readHeight).toFixed(1) + ' px';
-  $('mqMinAlphaOut').textContent = Math.round(P.mapqAlpha.minAlpha * 100) + '%';
+  $('mqTranspOut').textContent = Math.round(P.mapqAlpha.transparency * 100) + '%';
   $('alleleThrOut').textContent = Math.round(P.coverage.alleleThreshold * 100) + '%';
   $('covHeightOut').textContent = P.coverage.height + ' px';
   $('trackMinHOut').textContent = P.trackMinHeight + ' px';
@@ -2270,7 +2475,7 @@ function syncPanel() {
 }
 function updateMqLegend() {
   const el = $('mqLegend'); if (!el) return;
-  el.style.background = `linear-gradient(90deg, rgb(${COL.read} / ${P.mapqAlpha.minAlpha}), rgb(${COL.read} / 1))`;
+  el.style.background = `linear-gradient(90deg, rgb(${COL.read} / ${1 - P.mapqAlpha.transparency}), rgb(${COL.read} / 1))`;
   $('mqLegendLo').textContent = 'MQ ≤ ' + P.mapqAlpha.low; $('mqLegendHi').textContent = 'MQ ≥ ' + P.mapqAlpha.high;
 }
 let rebuildTimer = 0;
@@ -2540,7 +2745,7 @@ function showAnnCard(a, f, gx, y) {
   }
   const where = `${name}:${fmtInt(f.start + 1)}` + (f.end - f.start > 1 ? `-${fmtInt(f.end)}` : '') + st;
   cardState = { pn: CUR, ann: a };
-  c.classList.remove('wide'); c.classList.add('narrow');
+  c.classList.remove('wide', 'blatc'); c.classList.add('narrow');
   c.innerHTML = '<div class="card-head"><span class="card-title">' + esc(where) + '</span><button class="btn card-btn" id="copyAnn">' + esc(t('card.copy')) + '</button><button class="btn card-x" id="closeCard" aria-label="' + esc(t('btn.close')) + '" title="' + esc(t('btn.close')) + '">×</button></div>' +
     `<div class="ln">${esc(a.name)}</div>${linesHtml(L)}`;
   c.hidden = false; placeCard(gx, y);

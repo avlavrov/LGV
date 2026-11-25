@@ -25,11 +25,12 @@ const FORBIDDEN = [
 const PLACES = [
   // a call of the browser's global fetch (methods named fetch on our own classes are not network calls)
   [code => /(^|[^.\w$])fetch\s*\(/.test(code.replace(/\basync\s+fetch\s*\(/g, '')),
-    (f, code) => f === 'src/core.js' && /\bfetch\s*\(\s*this\.url/.test(code), 'network request outside UrlSource (only links the user gave are read)'],
+    (f, code) => (f === 'src/core.js' && /\bfetch\s*\(\s*this\.url/.test(code)) || (f === 'src/app.js' && /\bfetch\s*\(\s*`\$\{BLAT_URL\}/.test(code)),
+    'network request outside UrlSource and BLAT (only links the user gave are read; BLAT on request)'],
   [code => /localStorage/.test(code), (f, code) => (f === 'src/app.js' && /PROFILE_KEY/.test(code)) || (f === 'src/signalview.js' && /SIG_PREF_KEY/.test(code)), 'browser storage other than the display profile and the signal tracks\' drawing choices'],
   [code => /https?:\/\/[^\s'"`)…]/.test(code),
-    (f, code, line) => (f === 'src/app.js' && /^\s*(hg38|hg19|chm13):/.test(line)) || (f === 'src/i18n.js') || (f === 'src/index.html' && /placeholder=/.test(line)),
-    'a fixed web address (allowed: the public reference presets only)'],
+    (f, code, line) => (f === 'src/app.js' && /^\s*(hg38|hg19|chm13):/.test(line)) || (f === 'src/app.js' && /BLAT_URL = 'https:\/\/genome\.ucsc\.edu\/cgi-bin\/hgBlat'/.test(line)) || (f === 'src/i18n.js') || (f === 'src/index.html' && /placeholder=/.test(line)),
+    'a fixed web address (allowed: the public reference presets and UCSC BLAT only)'],
 ];
 const reviewed = []; // innerHTML lines: each must pass every value through esc()
 

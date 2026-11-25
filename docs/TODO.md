@@ -21,6 +21,10 @@ Ideas and agreed work for later. Items move to the user guide and README when do
 - Markers at the panel edge for reads (mates) off screen.
 - Share link: a link that opens the same loci (and public data links).
 - Check how IGV desktop (htsjdk) handles damaged CRAM files (igv.js does not check CRC by default).
+- BLAT: let the user choose another UCSC assembly when the reference is not recognized by chr1's
+  length (now: hg38, hg19, hs1, mm39, mm10 only); BLAT of a selected region of the reference.
+- Wide windows on a slow link: read depth-only windows from the index's own statistics or a
+  coverage file (bigWig / TDF next to the BAM) instead of the reads.
 - Report to htscodecs upstream: its JavaScript decoders hang or return wrong data on cut-off
   blocks (details in SECURITY.md, Findings).
 

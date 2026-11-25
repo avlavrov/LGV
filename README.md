@@ -58,13 +58,14 @@ More languages are one dictionary in `src/i18n.js`.
 | F6 No hard window limit | windows load on their own up to 64 MB of compressed data, larger on request; downsampling keeps deep regions fast; isolated sequencing errors fade when zoomed out |
 | F8 Coverage with allele highlight | done, threshold adjustable; click the coverage for counts at that base as in IGV: A/C/G/T/N with strands, DEL, INS, mean base quality — from every read, before downsampling |
 | F9 Smooth read height | done, 1–24 px |
-| F10 Coloring + MAPQ as a transparency gradient | right click on reads: strand, pair (orientation and insert size), tag; MAPQ works on top of any of them |
+| F10 Coloring + MAPQ as a transparency gradient | right click on reads: strand, pair (orientation and insert size), tag; MAPQ transparency works on top of any of them (only the read body; pale reads keep an outline; base colors depend on base quality alone) |
 | F11 Group and sort | groups (View): strand, first/second, pair orientation, tag; sort by (right click, at the clicked position): base, MAPQ, strand, insert size |
 | F12 Filters | MAPQ, duplicates, secondary, supplementary, QC fail; downsampling |
 | Pictures and links | PNG of the view; a link that opens the same view; open LGV from another system with `#ref=…&file=…&locus=…` |
 | Navigation | ← → back / forward between places jumped to; − + zoom all panels at once |
 | F13 Mate | view as pairs (right click), read details + go to mate; **split screen** as in IGV: right click on a read → "View mate region in split screen" (or the button in the read details) opens a panel centered on the mate, the read and its mate outlined in every panel; several loci typed in the locus field separated by spaces open one panel each; each panel has its own ruler, scroll and zoom, × in its header closes it; at least 6 panels, more as the width allows (60 px each) |
 | F14 Read details | IGV-style popup: read, mapping, clipping, mate and tags, then Location and `Base = A @ QV 14` for the clicked base; one read or read + mate side by side; copy; dragged by its top row, then opens where it was left (until the page is closed). Right click on a read: copy its sequence, left or right soft clip, or the pair as FASTA |
+| F15 BLAT | right click on a read: BLAT the read or a soft clip at UCSC (on request only: the bases go to genome.ucsc.edu); compact results table, a click shows a hit in one reused side panel |
 | F18 Display profile as JSON | kept in the browser, copied and applied as JSON |
 | F23 Screen space for data | one bar of controls, hidden with H |
 
@@ -120,6 +121,9 @@ Targeted panels reach thousands of reads per base. LGV handles them the way IGV 
 - **Depth-only coverage for wide views:** above 1 Mb the coverage is counted from CIGAR ranges
   instead of base by base (allele colors cannot be seen at that scale); zooming in below 1 Mb
   loads the window again in detail.
+  Such a window is read in parts by several workers at once and kept only as the highest depth
+  per bin (16–64 bp, at most ~1M bins), so a whole chromosome never holds a counter per base and a
+  frame draws from bins instead of every base (a 21 Mb view: from about 0.6–1.6 s to a few ms).
 - **Web Workers:** samples are read and inflated in background workers, several in parallel, so
   the page stays responsive while a window loads. Where workers cannot start, reading falls back
   to the page.

@@ -110,6 +110,18 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .card .seg .btn:first-child { border-radius: 6px 0 0 6px; } .card .seg .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
 .card .seg .btn.on { border-color: var(--accent); color: var(--accent); position: relative; }
 .card-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.card.blatc { width: min(560px, calc(100% - 16px)); }
+.card .blat { max-height: 260px; overflow: auto; margin: 0 -4px; }
+.card .blat table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+.card .blat th { position: sticky; top: 0; background: var(--panel); font-weight: 600; color: var(--muted); text-align: left; padding: 2px 4px; border-bottom: 1px solid var(--line); }
+.card .blat td { padding: 2px 4px; white-space: nowrap; cursor: pointer; }
+.card .blat td:first-child { width: 10px; color: var(--accent); padding-right: 0; }
+.card .blat .lc { font-family: var(--mono); font-size: 11.5px; }
+.card .blat .n { text-align: right; }
+.card .blat tbody tr:hover td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.card .blat tr.on td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.card .blat tr.off td { color: var(--muted); cursor: default; }
+.card .note { font-size: 11.5px; color: var(--muted); margin-right: auto; align-self: center; }
 
 .side { position: absolute; z-index: 10; top: var(--bar-h); right: 0; bottom: 0; width: min(330px, 100%); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 28px rgb(0 0 0 / .08); overflow: auto;
   padding-block: 12px 24px; padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 18px; }
@@ -246,7 +258,7 @@ body.bare .side { top: 0; }
         <div class="field"><label for="mqLow" data-i18n="view.mqLow">From MQ</label><input id="mqLow" type="number" min="0" max="255" step="1"></div>
         <div class="field"><label for="mqHigh" data-i18n="view.mqHigh">To MQ</label><input id="mqHigh" type="number" min="0" max="255" step="1"></div>
       </div>
-      <div class="field"><label for="mqMinAlpha" data-i18n-title="tip.mqMinAlpha" data-i18n="view.mqMinAlpha"></label><output id="mqMinAlphaOut"></output><input id="mqMinAlpha" type="range" min="0.02" max="1" step="0.01"></div>
+      <div class="field"><label for="mqTransp" data-i18n-title="tip.mqTransp" data-i18n="view.mqTransp"></label><output id="mqTranspOut"></output><input id="mqTransp" type="range" min="0" max="1" step="0.01"></div>
       <div class="legend" id="mqLegend"></div>
       <div class="legend-labels"><span id="mqLegendLo"></span><span id="mqLegendHi"></span></div>
       <p class="hint" data-i18n="view.mqHint"></p>

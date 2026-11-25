@@ -15,7 +15,10 @@ user chose and the user's device.** LGV sends nothing anywhere by itself.
    user typed, plus the public reference presets: GRCh38 opens at start by default (sequence only,
    from the IGV team's public bucket; View → "At start open" changes it or turns it off). Gene search
    needs no network: the MANE gene table is bundled with LGV, so typed gene names never leave the
-   computer. No telemetry, no CDN, no
+   computer. The one other call is **BLAT**, made only when the user picks it in the read's
+   right-click menu: the bases of that read (or clipped end) go to genome.ucsc.edu (`BLAT_URL`,
+   without credentials or referrer), and the answer is read as untrusted data (fields checked,
+   at most 500 rows, text shown escaped). No telemetry, no CDN, no
    fonts from the web. The local build carries a strict Content Security Policy
    (`default-src 'none'`, no `unsafe-eval`, connections only over HTTPS or to this computer).
 5. **Storage only for the display profile.** Tokens and links are never saved. Folders the user lets LGV read
@@ -28,7 +31,7 @@ user chose and the user's device.** LGV sends nothing anywhere by itself.
 ## Automatic checks
 
 - `node tools/audit.js` fails on any forbidden pattern above (eval, Function, network calls outside
-  `UrlSource`, storage other than the profile, fixed web addresses, HTML built with values not
+  `UrlSource` and BLAT, storage other than the profile, fixed web addresses, HTML built with values not
   passed through `esc()`), checks that the build carries the Content Security Policy, and lists every
   place where HTML is built so a reviewer sees each one.
 - `node tools/test-fuzz.js` fuzzes BGZF, the BAM header and records, BAI, FASTA with .fai and .gzi,

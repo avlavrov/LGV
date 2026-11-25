@@ -141,9 +141,23 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     }
     {
       const fullC = await bam.fetch(0, 5000, 30000, { filters: flt }), dep = await bam.fetch(0, 5000, 30000, { filters: flt, depthOnly: true });
-      let bad = 0; const A = new Uint32Array(6), B = new Uint32Array(6);
-      for (let pos = 5000; pos < 30000; pos++) { const a = fullC.cov.counts(pos, A), b = dep.cov.counts(pos, B); if (a[0] + a[1] + a[2] + a[3] + a[4] !== b[4]) bad++; }
-      ok(bad === 0 && dep.cov.depthOnly && dep.total === fullC.total, 'depth-only coverage equals the sum of base counts (' + bad + ' positions differ)');
+      const A = new Uint32Array(6), sm = dep.cov.summary(), want = new Uint32Array(sm.max5.length);
+      for (let pos = 5000; pos < 30000; pos++) { const a = fullC.cov.counts(pos, A), t = a[0] + a[1] + a[2] + a[3] + a[4], k = Math.floor(pos / sm.bin) - sm.b0; if (t > want[k]) want[k] = t; }
+      let bad = 0; for (let k = 0; k < want.length; k++) if (want[k] !== sm.max5[k]) bad++;
+      ok(bad === 0 && sm.bin === 16 && dep.cov.depthOnly && dep.total === fullC.total, 'depth-only coverage: highest depth per 16 bp equals the sum of base counts (' + bad + ' bins differ)');
+      const full64 = fullC.cov.summary(); let bad64 = 0;
+      for (let k = 0; k < full64.max5.length; k++) { const p0 = (full64.b0 + k) * 64; let x = 0; for (let p = Math.max(p0, 5000); p < Math.min(p0 + 64, 30000); p++) { const a = fullC.cov.counts(p, A); x = Math.max(x, a[0] + a[1] + a[2] + a[3] + a[4]); } if (x !== full64.max5[k]) bad64++; }
+      ok(bad64 === 0, 'the 64 bp summary of detailed coverage matches the base counts');
+      // read in two parts (as the page does with several workers) and merged: the same summary
+      const p1 = await bam.fetch(0, 5000, 17008, { filters: flt, depthOnly: true, covBin: 16 }), p2 = await bam.fetch(0, 17008, 30000, { filters: flt, depthOnly: true, covBin: 16 });
+      const mg = new C.CovSummary(5000, 30000, 16);
+      for (const [p, c0] of [[p1, 5000], [p2, 17008]]) { const s1 = p.cov.summary(), off = Math.floor(c0 / 16) - mg.b0; s1.max5.forEach((v, j) => { if (v > mg.max5[off + j]) mg.max5[off + j] = v; }); }
+      ok(mg.max5.every((v, k) => v === sm.max5[k]), 'a window read in two parts gives the same depth summary');
+      // a 200 kb aligned stretch crosses 64 kb blocks with no other marks; a second read starts after it
+      const dd = new C.DepthDiff(0, 400000, 64), cv = new C.SparseCoverage(0, 400000);
+      dd.addRec({ pos: 1000, cigar: [(200000 << 4) | 0] }); dd.addRec({ pos: 150000, cigar: [(100 << 4) | 0] }); dd.addRec({ pos: 300000, cigar: [(50 << 4) | 0] }); dd.finish(cv);
+      const ds = cv.summary();
+      ok(ds.maxIn(1000, 2000) === 1 && ds.maxIn(130000, 140000) === 1 && ds.maxIn(150000, 150100) === 2 && ds.maxIn(201024, 299000) === 0 && ds.maxIn(300000, 300050) === 1 && ds.maxIn(0, 960) === 0, 'depth-only: a long read keeps its depth through empty 64 kb blocks');
       ok(dep.reads.length === 0, 'a depth-only (wide) window returns no reads');
       const capped = await bam.fetch(0, 5000, 30000, { filters: flt, maxReads: 1000 });
       let same3 = true; for (let j = 5000; j < 30000; j += 7) for (let k = 0; k < 6; k++) if (capped.cov.get(j, k) !== fullC.cov.get(j, k)) same3 = false;

@@ -277,7 +277,9 @@ bar shows colored parts by base.
   Reads are not read at all in such windows (each is below a pixel, and the million reads of an
   exome would take minutes to read, send and lay out); a hint to zoom in stands in their place. The
   same past 300,000 reads in a window. If you zoom in while a wide window is being read, that read is
-  stopped and the new view does not wait for it.
+  stopped and the new view does not wait for it. A wide window is read in parts by several of the
+  browser's worker threads at once, and its coverage is kept as the highest depth per short bin
+  (16–64 bp), so moving around it draws at once.
 - **Click the coverage** for the counts at that base. The top row shows the position,
   **Copy** and **×**; then:
 
@@ -368,6 +370,15 @@ Right click on the reads:
   All are copied as FASTA with the read name: `>name/1`; clips as `>name/1_left_clip` and
   `>name/1_right_clip`; a pair as `>name/1` and `>name/2`. The sequence is as stored in the file, on
   the reference's forward strand. Items that do not apply are grayed out.
+- **BLAT read sequence**, **BLAT left / right soft clip**: where else these bases align, from the
+  BLAT server of the UCSC Genome Browser. Works when the open reference is one UCSC knows (hg38,
+  hg19, T2T hs1, mm39, mm10) and the sequence has 20–25,000 bases; otherwise the item is grayed out
+  and its tooltip says why. **The bases are sent to genome.ucsc.edu** (see Privacy).
+  The results open in a small table: locus, strand, score, identity and the part of the query that
+  aligned, best first; ● marks the read's own place; the tooltip of a row gives matches,
+  mismatches, gaps and blocks. **Click a row** to show that alignment (marked with a band) in a
+  panel next to the read's one; later clicks reuse the same panel instead of opening new ones.
+  **Copy** copies the table as text.
 - **View as pairs**, **Show soft-clipped bases**.
 - **Color by**: none, strand, pair orientation and insert size, tag value (with the tag field).
 - **Sort by** at the clicked position: start (unsorted), base, MAPQ, strand, insert size. Reads
@@ -391,7 +402,10 @@ ruler and gene track:
 copied as JSON, pasted from someone else and applied, or reset.
 
 - **Reads**: read height (1–24 px), color, tag for color, fade low-quality bases, show soft clips,
-  MAPQ transparency (from / to MQ, opacity at low MQ).
+  MAPQ transparency (from / to MQ, transparency at low MQ: 0% is a solid read, 100% leaves only its
+  outline). Pale reads keep a thin outline in their color so they still show where they lie, even
+  zoomed out. Mismatches, insertions and clips are never paled by MAPQ: their color depends only on
+  the base's own quality.
 - **Group and sort**: group by strand, first / second of pair, pair orientation or a tag; sort rows.
 - **Filters**: minimum MAPQ; hide duplicates, secondary, supplementary, QC-failed reads;
   downsampling (reads per window, window size). Filters and downsampling act while reading, so
@@ -476,6 +490,10 @@ copied as JSON, pasted from someone else and applied, or reset.
 - Data goes only between the files or links you chose and your computer. LGV sends nothing
   anywhere; the only connection it makes by itself is loading the reference chosen to open at
   start (sequence only).
+- The one exception is **BLAT**, and only when you choose it in the right-click menu: the bases of
+  that read (or of its clipped end) are sent to the UCSC Genome Browser (genome.ucsc.edu), nothing
+  else (no read name, file name or position). Do not use it for data that must not leave your
+  computer.
 - Gene search and the gene track are built in: typed gene names are not sent anywhere.
 - Only the display profile is saved in the browser. Tokens, links and folder access are never
   saved.

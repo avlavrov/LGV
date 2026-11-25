@@ -378,7 +378,7 @@ class BamFile {
     const cov = new SparseCoverage(beg, end);
     // opts.depthOnly (wide windows): depth from CIGAR ranges, without counting bases one by one;
     // several times cheaper, and allele colors cannot be seen at that scale anyway
-    const depth = opts.depthOnly ? new DepthDiff(beg, end) : null;
+    const depth = opts.depthOnly ? new DepthDiff(beg, end, opts.covBin) : null;
     const out = { reads: [], cov, total: 0, sampled: [] };
     const dsm = ds ? new Downsampler(ds, opts.keep, out) : null;
     const visit = (buf, dv, p, pos) => {
@@ -562,7 +562,20 @@ class SparseCoverage {
     }
   }
   hasData(a, b) { a = Math.max(a, this.start); b = Math.min(b, this.end); for (let bi = Math.floor(a / COV_BLOCK); bi * COV_BLOCK < b; bi++) if (this.blocks.has(bi)) return true; return false; }
+  // highest depth per bin of COV_SUM_BIN bp (see CovSummary), made once; depth-only windows have
+  // only this (made while reading)
+  summary() {
+    if (this._sum) return this._sum;
+    const sm = new CovSummary(this.start, this.end, COV_SUM_BIN), m5 = sm.max5, m6 = sm.max6 = new Uint32Array(m5.length);
+    this.forEach(this.start, this.end, (pos, blk, o) => {
+      const t = blk[o] + blk[o + 1] + blk[o + 2] + blk[o + 3] + blk[o + 4]; if (!t && !blk[o + 5]) return;
+      const k = Math.floor(pos / COV_SUM_BIN) - sm.b0;
+      if (t > m5[k]) m5[k] = t; if (t + blk[o + 5] > m6[k]) m6[k] = t + blk[o + 5];
+    });
+    return (this._sum = sm);
+  }
 }
+const COV_SUM_BIN = 64;
 
 // Adds one record to coverage straight from the BAM buffer, without building an object.
 const NIB_IDX = new Uint8Array([4, 0, 1, 4, 2, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4]);
@@ -586,13 +599,72 @@ function addCoverage(buf, dv, p, cov) {
 
 // Depth as a difference array: +1 where an aligned block starts, -1 where it ends; summed at the end
 // into the N counter of SparseCoverage, which is then marked depth-only (no allele counts).
+// Depth summary of a window: the highest depth in each bin of `bin` bp (a power of two up to
+// COV_BLOCK, so bins never straddle a coverage block). max5: A+C+G+T+N (the bar), max6: with
+// deletions (the scale). Bins are indexed from b0 = floor(start / bin).
+class CovSummary {
+  constructor(start, end, bin) {
+    this.start = start; this.end = end; this.bin = bin; this.b0 = Math.floor(start / bin);
+    const n = Math.max(0, Math.ceil(end / bin) - this.b0);
+    this.max5 = new Uint32Array(n); this.max6 = this.max5;
+  }
+  // the bins covering [a, b), clipped to the window: [i0, i1)
+  range(a, b) {
+    a = Math.max(a, this.start); b = Math.min(b, this.end);
+    if (b <= a) return [0, 0];
+    return [Math.floor(a / this.bin) - this.b0, Math.ceil(b / this.bin) - this.b0];
+  }
+  maxIn(a, b, six) { const [i0, i1] = this.range(a, b), m = six ? this.max6 : this.max5; let x = 0; for (let i = i0; i < i1; i++) if (m[i] > x) x = m[i]; return x; }
+}
+// Bin size for a depth summary of a window: at most ~1M bins, at least 16 bp.
+function covBinFor(span) { let bin = 16; while (bin < COV_BLOCK && span / bin > 1048576) bin *= 2; return bin; }
+
+// Depth of wide windows (depth-only coverage) from CIGAR ranges: +1 where an aligned stretch starts,
+// −1 where it ends, summed along the window. Reads arrive sorted by start, so once a read starts in a
+// later 64 kb block no later read touches the blocks before it: those are summed into the depth
+// summary at once and freed (a whole chromosome never holds a counter per base). Only the summary is
+// kept (cov.sum); per-base counts are not needed at these scales.
 class DepthDiff {
-  constructor(start, end) { this.start = start; this.end = end; this.blocks = new Map(); }
+  constructor(start, end, bin) {
+    this.start = start; this.end = end; this.blocks = new Map();
+    this.sum = new CovSummary(start, end, bin || covBinFor(end - start));
+    this.done = Math.floor(start / COV_BLOCK); this.run = 0; // blocks below `done` are summed; depth carried into it
+  }
   _blk(b) { let x = this.blocks.get(b); if (!x) { x = new Int32Array(COV_BLOCK); this.blocks.set(b, x); } return x; }
-  _mark(pos, v) { if (pos < this.start) pos = this.start; if (pos >= this.end) return; const b = Math.floor(pos / COV_BLOCK); this._blk(b)[pos - b * COV_BLOCK] += v; }
+  _mark(pos, v) {
+    if (pos < this.start) pos = this.start;
+    if (pos >= this.end) return;
+    let b = Math.floor(pos / COV_BLOCK);
+    if (b < this.done) b = this.done, pos = b * COV_BLOCK; // only in a file not sorted by position
+    this._blk(b)[pos - b * COV_BLOCK] += v;
+  }
+  // sums blocks below `upto` into the summary
+  _flush(upto) {
+    const sm = this.sum, bin = sm.bin, m = sm.max5, lo = this.start, hi = this.end;
+    for (let b = this.done; b < upto; b++) {
+      const d = this.blocks.get(b), p0 = b * COV_BLOCK;
+      if (!d) {
+        if (!this.run) { // nothing here or later until the next block with marks
+          let nx = upto; for (const k of this.blocks.keys()) if (k > b && k < nx) nx = k;
+          b = nx - 1; continue;
+        }
+        const [i0, i1] = sm.range(p0, p0 + COV_BLOCK); for (let i = i0; i < i1; i++) if (this.run > m[i]) m[i] = this.run;
+        continue;
+      }
+      let run = this.run;
+      const a = Math.max(0, lo - p0), z = Math.min(COV_BLOCK, hi - p0);
+      for (let i = 0; i < a; i++) run += d[i];
+      for (let i = a; i < z; i++) { run += d[i]; if (run) { const k = ((p0 + i) / bin | 0) - sm.b0; if (run > m[k]) m[k] = run; } }
+      for (let i = Math.max(a, z); i < COV_BLOCK; i++) run += d[i];
+      this.run = run; this.blocks.delete(b);
+    }
+    if (upto > this.done) this.done = upto;
+  }
+  _seen(pos) { const b = Math.floor(Math.max(pos, this.start) / COV_BLOCK); if (b > this.done) this._flush(b); }
   add(buf, dv, p) {
     const s = p + 4, lrn = buf[s + 8], ncig = dv.getUint16(s + 12, true), cig = s + 32 + lrn;
     let r = dv.getInt32(s + 4, true);
+    this._seen(r);
     for (let i = 0; i < ncig; i++) {
       const c = dv.getUint32(cig + 4 * i, true), op = c & 15, n = c >>> 4;
       if (op === 0 || op === 7 || op === 8) { if (r + n > this.start && r < this.end) { this._mark(r, 1); this._mark(r + n, -1); } r += n; }
@@ -602,6 +674,7 @@ class DepthDiff {
   // the same from a parsed record (CRAM records arrive parsed)
   addRec(rec) {
     let r = rec.pos;
+    this._seen(r);
     for (const c of rec.cigar) {
       const op = c & 15, n = c >>> 4;
       if (op === 0 || op === 7 || op === 8) { if (r + n > this.start && r < this.end) { this._mark(r, 1); this._mark(r + n, -1); } r += n; }
@@ -609,14 +682,8 @@ class DepthDiff {
     }
   }
   finish(cov) {
-    let run = 0, prev = null;
-    for (const b of [...this.blocks.keys()].sort((x, y) => x - y)) {
-      if (prev !== null && b !== prev + 1) run = 0; // aligned blocks never span a whole empty 64 kb block
-      const d = this.blocks.get(b), out = cov.block(b, true);
-      for (let i = 0; i < COV_BLOCK; i++) { run += d[i]; if (run) out[i * 6 + 4] = run; }
-      prev = b;
-    }
-    cov.depthOnly = true;
+    this._flush(Math.ceil(this.end / COV_BLOCK) + 1);
+    cov.depthOnly = true; cov._sum = this.sum;
   }
 }
 
@@ -1240,11 +1307,12 @@ if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && s
       else if (op === 'close') files.delete(key);
       else if (op === 'fetch') {
         const bam = files.get(key), r = await bam.fetch(...e.data.args);
-        const blocks = [...r.cov.blocks], cov = { start: r.cov.start, end: r.cov.end, depthOnly: !!r.cov.depthOnly, blocks };
-        self.postMessage({ id, ok: true, res: { reads: r.reads, total: r.total, sampled: r.sampled, cov }, maxSpan: bam.maxSpan }, blocks.map(b => b[1].buffer));
+        const blocks = [...r.cov.blocks], sm = r.cov._sum, sum = sm ? { bin: sm.bin, max5: sm.max5 } : null;
+        const cov = { start: r.cov.start, end: r.cov.end, depthOnly: !!r.cov.depthOnly, blocks, sum };
+        self.postMessage({ id, ok: true, res: { reads: r.reads, total: r.total, sampled: r.sampled, cov, tooMany: !!r.tooMany }, maxSpan: bam.maxSpan }, blocks.map(b => b[1].buffer).concat(sum ? [sum.max5.buffer] : []));
       }
     } catch (err) { self.postMessage({ id, ok: false, err: { code: err.code || '', vars: err.vars || {}, message: String(err.message || err) } }); }
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { nameHash, Downsampler, isBgzfHeader, BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, NIB_IDX, DepthDiff, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };
+if (typeof module !== 'undefined') module.exports = { nameHash, Downsampler, isBgzfHeader, BAM_LIMITS, bamRecordOk, addCoverage, CGV_ERR_EN, inflateRaw, inflateStream, inflateBgzf, parseBgzfBlocks, BGZF_CHECK, crc32, tryParseBamHeader, parseBamRecord, COV_BLOCK, COV_SUM_BIN, NIB_IDX, DepthDiff, CovSummary, covBinFor, passFlags, clipLens, hardClipLens, readExtent, cigarStrClips, pairUnits, pairable, cigarStrRefLen, SparseCoverage, SparseRef, mergeIntervals, queryAt, ReadLayout, readKey, rowsInUse, matchContigs, contigKeys, contigKey, FaiBuilder, indexFasta, FileSource, UrlSource, CgvError, BamFile, BaiIndex, IndexedFasta, readBgzf, recTags, fillRefFromMD, computeFeatures, computeCoverage, baseAtRefPos, cigarString, packRows, passFilters, pairOrientation, insertSizeBounds, reg2bins };

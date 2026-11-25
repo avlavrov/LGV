@@ -336,7 +336,7 @@ class CramFile {
     const flt = opts.filters || null;
     const ds = opts.downsample && opts.downsample.max > 0 && opts.downsample.window > 0 ? opts.downsample : null;
     const cov = new SparseCoverage(beg, end);
-    const depth = opts.depthOnly ? new DepthDiff(beg, end) : null;
+    const depth = opts.depthOnly ? new DepthDiff(beg, end, opts.covBin) : null;
     const out = { reads: [], cov, total: 0, sampled: [] };
     const dsm = ds ? new Downsampler(ds, opts.keep, out) : null;
     // the slices the index lists for this window, in file order, each once
