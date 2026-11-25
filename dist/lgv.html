@@ -5700,7 +5700,10 @@ function readColors() {
 }
 
 // ======================= WebGL =======================
-const gl = glCanvas.getContext('webgl2', { premultipliedAlpha: false, antialias: false, alpha: true });
+// Transparency is ordinary alpha blending, done exactly: the canvas holds premultiplied colors, so a
+// read at opacity a shows as its color × a + whatever is under it × (1 − a), the page background
+// included (never lighter than the background, never double-counted).
+const gl = glCanvas.getContext('webgl2', { premultipliedAlpha: true, antialias: false, alpha: true });
 const GL = {};
 function initGL() {
   if (!gl) return false;
@@ -5791,7 +5794,7 @@ function initGL() {
   GL.quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, GL.quad);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
   Object.assign(GL, makeVao());
-  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   return true;
 }
 // One vertex array + instance buffers; each track has its own.
