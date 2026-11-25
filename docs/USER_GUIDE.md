@@ -317,8 +317,10 @@ bar shows colored parts by base.
   expected sizes are the 0.5–99.5% range of the loaded pairs); a tag value (for example
   `HP` for haplotypes).
 - **Strand**: the 3′ end of each read is pointed, so the strand shows under any coloring.
-- **MAPQ**: reads with low mapping quality are more transparent (from MAPQ 0 at 18% to full at
-  MAPQ 30 and above; adjustable).
+- **MAPQ**: the body of a read with low mapping quality is transparent (80% at MAPQ 0, less and
+  less up to solid at MAPQ 30 and above; adjustable up to 100%, which leaves only the outline). A
+  pale read keeps a thin outline in its color, so it stays visible zoomed out. Mismatches,
+  insertions and clip marks on it are not paled: their color depends only on base quality.
 - **Mismatches**: only bases that differ from the reference are colored: A green, C blue, G orange,
   T red; N is not marked. Letters appear inside reads from 7 pixels per base when rows are at least
   9 px tall.
