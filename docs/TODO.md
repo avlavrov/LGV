@@ -12,6 +12,11 @@ Ideas and agreed work for later. Items move to the user guide and README when do
 - **IGV read-menu features**: the user marks which to add in the Google Sheet
   "LGV — меню ридов IGV: что добавить".
 
+- **PNG with drawings and labels** (asked 2026-11-26): after **PNG**, an editor over the picture —
+  arrows, boxes, free lines, text labels — then save. Possible in the web page too (a canvas layer,
+  no new dependencies, ~300–400 lines); in the desktop version it could also save next to the data.
+  To be planned after the desktop shell is chosen.
+
 ## Offered, waiting for a decision
 
 - Share link: a link that opens the same loci (and public data links).
