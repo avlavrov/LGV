@@ -32,7 +32,7 @@ This guide describes LGV as it is now and is updated with every change. Russian 
 
 ## 1. Starting
 
-Open `LGV.html` in Chrome, Edge, Firefox or Safari (Chrome or Edge recommended: some features need
+Open **https://avlavrov.github.io/LGV/** (always the latest version) or a saved `LGV.html` in Chrome, Edge, Firefox or Safari (Chrome or Edge recommended: some features need
 them, see 3.1). At start LGV loads the **GRCh38 / hg38** reference (sequence only, from the IGV
 team's public storage) and opens on BRCA1. A short message confirms the reference is loaded.
 
