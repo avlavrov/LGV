@@ -3,14 +3,14 @@
 
 // ======================= Display profile =======================
 const DEFAULT_PROFILE = {
-  version: 3,
+  version: 4,
   readHeight: 10,                // px, smooth 1–24
   colorBy: 'pair',               // none | strand | pair | tag
   colorTag: 'HP',
   groupBy: 'none',               // none | strand | pair | tag | firstOfPair
   groupTag: 'HP',
   sortBy: 'start',               // start | base | mapq | strand | insert
-  mapqAlpha: { low: 0, high: 30, transparency: 0.8 }, // reads at MQ ≤ low are this transparent (1: only an outline), opaque from high
+  mapqAlpha: { low: 0, high: 40, transparency: 0.5 }, // reads at MQ ≤ low are this transparent (1: only an outline), opaque from high
   baseQualityShading: true,
   filters: { minMapq: 0, hideDuplicates: true, hideSecondary: true, hideSupplementary: false, hideQcFail: true },
   showSoftClips: true,
@@ -71,7 +71,11 @@ let P = DEFAULT_PROFILE;
 try { const s = localStorage.getItem(PROFILE_KEY); if (s) P = mergeProfile(DEFAULT_PROFILE, JSON.parse(s)); } catch (e) { P = clone(DEFAULT_PROFILE); }
 if (P === DEFAULT_PROFILE) P = clone(DEFAULT_PROFILE);
 // profile v1 kept the old 8 px default read height; v2 defaults to 10 px
-if (P.version < 3) { if (P.version < 2 && P.readHeight === 8) P.readHeight = 10; P.version = 3; try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
+if (P.version < 4) {
+  if (P.version < 2 && P.readHeight === 8) P.readHeight = 10;
+  // v4: MAPQ transparency defaults 0 / 40 / 50%; a profile still on the old defaults (0 / 30 / 80%) takes the new ones
+  const m = P.mapqAlpha; if (m.low === 0 && m.high === 30 && Math.abs(m.transparency - 0.8) < 1e-9) P.mapqAlpha = { low: 0, high: 40, transparency: 0.5 };
+  P.version = 4; try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable */ } }
 function saveProfile() { try { localStorage.setItem(PROFILE_KEY, JSON.stringify(P)); } catch (e) { /* storage unavailable: the profile lives until reload */ } }
 
 // ======================= State =======================
@@ -542,14 +546,14 @@ function rebuildTrack(T) {
   const ib = new InstBuf(need);
   // pair view: a line between mates (to the mate's place when it is not loaded); overlap of mates shaded
   for (const [u, R, gi] of links) {
-    const a = Math.max(0.4, mapqAlpha(Math.min(...u.reads.map(r => r.mapq))));
+    // the line between mates: one gray, whatever the reads' colors and MAPQ
     if (u.reads.length === 2) {
       const [l, r] = u.reads[0].pos <= u.reads[1].pos ? u.reads : [u.reads[1], u.reads[0]];
-      if (r.pos > l.end) ib.add(l.end - d.start, r.pos - d.start, R, gi, 0.47, 0.53, 0, COL.link, a);
+      if (r.pos > l.end) ib.add(l.end - d.start, r.pos - d.start, R, gi, 0.47, 0.53, 0, COL.link, 1);
     } else if (u.mate) {
       const r = u.reads[0], [m0, m1] = u.mate;
-      if (m0 >= r.end) ib.add(r.end - d.start, m0 - d.start, R, gi, 0.47, 0.53, 0, COL.link, a * 0.6);
-      else if (m1 <= r.pos) ib.add(m1 - d.start, r.pos - d.start, R, gi, 0.47, 0.53, 0, COL.link, a * 0.6);
+      if (m0 >= r.end) ib.add(r.end - d.start, m0 - d.start, R, gi, 0.47, 0.53, 0, COL.link, 1);
+      else if (m1 <= r.pos) ib.add(m1 - d.start, r.pos - d.start, R, gi, 0.47, 0.53, 0, COL.link, 1);
     }
   }
   for (const [rec, R, gi] of bodies) {
@@ -561,7 +565,7 @@ function rebuildTrack(T) {
       if (op === 0 || op === 7 || op === 8) r += n;
       else if (op === 2 || op === 3) {
         if (r > segStart) ib.add(segStart - d.start, r - d.start, R, gi, 0, 1, bc, col, a);
-        marks.push([op === 2 ? 2 : 3, r, r + n, R, gi, Math.max(a, 0.55)]);
+        marks.push([op === 2 ? 2 : 3, r, r + n, R, gi, 1]); // deletion / splice lines: full strength at any MAPQ
         r += n; segStart = r;
       }
     }
@@ -1248,8 +1252,9 @@ function drawCoverage(T, g) {
   ctx.strokeStyle = COL.css.line; ctx.beginPath(); ctx.moveTo(0, base + 3.5); ctx.lineTo(W, base + 3.5); ctx.stroke();
   // the position the coverage card is about
   if (cardState && cardState.cov && cardState.T === T && cardState.pn === CUR) {
+    // a thin closed box around the column, inside the track (the gray of the lines between mates)
     const x0 = (cardState.pos - S.view.start) * ppb, w = Math.max(3, ppb);
-    ctx.strokeStyle = COL.css.fg; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 0.5, Math.round(top) - 0.5, Math.round(w) + 1, h + 4);
+    ctx.strokeStyle = COL.css.muted; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x0 - (w - ppb) / 2) - 0.5, Math.round(top) + 1.5, Math.round(w) + 1, Math.round(h) + 1);
   }
 }
 
@@ -2459,12 +2464,6 @@ function syncPanel() {
   $('trackMinHOut').textContent = P.trackMinHeight + ' px';
   $('groupTagRow').hidden = P.groupBy !== 'tag';
   $('profileJson').value = JSON.stringify(P, null, 2);
-  updateMqLegend();
-}
-function updateMqLegend() {
-  const el = $('mqLegend'); if (!el) return;
-  el.style.background = `linear-gradient(90deg, rgb(${COL.read} / ${1 - P.mapqAlpha.transparency}), rgb(${COL.read} / 1))`;
-  $('mqLegendLo').textContent = 'MQ ≤ ' + P.mapqAlpha.low; $('mqLegendHi').textContent = 'MQ ≥ ' + P.mapqAlpha.high;
 }
 let rebuildTimer = 0;
 for (const [id, path, type, effect] of CONTROLS) {
@@ -2501,7 +2500,7 @@ function toast(msg, sticky) {
 }
 
 // ======================= Theme =======================
-function onTheme() { readColors(); if (S.data) rebuild(); draw(); updateMqLegend(); }
+function onTheme() { readColors(); if (S.data) rebuild(); draw(); }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme);
 new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 

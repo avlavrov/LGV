@@ -311,7 +311,7 @@ bar shows colored parts by base.
   are counted separately). **DEL**: reads with a deletion at this position. **INS**: reads with an
   insertion right after this base. The counts come from **all reads at that position**, read again
   from the file, so downsampling does not change them; the filters from **View** (duplicates, MAPQ,
-  secondary, QC-failed) do apply, as in the view. The counted column is outlined.
+  secondary, QC-failed) do apply, as in the view. The counted column is outlined with a thin gray box.
 
   **mQV is not a common standard measure**, so here is exactly what it is: the mean of the
   base qualities (Phred QV, as stored in the file) of that base at this position, over the reads
@@ -330,8 +330,8 @@ bar shows colored parts by base.
   expected sizes are the 0.5–99.5% range of the loaded pairs); a tag value (for example
   `HP` for haplotypes).
 - **Strand**: the 3′ end of each read is pointed, so the strand shows under any coloring.
-- **MAPQ**: the body of a read with low mapping quality is transparent (80% at MAPQ 0, less and
-  less up to solid at MAPQ 30 and above; adjustable up to 100%, an empty read): the read's color
+- **MAPQ**: the body of a read with low mapping quality is transparent (50% at MAPQ 0, less and
+  less up to solid at MAPQ 40 and above; adjustable up to 100%, an empty read): the read's color
   over the background, never lighter than the background. Every read has the same thin pale gray
   outline at any MAPQ, so a pale or empty read still shows where it lies, even zoomed out.
   Mismatches, insertions and clip marks are not paled: their color depends only on base quality.
@@ -351,7 +351,7 @@ bar shows colored parts by base.
   continue the read in its own color, slightly thinner so the clip boundary shows; clipped bases
   that differ from the reference are colored like mismatches. With clips hidden, a pink tick marks
   where a read is clipped.
-- **Pairs** (right click → View as pairs): both mates of a pair in one row, joined by a thin line;
+- **Pairs** (right click → View as pairs): both mates of a pair in one row, joined by a thin gray line (the same gray at any read color and MAPQ);
   where mates overlap the overlap is shaded. A mate outside the loaded window is shown by the line
   to where it lies.
 - **Downsampling**: in deep regions at most 100 reads are kept per 50 bp window (adjustable); marks above the reads show where reads were left out. Coverage still counts every read. Which reads are kept is decided by their names, so it is the same on every load, and **pairs stay together**: when a read is kept, its mate in the loaded window is kept too (a window may then hold up to twice the number). A mate opened from a card (**Go to mate**, **Mate in split screen**) is always shown.

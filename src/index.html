@@ -126,8 +126,6 @@ select.btn { padding-right: 4px; flex: none; max-width: 170px; }
 .pair .field input { grid-column: 1 / -1; }
 .check { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12.5px; }
 .check input { accent-color: var(--accent); }
-.legend { height: 10px; border-radius: 3px; border: 1px solid var(--line); }
-.legend-labels { display: flex; justify-content: space-between; font: 10.5px var(--mono); color: var(--muted); margin-top: 3px; }
 .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 textarea { width: 100%; min-height: 140px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font: 11px/1.45 var(--mono); padding: 8px; resize: vertical; }
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
@@ -247,8 +245,6 @@ body.bare .side { top: 0; }
         <div class="field"><label for="mqHigh" data-i18n="view.mqHigh">To MQ</label><input id="mqHigh" type="number" min="0" max="255" step="1"></div>
       </div>
       <div class="field"><label for="mqTransp" data-i18n-title="tip.mqTransp" data-i18n="view.mqTransp"></label><output id="mqTranspOut"></output><input id="mqTransp" type="range" min="0" max="1" step="0.01"></div>
-      <div class="legend" id="mqLegend"></div>
-      <div class="legend-labels"><span id="mqLegendLo"></span><span id="mqLegendHi"></span></div>
       <p class="hint" data-i18n="view.mqHint"></p>
     </section>
     <section>
