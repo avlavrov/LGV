@@ -202,6 +202,14 @@ names match with or without `chr`.
   `samtools idxstats` saved as `.bed`): the message says so and shows the first such line.
 - Tracks stay open when another reference is loaded (they are positions, not reads).
 
+**Track type switches.** When an annotation track is open, the top bar holds a switch per open
+kind — `✓ BAM 3`, `✓ VCF`, `✓ BED`, `✓ GFF`, `✓ bedGraph`, `✓ TDF`, `✓ bigWig` (BAM covers CRAM;
+the number is how many). A click hides every track of that kind, in all panels, and a second click
+brings them back as they were. With BAM off no reads or coverage are read at all, so a whole
+chromosome opens at once and the other tracks — a BED of regions with loss of heterozygosity, say —
+can be looked at on that scale. Opening a new sample turns BAM back on. The switches last until the
+page is closed.
+
 ## 7b. Signal tracks: TDF and bigWig
 
 Files of values along the genome — coverage, allele fractions, scores — open like the other tracks

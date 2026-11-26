@@ -9,6 +9,16 @@ It runs in the browser with no server and no third-party dependencies.
 **User guide:** [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (Russian: [docs/USER_GUIDE.ru.md](docs/USER_GUIDE.ru.md)).
 Project rules: [docs/PROJECT_RULES.md](docs/PROJECT_RULES.md). Plans: [docs/TODO.md](docs/TODO.md).
 
+## Online (not switched on yet)
+
+`.github/workflows/pages.yml` publishes the page on GitHub Pages: the site's `index.html` is
+`dist/lgv.html`, so LGV opens by its address with nothing to download. Data never go to GitHub: the
+page reads files from the user's computer or the links the user gives. It is started by hand for
+now (Actions → Pages → Run workflow). To switch it on: repository Settings → Pages → Source:
+**GitHub Actions**; then a push trigger can be added. The repository is private: Pages for a private
+repository needs a paid GitHub plan, and the published page itself is public (it holds LGV's code,
+no data).
+
 ## Run
 
 Open `dist/lgv.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38 reference
