@@ -1,6 +1,6 @@
 import sys, json
 from playwright.sync_api import sync_playwright
-url = 'file:///home/claude/cgv/dist/cgv.html'
+url = 'file:///home/claude/cgv/dist/LGV.html'
 out = sys.argv[1] if len(sys.argv) > 1 else '/tmp/claude-0/-home-claude/05d33790-9911-556a-819e-597227a9ba65/scratchpad'
 steps = json.loads(sys.argv[2]) if len(sys.argv) > 2 else []
 with sync_playwright() as p:
