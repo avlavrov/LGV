@@ -25,7 +25,7 @@ function parseGenes(text) {
   const ints = s => s ? s.split(',').map(Number) : [];
   let n = 0;
   for (const line of text.split('\n')) {
-    if (!line || line[0] === '#') { if (line.startsWith('#CGV MANE')) GENES.version = (line.match(/v[\d.]+/) || [''])[0]; continue; }
+    if (!line || line[0] === '#') { if (line.startsWith('#CGV MANE') || line.startsWith('#LGV MANE')) GENES.version = (line.match(/v[\d.]+/) || [''])[0]; continue; }
     const f = line.split('\t'); if (f.length < 14) continue;
     const start = +f[3], len = +f[4], es = ints(f[7]), el = ints(f[8]);
     if (!Number.isSafeInteger(start) || !(len > 0) || es.length !== el.length || !es.length) continue;

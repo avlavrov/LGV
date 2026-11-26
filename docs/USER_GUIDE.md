@@ -161,7 +161,7 @@ to move the active panel there.
 ## 7. Genes (MANE)
 
 Under the reference sits the gene track: MANE Select and MANE Plus Clinical transcripts on GRCh38
-(19,268 transcripts, MANE v1.2), built into LGV — it works offline, and gene names you type never
+(19,373 transcripts, MANE v1.5), built into LGV — it works offline, and gene names you type never
 leave the computer.
 
 - Thick boxes are coding exons, thin boxes UTRs, the line with arrows is the intron and the strand.
@@ -390,10 +390,11 @@ with its quality, e.g. `Base = C @ QV 37 (soft-clipped)`.
 Right click on the reads:
 
 - **View mate region in split screen** (on a paired read with a mapped mate).
-- **Copy read sequence**, **Copy left / right soft-clipped sequence**, **Copy read pair (FASTA)**.
-  All are copied as FASTA with the read name: `>name/1`; clips as `>name/1_left_clip` and
+- **Copy read sequence**, **Copy read sequence, reverse complement**, **Copy left / right
+  soft-clipped sequence**, **Copy read pair (FASTA)**. All are copied as FASTA with the read name:
+  `>name/1`; the reverse complement as `>name/1_revcomp`; clips as `>name/1_left_clip` and
   `>name/1_right_clip`; a pair as `>name/1` and `>name/2`. The sequence is as stored in the file, on
-  the reference's forward strand. Items that do not apply are grayed out.
+  the reference's forward strand (the reverse complement: the opposite strand, read 5′ to 3′). Items that do not apply are grayed out.
 - **View as pairs**, **Show soft-clipped bases**.
 - **Color by**: none, strand, pair orientation and insert size, tag value (with the tag field).
 - **Sort by** at the clicked position: start (unsorted), base, MAPQ, strand, insert size. Reads

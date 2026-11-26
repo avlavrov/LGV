@@ -2279,7 +2279,7 @@ function openMenu(x, gx, y, hit) {
   let copy = '';
   if (r0) {
     const [cl, cr] = clipLens(r0), noSeq = !r0.lseq, mate = (r0.flag & 1) ? findMate(r0, hit.T) : null;
-    copy = act('copySeq', t('menu.copySeq'), noSeq) + act('copyLeft', t('menu.copyLeft'), noSeq || !cl) + act('copyRight', t('menu.copyRight'), noSeq || !cr) +
+    copy = act('copySeq', t('menu.copySeq'), noSeq) + act('copyRc', t('menu.copyRc'), noSeq) + act('copyLeft', t('menu.copyLeft'), noSeq || !cl) + act('copyRight', t('menu.copyRight'), noSeq || !cr) +
       act('copyPair', t(mate || !(r0.flag & 1) ? 'menu.copyPair' : 'menu.copyPairNo'), noSeq || !mate || !mate.lseq) + '<div class="msep"></div>';
   }
   m.innerHTML =
@@ -2303,12 +2303,16 @@ function openMenu(x, gx, y, hit) {
 function closeMenu() { $('ctx').hidden = true; }
 // Read sequences as stored in the file: on the reference's forward strand, as IGV copies them.
 function seqOf(rec, from, to) { let s = ''; for (let i = from; i < to; i++) s += String.fromCharCode(readBaseAt(rec, i)); return s; }
+// Reverse complement (IUPAC codes kept; anything else stays as it is)
+const RC = { A: 'T', C: 'G', G: 'C', T: 'A', U: 'A', N: 'N', R: 'Y', Y: 'R', S: 'S', W: 'W', K: 'M', M: 'K', B: 'V', V: 'B', D: 'H', H: 'D' };
+function revComp(sq) { let o = ''; for (let i = sq.length - 1; i >= 0; i--) { const c = sq[i], u = c.toUpperCase(), r = RC[u]; o += r ? (c === u ? r : r.toLowerCase()) : c; } return o; }
 function copyReadSeq(rec, T, act) {
   const [cl, cr] = clipLens(rec);
   let txt = '';
   // FASTA with the read name; /1 or /2 for paired reads, _left_clip / _right_clip for clips
   const nm = r => r.name + (r.flag & 1 ? (r.flag & 64 ? '/1' : r.flag & 128 ? '/2' : '') : '');
   if (act === 'copySeq') txt = `>${nm(rec)}\n${seqOf(rec, 0, rec.lseq)}\n`;
+  else if (act === 'copyRc') txt = `>${nm(rec)}_revcomp\n${revComp(seqOf(rec, 0, rec.lseq))}\n`;
   else if (act === 'copyLeft') txt = `>${nm(rec)}_left_clip\n${seqOf(rec, 0, cl)}\n`;
   else if (act === 'copyRight') txt = `>${nm(rec)}_right_clip\n${seqOf(rec, rec.lseq - cr, rec.lseq)}\n`;
   else if (act === 'copyPair') {

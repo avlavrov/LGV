@@ -14,13 +14,6 @@ Ideas and agreed work for later. Items move to the user guide and README when do
 
 ## Offered, waiting for a decision
 
-- Update the bundled MANE table to v1.5 (now v1.2; agreed 2026-11-26): needs
-  `MANE.GRCh38.v1.5.summary.txt.gz` and `MANE.GRCh38.v1.5.ensembl_genomic.gff.gz` from
-  ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/release_1.5/ — not reachable from the build
-  environment; the user attaches them.
-- Copy a read's sequence in its original sequencing orientation (now: as stored, forward strand
-  of the reference, as IGV).
-- Markers at the panel edge for reads (mates) off screen.
 - Share link: a link that opens the same loci (and public data links).
 - Check how IGV desktop (htsjdk) handles damaged CRAM files (igv.js does not check CRC by default).
 - BLAT (removed 2026-11-26: this version sends nothing anywhere). From a web page UCSC's hgBlat
