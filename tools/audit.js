@@ -70,12 +70,12 @@ for (const f of ['src/core.js', 'src/compress.js', 'src/htscodecs.js', 'src/cram
   console.log('OK   top-level names checked across the page\'s scripts: ' + seen.size);
 }
 // the local build must carry the strict Content Security Policy
-const dist = R('dist/lgv.html');
+const dist = R('dist/LGV.html');
 if (fs.existsSync(dist)) {
   const h = fs.readFileSync(dist, 'utf8');
   const csp = (h.match(/Content-Security-Policy" content="([^"]+)"/) || [])[1] || '';
-  if (!/default-src 'none'/.test(csp) || /unsafe-eval/.test(csp) || !/script-src 'unsafe-inline'/.test(csp)) { fails++; console.log('FAIL dist/lgv.html: the Content Security Policy is missing or weakened: ' + csp); }
-  else console.log('OK   dist/lgv.html carries the strict Content Security Policy');
+  if (!/default-src 'none'/.test(csp) || /unsafe-eval/.test(csp) || !/script-src 'unsafe-inline'/.test(csp)) { fails++; console.log('FAIL dist/LGV.html: the Content Security Policy is missing or weakened: ' + csp); }
+  else console.log('OK   dist/LGV.html carries the strict Content Security Policy');
 }
 // no third-party packages
 if (fs.existsSync(R('package.json'))) { const pj = JSON.parse(fs.readFileSync(R('package.json'))); if (Object.keys(pj.dependencies || {}).length) { fails++; console.log('FAIL package.json lists runtime dependencies'); } }

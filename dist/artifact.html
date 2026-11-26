@@ -1,6 +1,6 @@
-<title>LGV — Lavrov Genome Viewer</title>
+<title>LGV</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="LGV — Lavrov Genome Viewer: a fast in-browser viewer for BAM and CRAM alignments">
+<meta name="description" content="LGV: a fast in-browser viewer for BAM and CRAM alignments">
 <style>
 /* Data fills the screen; the UI is one thin bar on top plus slide-in panels. */
 :root {
@@ -8295,7 +8295,7 @@ async function startup() {
 const START_GENE = 'BRCA1';
 
 // ======================= Opening from a link =======================
-// lgv.html#ref=hg38&file=https://…/sample.bam&locus=CFTR — so another system (a LIMS, a report, a
+// LGV.html#ref=hg38&file=https://…/sample.bam&locus=CFTR — so another system (a LIMS, a report, a
 // table of variants) can open a sample at a place. Parameters after # stay in the browser (they are
 // not sent to the server hosting LGV); after ? works too.
 //   ref    hg38 | hg19 | chm13 | demo, or a link to a FASTA (.fai next to it; .gzi for .fa.gz)
@@ -8402,8 +8402,8 @@ function showAbout() {
   for (const k of ['about.htscodecs', 'about.mane', 'about.bands', 'about.refs']) { const li = document.createElement('li'); li.textContent = t(k); ul.append(li); }
   add('p', t('about.guide'), 'hint');
   add('h2', t('about.diag'));
-  add('p', t('about.diagHint', { n: DIAG.length }), 'hint');
-  const b = document.createElement('button'); b.className = 'btn'; b.textContent = t('about.diagCopy'); el.append(b);
+  // the explanation in the tooltip; the button says how many entries there are
+  const b = document.createElement('button'); b.className = 'btn'; b.textContent = t('about.diagCopy') + ' (' + DIAG.length + ')'; b.title = t('about.diagHint', { n: DIAG.length }); el.append(b);
   b.onclick = () => {
     const env = `LGV ${LGV_INFO.version}${v} · ${navigator.userAgent} · ${navigator.hardwareConcurrency || '?'} cores · workers ${POOL.ok ? POOL.workers.length : 'off'}`;
     navigator.clipboard.writeText([env, ...DIAG].join('\n')).then(() => toast(t('copied')), () => toast(t('copyFail')));

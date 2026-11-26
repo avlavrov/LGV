@@ -1,5 +1,5 @@
-# Publishes LGV on GitHub Pages: builds dist/lgv.html and serves it as the site's index.html (also
-# as lgv.html), with the user guide next to it. The page reads data only from the user's computer or
+# Publishes LGV on GitHub Pages: builds dist/LGV.html and serves it as the site's index.html (also
+# as LGV.html), with the user guide next to it. The page reads data only from the user's computer or
 # the links the user gives; nothing is uploaded to GitHub.
 # Every push to main publishes it (and it can be started by hand: Actions → Pages → Run workflow).
 # Needs Pages switched on once: Settings → Pages → Source: GitHub Actions.
@@ -34,8 +34,8 @@ jobs:
       - name: Site
         run: |
           mkdir -p site/docs
-          cp dist/lgv.html site/index.html
-          cp dist/lgv.html site/lgv.html
+          cp dist/LGV.html site/index.html
+          cp dist/LGV.html site/LGV.html
           cp docs/USER_GUIDE.md docs/USER_GUIDE.ru.md site/docs/
           touch site/.nojekyll
       - uses: actions/configure-pages@v5

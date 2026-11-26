@@ -1,7 +1,7 @@
 # LGV user guide
 
 LGV (Lavrov Genome Viewer) shows read alignments (BAM, CRAM) against a reference
-genome, for medical and human genetics. It runs in a browser from one file, `lgv.html`, with no
+genome, for medical and human genetics. It runs in a browser from one file, `LGV.html`, with no
 installation and no server: files are read in pieces straight from your disk or from links you
 give, and nothing is uploaded anywhere.
 
@@ -32,7 +32,7 @@ This guide describes LGV as it is now and is updated with every change. Russian 
 
 ## 1. Starting
 
-Open `lgv.html` in Chrome, Edge, Firefox or Safari (Chrome or Edge recommended: some features need
+Open `LGV.html` in Chrome, Edge, Firefox or Safari (Chrome or Edge recommended: some features need
 them, see 3.1). At start LGV loads the **GRCh38 / hg38** reference (sequence only, from the IGV
 team's public storage) and opens on BRCA1. A short message confirms the reference is loaded.
 
@@ -486,10 +486,10 @@ copied as JSON, pasted from someone else and applied, or reset.
   opened by link, and every panel's locus. Files opened from this computer cannot be in a link (a
   message names them), and access tokens are never put in a link.
 - **Opening LGV from another system** (a LIMS, a report, a variant table): add parameters after
-  `#` (or `?`) to the address of `lgv.html`:
+  `#` (or `?`) to the address of `LGV.html`:
 
   ```
-  lgv.html#ref=hg38&file=https://server/sample.cram&locus=CFTR
+  LGV.html#ref=hg38&file=https://server/sample.cram&locus=CFTR
   ```
 
   - `ref` — `hg38`, `hg19`, `chm13`, `demo`, or a link to a FASTA (`.fai` next to it, `.gzi` for
@@ -499,7 +499,7 @@ copied as JSON, pasted from someone else and applied, or reset.
   - `locus` — loci or genes; several separated by spaces (`%20` or `+`) open side by side.
 
   Only `https` links are read (and `http` on this computer). Parameters after `#` stay in the
-  browser and are not sent to the server that hosts `lgv.html`, so they are the better choice for
+  browser and are not sent to the server that hosts `LGV.html`, so they are the better choice for
   patient data.
 
 ## 16. Privacy and security

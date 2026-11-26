@@ -104,7 +104,7 @@ Every reader of file data outside CRAM was reviewed line by line and fuzzed the 
 
 ## Opening from a link
 
-`lgv.html#ref=…&file=…&index=…&locus=…` opens data named in the address. Only https links (and http on
+`LGV.html#ref=…&file=…&index=…&locus=…` opens data named in the address. Only https links (and http on
 this computer) are read, at most 50 files; access tokens are never taken from or put into a link;
 LGV still sends nothing anywhere — the links are only read. The "Link" button builds such a link from
 what was opened by link; files from the computer are left out.

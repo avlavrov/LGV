@@ -12,14 +12,14 @@ Project rules: [docs/PROJECT_RULES.md](docs/PROJECT_RULES.md). Plans: [docs/TODO
 ## Online
 
 LGV is published at **https://avlavrov.github.io/LGV/** (GitHub Pages, `.github/workflows/pages.yml`):
-every push to `main` builds `dist/lgv.html` and serves it as the site's `index.html` (also as
-`lgv.html`), with the user guide next to it. Nothing to download; data never go to GitHub — the
+every push to `main` builds `dist/LGV.html` and serves it as the site's `index.html` (also as
+`LGV.html`), with the user guide next to it. Nothing to download; data never go to GitHub — the
 page reads files from the user's computer or the links the user gives. The repository is public:
 LGV is one HTML file whose whole code is in the page anyway.
 
 ## Run
 
-Open `dist/lgv.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38 reference
+Open `dist/LGV.html` in Chrome, Edge, Firefox or Safari. It starts on the GRCh38 reference
 (synthetic demo data when offline). To view your own data, press **Open**:
 
 - **From disk**: choose one or more `.bam` files with their indexes (you can add `.fa` +
@@ -93,7 +93,7 @@ tools/         demo data generator, build, tests
 BGZF is inflated with the browser's built-in `DecompressionStream('deflate-raw')`; the CRC32 and
 length of every block are checked, and every size read from a file is checked before use (see SECURITY.md). There are
 no third-party libraries: a smaller attack surface and nothing to keep patched. The local
-build (`dist/lgv.html`) carries a strict Content Security Policy: no remote scripts, styles
+build (`dist/LGV.html`) carries a strict Content Security Policy: no remote scripts, styles
 or fonts, and network access only for data the user points to.
 
 ## Development
@@ -107,7 +107,7 @@ node tools/test-signal.js                   # TDF and bigWig on files from IGV, 
 python3 tools/make-signal-tests.py [big]    # synthetic TDF / bigWig test files (big: large ones for speed)
 node tools/gen-longreads.js DIR [n] [len]   # long-read test set (a plasmid, nanopore-like reads) for speed checks
 node tools/audit.js                         # security audit of our own code (see SECURITY.md)
-node tools/build.js                         # dist/lgv.html and dist/artifact.html
+node tools/build.js                         # dist/LGV.html and dist/artifact.html
 CGV_L=1000000 node tools/gen-demo.js big    # 1 Mb at 30× for speed tests
 ```
 

@@ -25,5 +25,5 @@ fs.writeFileSync(R('dist/artifact.html'), html);
 const local = '<!doctype html>\n<html lang="ru">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
   + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: blob:; connect-src https: http://localhost:* http://127.0.0.1:*; worker-src blob:">\n'
   + '<style>body{margin:0}</style>\n</head>\n<body>\n' + html + '\n</body>\n</html>\n';
-fs.writeFileSync(R('dist/lgv.html'), local);
-console.log('dist/lgv.html', (local.length / 1024).toFixed(0), 'KB; dist/artifact.html', (html.length / 1024).toFixed(0), 'KB');
+fs.writeFileSync(R('dist/LGV.html'), local);
+console.log('dist/LGV.html', (local.length / 1024).toFixed(0), 'KB; dist/artifact.html', (html.length / 1024).toFixed(0), 'KB');

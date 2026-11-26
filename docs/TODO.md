@@ -6,7 +6,7 @@ Ideas and agreed work for later. Items move to the user guide and README when do
 
 - **Read card in its own window** (for a second monitor): Chrome and Edge can open an always-on-top
   window with page content (Document Picture-in-Picture); the card would be rendered there and
-  updated on every click. About 100 lines; Chrome / Edge only, local `lgv.html` only (claude.ai
+  updated on every click. About 100 lines; Chrome / Edge only, local `LGV.html` only (claude.ai
   will likely not allow it). A plain pop-up window was rejected: two windows talking to each other
   goes against the security rule "the page does not talk to other windows". (2026-11-01: postponed)
 - **IGV read-menu features**: the user marks which to add in the Google Sheet
