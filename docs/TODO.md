@@ -14,8 +14,10 @@ Ideas and agreed work for later. Items move to the user guide and README when do
 
 ## Offered, waiting for a decision
 
-- Update the bundled MANE table to the latest release (now v1.2): needs `MANE...summary.txt.gz`
-  and `MANE...ensembl_genomic.gff.gz` from NCBI (not reachable from the build environment).
+- Update the bundled MANE table to v1.5 (now v1.2; agreed 2026-11-26): needs
+  `MANE.GRCh38.v1.5.summary.txt.gz` and `MANE.GRCh38.v1.5.ensembl_genomic.gff.gz` from
+  ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/release_1.5/ — not reachable from the build
+  environment; the user attaches them.
 - Copy a read's sequence in its original sequencing orientation (now: as stored, forward strand
   of the reference, as IGV).
 - Markers at the panel edge for reads (mates) off screen.
