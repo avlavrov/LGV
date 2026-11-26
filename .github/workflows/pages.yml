@@ -1,10 +1,12 @@
 # Publishes LGV on GitHub Pages: builds dist/lgv.html and serves it as the site's index.html (also
 # as lgv.html), with the user guide next to it. The page reads data only from the user's computer or
 # the links the user gives; nothing is uploaded to GitHub.
-# Started by hand (Actions → Pages → Run workflow) until Pages is switched on for the repository
-# (Settings → Pages → Source: GitHub Actions); then `push: branches: [main]` can be added below.
+# Every push to main publishes it (and it can be started by hand: Actions → Pages → Run workflow).
+# Needs Pages switched on once: Settings → Pages → Source: GitHub Actions.
 name: Pages
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
