@@ -9,6 +9,16 @@ It runs in the browser with no server and no third-party dependencies.
 **User guide:** [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (Russian: [docs/USER_GUIDE.ru.md](docs/USER_GUIDE.ru.md)).
 Project rules: [docs/PROJECT_RULES.md](docs/PROJECT_RULES.md). Plans: [docs/TODO.md](docs/TODO.md).
 
+## Data updates
+
+`.github/workflows/update-data.yml` runs on the 3rd of every month (and by hand): it finds the newest
+MANE (NCBI) and GENCODE releases, rebuilds what is newer (`tools/make-mane.py`, `tools/make-genes.js`
+→ bigBed with `tools/bigbed.js`), checks it (all tests; `tools/test-bigbed.js` with libBigWig as an
+independent reader; `tools/check-genes.js`: control genes and counts), and publishes only what
+passed: gene files as release assets `genes-vNN` (not in the repository), the site via `pages.yml`.
+Every run commits `data/versions.json` (so the schedule stays on) and opens an issue, which GitHub
+e-mails to the owner: updated (with the log), nothing new, or failed (left open, nothing published).
+
 ## Online
 
 LGV is published at **https://avlavrov.github.io/LGV/** (GitHub Pages, `.github/workflows/pages.yml`):

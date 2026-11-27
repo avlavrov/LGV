@@ -214,6 +214,18 @@ chromosome opens at once and the other tracks — a BED of regions with loss of 
 can be looked at on that scale. Opening a new sample turns BAM back on. The switches last until the
 page is closed.
 
+**bigBed** (`.bb`, `.bigBed`): features read by region, so a file of any size opens at once (by link
+the server must allow Range requests). Drawn like BED; a gene track (bigGenePred and the like) is
+labeled with gene names, and its extra columns are listed in the card. If the file has name indexes,
+a gene or transcript name typed in the locus box is found in it. Too much at a wide view: the name
+line says to zoom in.
+
+**Ensembl gene tracks** (View → Ensembl genes: canonical / all transcripts; GRCh38): GENCODE
+genes as bigBed files published next to LGV and read by region — one transcript per gene (the
+Ensembl canonical one) for every gene, coding or not (IGHM, lncRNAs, pseudogenes…), or every
+transcript. They do not add to LGV.html. Names (gene, transcript, gene id) are searched in the
+locus box. They are rebuilt automatically when a new GENCODE release appears (section 16).
+
 ## 7b. Signal tracks: TDF and bigWig
 
 Files of values along the genome — coverage, allele fractions, scores — open like the other tracks
@@ -512,6 +524,13 @@ copied as JSON, pasted from someone else and applied, or reset.
   anywhere; the only connection it makes by itself is loading the reference chosen to open at
   start (sequence only).
 - Gene search and the gene track are built in: typed gene names are not sent anywhere.
+- Two more connections, both to LGV's own site (avlavrov.github.io/LGV), never with your data:
+  the Ensembl gene tracks, when switched on, request parts of the public gene files; and a copy of
+  LGV.html opened from disk asks the site once for its version (`version.json`) and, if a newer
+  build exists, offers it (open online or save the new LGV.html).
+- Bundled and published data stay current by themselves: once a month an automatic job looks for
+  new MANE and GENCODE releases, rebuilds, checks (tests, an independent bigBed reader, control
+  genes, counts) and publishes only what passed; every run is reported to the maintainer.
 - Only the display profile is saved in the browser. Tokens, links and folder access are never
   saved.
 - Every file is treated as untrusted: damaged or hostile files end in a clear message, never in
