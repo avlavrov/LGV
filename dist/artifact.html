@@ -5427,7 +5427,8 @@ class BigBedFile extends BigWigFile {
     if (sqlOff > 0) {
       const t = new TextDecoder().decode(await this.src.read(sqlOff, BB_LIMITS.sql)).split('\0')[0];
       // "table name "comment" ( type field; "comment" ... )": the last word before each ';'
-      const body = t.slice(t.indexOf('(') + 1).replace(/"[^"]*"/g, ' ');
+      // (quoted text first: a description may hold brackets)
+      const u = t.replace(/"[^"]*"/g, ' '), body = u.slice(u.indexOf('(') + 1);
       for (const part of body.split(';').slice(0, -1)) { const w = part.trim().split(/\s+/); this.fields.push(w[w.length - 1].replace(/\W/g, '')); }
     }
     // extra indexes: [{ field, offset }]
@@ -8658,7 +8659,7 @@ function saveSnapshot() {
 $('snapBtn').onclick = saveSnapshot;
 
 // ======================= About =======================
-const LGV_INFO = { version: '0.9.0', build: '2026-11-27', buildId: '2026-11-27T21:34:23.050Z', mane: 'v1.5' };
+const LGV_INFO = { version: '0.9.0', build: '2026-11-27', buildId: '2026-11-27T22:06:36.954Z', mane: 'v1.5' };
 // ---- Update check: a copy of LGV.html opened from disk (or anywhere but LGV's site) asks LGV's site
 // once for its version.json (the build time only; nothing about the user or the data is sent). When
 // the site's build is newer, a message offers the new version: online, or LGV.html to save.

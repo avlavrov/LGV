@@ -23,7 +23,7 @@ for (const ips of [64, 512, 4096]) {
 // LGV's own reader (src/signal.js) on the same file: regions and the name indexes
 (async () => {
   const { BigBedFile } = require('../src/signal.js');
-  const buf = writeBigBed(recs, Object.entries(sizes), { autoSql: 'table t "test" ( string chrom; uint chromStart; uint chromEnd; string name; uint score; char[1] strand; uint thickStart; uint thickEnd; uint reserved; int blockCount; int[blockCount] blockSizes; int[blockCount] chromStarts; string geneName; string refseq; )', fieldCount: 14, definedFieldCount: 12, itemsPerSlot: 512, extraIndex: [{ field: 3, key: r => r.rest.split('\t')[0].replace(/\.\d+$/, '').toUpperCase() }, { field: 12, key: r => r.rest.split('\t')[9].toUpperCase() }] });
+  const buf = writeBigBed(recs, Object.entries(sizes), { autoSql: 'table t "test (one per gene)" ( string chrom; uint chromStart; uint chromEnd; string name; uint score; char[1] strand; uint thickStart; uint thickEnd; uint reserved; int blockCount; int[blockCount] blockSizes; int[blockCount] chromStarts; string geneName; string refseq; )', fieldCount: 14, definedFieldCount: 12, itemsPerSlot: 512, extraIndex: [{ field: 3, key: r => r.rest.split('\t')[0].replace(/\.\d+$/, '').toUpperCase() }, { field: 12, key: r => r.rest.split('\t')[9].toUpperCase() }] });
   const src = { name: 'test.bb', size: buf.length, read: async (p, n) => new Uint8Array(buf.buffer, buf.byteOffset + p, Math.max(0, Math.min(n, buf.length - p))) };
   const bb = await new BigBedFile(src).open();
   let bad = 0, n = 0;

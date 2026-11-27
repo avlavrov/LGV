@@ -28,6 +28,8 @@ const mane = new Map(fs.readFileSync(path.join(__dirname, '..', 'data', 'mane.gr
     }
     const ig = await bb.findName('IGHM');
     say(ig.length > 0 && ig.every(h => h.chr === 'chr14' && h.start > 105500000 && h.end < 106900000), `${k}: IGHM found on chr14 (not in MANE)`);
+    // the reader names the extra columns (gene symbol shown as the label)
+    say(ig.length > 0 && ig.every(h => h.label === 'IGHM' && h.attrs && h.attrs.transcriptType), `${k}: column names read (label IGHM)`);
   }
   console.log(JSON.stringify({ counts }));
   process.exit(fails ? 1 : 0);

@@ -484,7 +484,8 @@ class BigBedFile extends BigWigFile {
     if (sqlOff > 0) {
       const t = new TextDecoder().decode(await this.src.read(sqlOff, BB_LIMITS.sql)).split('\0')[0];
       // "table name "comment" ( type field; "comment" ... )": the last word before each ';'
-      const body = t.slice(t.indexOf('(') + 1).replace(/"[^"]*"/g, ' ');
+      // (quoted text first: a description may hold brackets)
+      const u = t.replace(/"[^"]*"/g, ' '), body = u.slice(u.indexOf('(') + 1);
       for (const part of body.split(';').slice(0, -1)) { const w = part.trim().split(/\s+/); this.fields.push(w[w.length - 1].replace(/\W/g, '')); }
     }
     // extra indexes: [{ field, offset }]
