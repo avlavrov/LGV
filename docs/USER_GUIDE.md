@@ -123,7 +123,10 @@ the open samples.
   the position), a contig name (`chrX`, `X` and `x` are the same), a **gene symbol** (`CFTR`), or a
   MANE transcript (`NM_000492`, `ENST00000003084`, with or without version). Enter or **Go**.
   Suggestions appear while typing a gene. `500-100` is read as `100-500`; positions beyond the
-  contig are moved to its end.
+  contig are moved to its end. A name that is not in MANE (for example `IGHM`) is looked up in the
+  open annotation tracks (section 7a): GTF / GFF3 gene and transcript names and ids (gene_name,
+  gene_id, transcript_id, transcript_name, Name, ID; versions ignored) and BED names; LGV opens the
+  span of all its transcripts.
 - **Several loci or genes separated by spaces** open side by side (section 5).
 - **Drag** the reads left or right to move along the genome.
 - **Zoom**: **− +** buttons and keys (all panels at once), Ctrl + wheel or a trackpad pinch, double
@@ -177,7 +180,8 @@ leave the computer.
 Annotation files open the same way as samples — **Open → From disk** (choose, drop, or together with
 samples), or **By link** — and are recognized by their name: `.bed` (also `.narrowPeak`,
 `.broadPeak`), `.bedgraph` / `.bg`, `.vcf`, `.gtf`, `.gff` / `.gff3`, each also as `.gz` (gzip or
-bgzip). No index is needed: the file is read whole (up to 512 MB unpacked).
+bgzip). No index is needed: the file is read whole (up to 512 MB unpacked; a compressed file of
+40 MB can unpack to more — the message then names both sizes).
 
 They appear as bands under the gene track, in the order opened, fixed while the samples scroll.
 Each band starts with a thin line holding its file name, and × at the right closes it. Contig

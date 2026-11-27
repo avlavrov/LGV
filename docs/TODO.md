@@ -17,6 +17,13 @@ Ideas and agreed work for later. Items move to the user guide and README when do
   no new dependencies, ~300–400 lines); in the desktop version it could also save next to the data.
   To be planned after the desktop shell is chosen.
 
+- **Large gene annotations** (asked 2026-11-27: UCSC knownGene / GENCODE GTF, 38 MB packed, over
+  512 MB unpacked): options, waiting for a decision — (1) read big GTF / GFF3 as a stream into a
+  compact form (no single huge string; ~10–20 s and ~200 MB memory once per file: over the 1 s
+  budget, would ask first); (2) indexed files read by region, instant: tabix (.gz + .tbi / .csi)
+  for GTF, GFF3, BED, VCF and bigBed / bigGenePred (same container as bigWig, already read);
+  (3) a gene-name list of all GENCODE genes built in for search (+~0.6–1 MB to the page).
+
 ## Offered, waiting for a decision
 
 - Share link: a link that opens the same loci (and public data links).

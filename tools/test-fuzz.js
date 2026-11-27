@@ -236,10 +236,12 @@ async function readAllWays(bam, bai) {
   const grab = (start, end) => { const a = app.indexOf(start), b = app.indexOf(end, a); if (a < 0 || b < 0) throw new Error('app.js changed: ' + start); return app.slice(a, b); };
   const Gn = require('../src/genes.js'); Gn.parseGenes(fs.readFileSync(path.join(__dirname, '..', 'data', 'mane.grch38.tsv'), 'utf8'));
   const ctx = { S: { contigs: [{ name: 'chr1', len: 248956422 }, { name: 'chrM', len: 16569 }, { name: 'chr17', len: 83257441 }] }, t: k => k, result: null,
-    GENES: Gn.GENES, findGene: Gn.findGene, genesActive: () => true };
+    GENES: Gn.GENES, findGene: Gn.findGene, genesActive: () => true,
+    ANN: { tracks: [{ ix: { byChr: new Map([['14', { list: [{ start: 105851704, end: 105854000, name: 'IGHM-201', attrs: { gene_name: 'IGHM', transcript_id: 'ENST00000390559.6' } }, { start: 105852000, end: 105856218, name: 'IGHM-202', attrs: { gene_name: 'IGHM' } }] }]]) } }] } };
+  ctx.S.contigs.push({ name: 'chr14', len: 107043718 });
   ctx.contigId = n => ctx.S.contigs.findIndex(c => c.name === n || c.name === 'chr' + n);
   vm.createContext(ctx);
-  vm.runInContext(grab('const DEFAULT_PROFILE', 'let P = DEFAULT_PROFILE;') + grab('function parseLocus', '// ======================= Input') +
+  vm.runInContext(grab('const DEFAULT_PROFILE', 'let P = DEFAULT_PROFILE;') + grab('// A gene, transcript or feature name in the open annotation tracks', '// ======================= Input') +
     ';this.mergeProfile = mergeProfile; this.parseLocus = parseLocus; this.DEFAULT_PROFILE = DEFAULT_PROFILE;', ctx);
   {
     const loci = ['chr1:1-100', 'chr1:100', 'chrM:20000-30000', 'chr1:500-100', 'chr1:99999999999999999999-1', 'chr1:0-0', 'chr1:-5', 'chr1:1,000,000-2,000,000', '1:5', 'x'.repeat(5000), 'chr1:' + '9'.repeat(400), ':::', 'chr1:1-2-3', '', 'chrM:1.000-5', 'BRCA1', 'brca1', 'NM_007294.4', 'ENST00000357654', 'BRCA1:5', 'NOTAGENE', 'BRCA1 BRCA2'];
@@ -248,6 +250,8 @@ async function readAllWays(bam, bai) {
       const r = ctx.parseLocus(l);
       if (r && !r.error) { const L = ctx.S.contigs[r.id].len; if (!(Number.isSafeInteger(r.s) && Number.isSafeInteger(r.e) && r.e > r.s && r.e <= L + 51 && r.s >= -50)) badLoc.push(l.slice(0, 40) + ' → ' + JSON.stringify(r)); }
     }
+    { const r = ctx.parseLocus('ighm'), r2 = ctx.parseLocus('ENST00000390559');
+      ok(r && r.id === 3 && r.s < 105851704 && r.e > 105856218 && r2 && r2.id === 3, 'a gene not in MANE is found in an open annotation track (all its transcripts), also by transcript id without version'); }
     const g = ctx.parseLocus('BRCA1');
     if (!g || g.error || ctx.S.contigs[g.id].name !== 'chr17' || g.s > 43044294 || g.e < 43125364) badLoc.push('BRCA1 is not found where MANE puts it: ' + JSON.stringify(g));
     const r1 = ctx.parseLocus('chr1:500-100'), r2 = ctx.parseLocus('chr1:100-500');

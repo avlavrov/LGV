@@ -131,7 +131,7 @@ const STRINGS = {
     'sig.windowing': 'Windowing function', 'sig.scale': 'Scale', 'sig.s.auto': 'Auto (values in view)', 'sig.s.01': '0 – 1', 'sig.s.file': 'From the file ({lo} – {hi})',
     'sig.zero': 'Always include zero', 'sig.log': 'Log scale: ln(1 + x)', 'sig.height': 'Row height', 'sig.h.less': 'Lower', 'sig.h.more': 'Higher', 'sig.reset': 'Back to the file’s settings',
     'err.tdfBad': 'The TDF file is damaged or not TDF: {what}', 'err.bwBad': 'The bigWig file is damaged or not bigWig: {what}', 'err.bwBigBed': '{name} is a bigBed file (features); LGV reads bigWig (values) from this family',
-    'err.trackFormat': 'Unknown track format: {name}. LGV reads BED, bedGraph, VCF, GTF, GFF3, TDF and bigWig', 'err.trackEmpty': 'No features found in {name}', 'err.trackBig': '{name} is larger than LGV reads at once ({size})', 'err.trackMany': '{name} has more than {n} features',
+    'err.trackFormat': 'Unknown track format: {name}. LGV reads BED, bedGraph, VCF, GTF, GFF3, TDF and bigWig', 'err.trackEmpty': 'No features found in {name}', 'err.trackBig': '{name} is larger than LGV reads at once ({size})', 'err.trackBigGz': '{name} ({packed}) unpacks to more than LGV reads at once ({size}). Open a part of it (for example the lines of the genes you need), or a smaller annotation', 'err.trackMany': '{name} has more than {n} features',
   },
   ru: {
     'locus.aria': 'Локус: контиг:начало-конец',
@@ -262,7 +262,7 @@ const STRINGS = {
     'sig.windowing': 'Оконная функция', 'sig.scale': 'Шкала', 'sig.s.auto': 'Авто (по видимым значениям)', 'sig.s.01': '0 – 1', 'sig.s.file': 'Из файла ({lo} – {hi})',
     'sig.zero': 'Всегда включать ноль', 'sig.log': 'Логарифмическая: ln(1 + x)', 'sig.height': 'Высота ряда', 'sig.h.less': 'Ниже', 'sig.h.more': 'Выше', 'sig.reset': 'Вернуть настройки файла',
     'err.tdfBad': 'Файл TDF повреждён или это не TDF: {what}', 'err.bwBad': 'Файл bigWig повреждён или это не bigWig: {what}', 'err.bwBigBed': '{name} — файл bigBed (объекты); из этого семейства LGV читает bigWig (значения)',
-    'err.trackFormat': 'Неизвестный формат дорожки: {name}. LGV читает BED, bedGraph, VCF, GTF, GFF3, TDF и bigWig', 'err.trackEmpty': 'В {name} не найдено объектов', 'err.trackBig': '{name} больше, чем LGV читает за раз ({size})', 'err.trackMany': 'В {name} больше {n} объектов',
+    'err.trackFormat': 'Неизвестный формат дорожки: {name}. LGV читает BED, bedGraph, VCF, GTF, GFF3, TDF и bigWig', 'err.trackEmpty': 'В {name} не найдено объектов', 'err.trackBig': '{name} больше, чем LGV читает за раз ({size})', 'err.trackBigGz': 'В распакованном виде {name} ({packed}) больше, чем LGV читает за раз ({size}). Откройте его часть (например, строки нужных генов) или аннотацию поменьше', 'err.trackMany': 'В {name} больше {n} объектов',
   },
 };
 const LANGS = [['en', 'English'], ['ru', 'Русский']];

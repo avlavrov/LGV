@@ -188,13 +188,14 @@ function parseGtfGff(text, name, kind) {
 function decodeGff(s) { try { return decodeURIComponent(s); } catch (e) { return s; } }
 
 // gzip or bgzip (blocks of gzip one after another, as tabix-ready files are), capped in size.
+const fmtMB = n => (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB';
 async function gunzipTrack(bytes, name) {
-  const big = { name, size: '512 MB' };
-  if (!isBgzfHeader(bytes)) return inflateStream(bytes, 'gzip', TRACK_LIMITS.bytes, 'inflate', big, 'trackBig');
+  const big = { name, size: '512 MB', packed: fmtMB(bytes.length) };
+  if (!isBgzfHeader(bytes)) return inflateStream(bytes, 'gzip', TRACK_LIMITS.bytes, 'inflate', big, 'trackBigGz');
   const parts = []; let total = 0;
   for (const b of parseBgzfBlocks(bytes, 0)) {
     const u = await inflateBgzf(bytes, b); total += u.length;
-    if (total > TRACK_LIMITS.bytes) throw new CgvError('trackBig', big);
+    if (total > TRACK_LIMITS.bytes) throw new CgvError('trackBigGz', big);
     parts.push(u);
   }
   const out = new Uint8Array(total); let o = 0; for (const u of parts) { out.set(u, o); o += u.length; }

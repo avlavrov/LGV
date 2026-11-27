@@ -1444,6 +1444,31 @@ function syncLocus() {
   $('span').textContent = fmtBp(Math.min(refLen(), viewEnd()) - Math.max(0, S.view.start));
   usePanel(prev);
 }
+// A gene, transcript or feature name in the open annotation tracks: the span of everything named so
+// (all transcripts of a gene) on the contig of the first match. Names are indexed per track on the
+// first search (GTF / GFF3: gene_name, gene_id, transcript_id, transcript_name, Name, ID; versions
+// ignored; BED: the name column).
+function trackNames(a) {
+  if (a.names) return a.names;
+  const m = new Map(), key = v => String(v).toUpperCase().replace(/\.\d+$/, '');
+  for (const [chr, c] of a.ix.byChr || []) for (const f of c.list) {
+    const ks = new Set([f.name]);
+    if (f.attrs) for (const k of ['gene_name', 'gene_id', 'transcript_id', 'transcript_name', 'Name', 'ID', 'gene']) if (f.attrs[k]) ks.add(f.attrs[k]);
+    for (const k of ks) { if (!k) continue; const kk = key(k); if (!m.has(kk)) m.set(kk, []); m.get(kk).push([chr, f.start, f.end]); }
+  }
+  return (a.names = m);
+}
+function findInTracks(q) {
+  const k = String(q).toUpperCase().replace(/\.\d+$/, '');
+  for (const a of ANN.tracks) {
+    if (!a.ix || !a.ix.byChr) continue;
+    const hits = trackNames(a).get(k); if (!hits || !hits.length) continue;
+    const id = contigId(hits[0][0]); if (id < 0) continue;
+    const on = hits.filter(h => h[0] === hits[0][0]);
+    return { id, s: Math.min(...on.map(h => h[1])), e: Math.max(...on.map(h => h[2])) };
+  }
+  return null;
+}
 function parseLocus(str) {
   if (typeof str !== 'string' || str.length > 300) return null;
   str = str.trim().replace(/[  \s]/g, '').replace(/[–—]/g, '-');
@@ -1458,6 +1483,8 @@ function parseLocus(str) {
       const gid = tx ? contigId(tx.chr) : -1;
       if (gid >= 0) { const pad = Math.max(50, Math.round((tx.end - tx.start) * 0.05)); return { id: gid, s: Math.max(0, tx.start - pad), e: Math.min(S.contigs[gid].len, tx.end + pad), gene: tx }; }
     }
+    // not in MANE: a name in an open annotation track (GTF / GFF3 gene or transcript, BED name)
+    if (!m[2]) { const f = findInTracks(m[1]); if (f) { const pad = Math.max(50, Math.round((f.e - f.s) * 0.05)); return { id: f.id, s: Math.max(0, f.s - pad), e: Math.min(S.contigs[f.id].len, f.e + pad) }; } }
     return { error: t(GENES.ready ? 'locus.noContigGene' : 'locus.noContig', { name: m[1] }) };
   }
   const num = x => parseInt(x.replace(/[,.]/g, ''), 10);
