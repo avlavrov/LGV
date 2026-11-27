@@ -8,6 +8,7 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call: # from the monthly data update (its own pushes do not start this workflow)
 permissions:
   contents: read
   pages: write
@@ -23,6 +24,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main # the data update calls this after pushing to main
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -37,7 +40,16 @@ jobs:
           cp dist/LGV.html site/index.html
           cp dist/LGV.html site/LGV.html
           cp docs/USER_GUIDE.md docs/USER_GUIDE.ru.md site/docs/
+          cp dist/version.json site/version.json
           touch site/.nojekyll
+      - name: Gene files (bigBed, kept as release assets, not in the repository)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="genes-$(node -p "require('./data/versions.json').gencode || ''")"
+          mkdir -p site/genes
+          if [ "$tag" != "genes-" ]; then gh release download "$tag" --pattern '*.bb' --dir site/genes; fi
+          ls -la site/genes
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

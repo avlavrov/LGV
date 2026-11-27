@@ -1,0 +1,142 @@
+# Monthly data update: keeps the bundled MANE table and the Ensembl/GENCODE gene tracks current.
+# 1. finds the newest MANE (NCBI) and GENCODE releases; 2. rebuilds what is newer (tools/make-mane.py,
+# tools/make-genes.js); 3. checks it (all tests, an independent bigBed reader, control genes, counts);
+# 4. publishes only when every check passed (gene files as release assets, the site via pages.yml);
+# 5. always records the check in data/versions.json (a commit every month, so GitHub keeps running
+# this schedule) and always opens an issue — the owner gets an e-mail for every run: success with
+# the log, nothing new, or failure with what broke (left open).
+name: Data update
+on:
+  schedule:
+    - cron: '23 4 3 * *' # the 3rd of every month, 04:23 UTC
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild the gene files even if GENCODE did not change
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+concurrency:
+  group: data-update
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Newest releases
+        id: latest
+        run: |
+          set -euo pipefail
+          echo "## LGV data update $(date -u +%F)" > report.md
+          mane=$(curl -fsSL --retry 3 https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/current/ | grep -o 'MANE\.GRCh38\.v[0-9.]*\.summary\.txt\.gz' | head -1 | sed -E 's/MANE\.GRCh38\.(v[0-9.]+)\.summary\.txt\.gz/\1/')
+          gencode=$(curl -fsSL --retry 3 https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/latest_release/ | grep -o 'gencode\.v[0-9]*\.annotation\.gtf\.gz' | head -1 | sed -E 's/gencode\.(v[0-9]+)\..*/\1/')
+          [ -n "$mane" ] && [ -n "$gencode" ] || { echo "Could not find the newest MANE or GENCODE file names (the sources may have changed)." >> report.md; exit 1; }
+          oldm=$(node -p "require('./data/versions.json').mane"); oldg=$(node -p "require('./data/versions.json').gencode")
+          echo "mane=$mane" >> $GITHUB_OUTPUT; echo "gencode=$gencode" >> $GITHUB_OUTPUT
+          echo "newmane=$([ "$mane" != "$oldm" ] && echo 1 || echo 0)" >> $GITHUB_OUTPUT
+          echo "newgenes=$([ "$gencode" != "$oldg" ] || [ "${{ inputs.force }}" = "true" ] || ! gh release view "genes-$oldg" >/dev/null 2>&1 && echo 1 || echo 0)" >> $GITHUB_OUTPUT
+          echo "- MANE: published $oldm, newest $mane" >> report.md
+          echo "- GENCODE: published ${oldg:-none}, newest $gencode" >> report.md
+      - name: MANE
+        if: steps.latest.outputs.newmane == '1'
+        run: |
+          set -euo pipefail
+          v=${{ steps.latest.outputs.mane }}; base=https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/current
+          curl -fsSL --retry 3 -o sum.gz "$base/MANE.GRCh38.$v.summary.txt.gz"
+          curl -fsSL --retry 3 -o gff.gz "$base/MANE.GRCh38.$v.ensembl_genomic.gff.gz"
+          before=$(grep -vc '^#' data/mane.grch38.tsv)
+          python3 tools/make-mane.py sum.gz gff.gz data/mane.grch38.tsv | tee -a report.md
+          after=$(grep -vc '^#' data/mane.grch38.tsv)
+          echo "- MANE transcripts: $before -> $after" >> report.md
+          [ "$after" -ge $((before * 95 / 100)) ] || { echo "MANE has more than 5% fewer transcripts than before: not published." >> report.md; exit 1; }
+      - name: Gene files
+        if: steps.latest.outputs.newgenes == '1'
+        run: |
+          set -euo pipefail
+          v=${{ steps.latest.outputs.gencode }}
+          curl -fsSL --retry 3 -o gencode.gtf.gz "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/latest_release/gencode.$v.annotation.gtf.gz"
+          node tools/make-genes.js gencode.gtf.gz genes | tee -a report.md
+      - name: Checks
+        run: |
+          set -euo pipefail
+          node tools/build.js && node tools/audit.js && node tools/test-core.js > t1.log && node tools/test-cram.js > t2.log && node tools/test-fuzz.js > t3.log
+          echo "- tests: core, CRAM, damaged files, audit — passed" >> report.md
+          git clone -q --depth 1 https://github.com/dpryan79/libBigWig lbw
+          gcc -O2 -DNOCURL -o bbdump tools/bbdump.c lbw/bwRead.c lbw/bwStats.c lbw/bwValues.c lbw/bwWrite.c lbw/io.c -Ilbw -lz -lm
+          node tools/test-bigbed.js ./bbdump | tee -a report.md
+          if [ -d genes ]; then
+            for f in genes/*.bb; do n=$(./bbdump "$f" 2>/dev/null | wc -l); echo "- $f: $n records read back by libBigWig" >> report.md; done
+            node tools/check-genes.js genes | tee check.log
+            grep -v '^{' check.log | sed 's/^/    /' >> report.md
+          fi
+      - name: Publish gene files
+        if: steps.latest.outputs.newgenes == '1'
+        run: |
+          set -euo pipefail
+          tag="genes-${{ steps.latest.outputs.gencode }}"
+          gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$tag" genes/*.bb --title "Gene tracks ${{ steps.latest.outputs.gencode }}" --notes "Ensembl/GENCODE ${{ steps.latest.outputs.gencode }} gene tracks for LGV (bigBed): one transcript per gene, and all transcripts. Built by the monthly data update."
+      - name: Record and commit
+        id: commit
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('fs'), v = JSON.parse(fs.readFileSync('data/versions.json', 'utf8'));
+            v.mane = '${{ steps.latest.outputs.mane }}'; v.checked = new Date().toISOString().slice(0, 10);
+            if ('${{ steps.latest.outputs.newgenes }}' === '1') { v.gencode = '${{ steps.latest.outputs.gencode }}'; const c = JSON.parse(fs.readFileSync('check.log', 'utf8').split('\n').find(l => l.startsWith('{'))).counts; v.genes = c; }
+            fs.writeFileSync('data/versions.json', JSON.stringify(v) + '\n');"
+          git config user.name 'LGV data update'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data/versions.json data/mane.grch38.tsv
+          changed=0; if [ "${{ steps.latest.outputs.newmane }}" = 1 ] || [ "${{ steps.latest.outputs.newgenes }}" = 1 ]; then changed=1; fi
+          echo "changed=$changed" >> $GITHUB_OUTPUT
+          git commit -m "$([ $changed = 1 ] && echo "Data update: MANE ${{ steps.latest.outputs.mane }}, GENCODE ${{ steps.latest.outputs.gencode }}" || echo "Data check $(date -u +%F): nothing new")" || true
+          git push origin HEAD:main
+      - name: Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report
+          path: report.md
+  pages:
+    needs: update
+    if: needs.update.outputs.changed == '1'
+    uses: ./.github/workflows/pages.yml
+  notify:
+    needs: [update, pages]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: report
+        continue-on-error: true
+      - name: Issue (one per run; GitHub e-mails it to the owner)
+        run: |
+          set -u
+          [ -f report.md ] || echo "## LGV data update $(date -u +%F)" > report.md
+          run="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "${{ needs.update.result }}" = success ] && [ "${{ needs.pages.result }}" != failure ]; then
+            if [ "${{ needs.update.outputs.changed }}" = 1 ]; then status="updated and published"; else status="checked, nothing new"; fi
+            ok=1
+          else
+            status="FAILED — nothing was published, the site keeps the previous data"; ok=0
+          fi
+          { echo; echo "**Result: $status**"; echo; echo "Full log: $run"; echo; echo "@avlavrov"; } >> report.md
+          url=$(gh issue create -R "${{ github.repository }}" --title "Data update $(date -u +%F): $status" --body-file report.md)
+          [ "$ok" = 1 ] && gh issue close "$url" --reason completed || true

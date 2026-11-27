@@ -529,11 +529,11 @@ class BigBedFile extends BigWigFile {
     return ft;
   }
   // features overlapping [a, b) of a contig; { tooMuch } when the view would read more than allowed
-  async features(contig, a, b) {
+  async features(contig, a, b, noLimit) {
     const c = this.chrs.get(contigKey(contig)); if (!c) return [];
     const L = await this.leaves(this.fullIndexOffset, c.id, Math.floor(a), Math.ceil(b));
     let bytes = 0; for (const x of L) bytes += x.size;
-    if (bytes > BB_LIMITS.viewBytes || L.length > SIG_LIMITS.viewBlocks) return { tooMuch: true };
+    if (!noLimit && (bytes > BB_LIMITS.viewBytes || L.length > SIG_LIMITS.viewBlocks)) return { tooMuch: true };
     const out = [];
     for (const lf of L) for (const r of await this.block(lf)) if (r.cid === c.id && r.s < b && r.e > a) { const ft = this.feature(r); if (ft) out.push(ft); }
     return out;

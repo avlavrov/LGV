@@ -3033,7 +3033,24 @@ function saveSnapshot() {
 $('snapBtn').onclick = saveSnapshot;
 
 // ======================= About =======================
-const LGV_INFO = { version: '0.9.0', build: '__BUILD_DATE__' };
+const LGV_INFO = { version: '0.9.0', build: '__BUILD_DATE__', buildId: '__BUILD_ID__', mane: '__MANE__' };
+// ---- Update check: a copy of LGV.html opened from disk (or anywhere but LGV's site) asks LGV's site
+// once for its version.json (the build time only; nothing about the user or the data is sent). When
+// the site's build is newer, a message offers the new version: online, or LGV.html to save.
+const LGV_SITE = 'https://avlavrov.github.io/LGV/';
+const UPDATE_URL = LGV_SITE + 'version.json';
+async function checkUpdate() {
+  if (typeof location !== 'undefined' && location.hostname === 'avlavrov.github.io') return; // the site itself is the latest
+  try {
+    const r = await fetch(UPDATE_URL, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' });
+    if (!r.ok) return;
+    const v = await r.json();
+    if (!v || typeof v.build !== 'string' || !/^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(v.build) || !(v.build > LGV_INFO.buildId)) return;
+    const el = $('toast'), mane = typeof v.mane === 'string' ? v.mane.slice(0, 20) : '', gencode = typeof v.gencode === 'string' ? v.gencode.slice(0, 20) : '';
+    el.innerHTML = `<span>${esc(t('update.new', { date: v.build.slice(0, 10), data: [mane && 'MANE ' + mane, gencode && 'GENCODE ' + gencode].filter(Boolean).join(', ') }))} <a href="${esc(LGV_SITE)}" target="_blank" rel="noopener noreferrer">${esc(t('update.open'))}</a> · <a href="${esc(LGV_SITE + 'LGV.html')}" download="LGV.html">${esc(t('update.save'))}</a></span><button class="toast-x" aria-label="${esc(t('btn.close'))}">×</button>`;
+    el.hidden = false; clearTimeout(toastTimer);
+  } catch (e) { /* offline, or the page may not connect: nothing to say */ }
+}
 function showAbout() {
   const el = $('aboutBody'), v = LGV_INFO.build.startsWith('__') ? '' : ' · ' + LGV_INFO.build;
   el.replaceChildren();
@@ -3055,4 +3072,4 @@ function showAbout() {
   closePanels(); $('aboutPanel').hidden = false;
 }
 $('aboutBtn').onclick = () => { if ($('aboutPanel').hidden) showAbout(); else $('aboutPanel').hidden = true; };
-startup();
+startup().finally(() => setTimeout(checkUpdate, 3000)); // the update check after the start message
