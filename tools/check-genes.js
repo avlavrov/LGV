@@ -1,6 +1,6 @@
 // Checks freshly built gene bigBeds before they are published (used by the monthly data update):
 //   node tools/check-genes.js DIR [data/versions.json]
-// - LGV's reader finds control genes by name on the chromosome and at the place MANE has them
+// - LGV's reader finds control genes by name on the chromosome and near the place MANE has them
 //   (BRCA1, CFTR, DMD, SMN1, TTN) and IGHM on chr14 (not in MANE);
 // - counts are plausible and not more than 5% below the last published ones.
 // Prints a short report (used in the update e-mail); exits 1 on any failure.
@@ -22,7 +22,9 @@ const mane = new Map(fs.readFileSync(path.join(__dirname, '..', 'data', 'mane.gr
     say(n >= min && (!was || n >= was * 0.95), `${k}: ${n} transcripts (last published ${was || 'none'}), ${(size / 1048576).toFixed(1)} MB`);
     for (const g of ['BRCA1', 'CFTR', 'DMD', 'SMN1', 'TTN']) {
       const hits = await bb.findName(g), m = mane.get(g);
-      say(hits.length > 0 && hits.every(h => h.chr === m.chr && h.start < m.e && h.end > m.s), `${k}: ${g} found on ${m.chr} at its MANE place (${hits.length} transcript${hits.length === 1 ? '' : 's'})`);
+      // all of them on the MANE chromosome, within 1 Mb of the MANE transcript (other transcripts of a
+      // gene may start or end outside it), and at least one overlapping it
+      say(hits.length > 0 && hits.every(h => h.chr === m.chr && h.end > m.s - 1e6 && h.start < m.e + 1e6) && hits.some(h => h.start < m.e && h.end > m.s), `${k}: ${g} found on ${m.chr} at its MANE place (${hits.length} transcript${hits.length === 1 ? '' : 's'})`);
     }
     const ig = await bb.findName('IGHM');
     say(ig.length > 0 && ig.every(h => h.chr === 'chr14' && h.start > 105500000 && h.end < 106900000), `${k}: IGHM found on chr14 (not in MANE)`);
