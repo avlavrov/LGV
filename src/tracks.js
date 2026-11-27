@@ -26,7 +26,7 @@ function trackKind(name) {
   if (/\.(gff|gff3)$/.test(n)) return 'gff';
   return null;
 }
-const isTrackFile = name => !!trackKind(name) || /\.(tdf|bw|bigwig)$/i.test(String(name)); // signal files: src/signal.js
+const isTrackFile = name => !!trackKind(name) || /\.(tdf|bw|bigwig|bb|bigbed)$/i.test(String(name)); // signal and bigBed files: src/signal.js
 
 // Whole, plain-number coordinate (no signs, decimals or exponents); -1 when it is not one.
 const intField = s => /^\d{1,12}$/.test(s) ? +s : -1;
@@ -57,32 +57,38 @@ class FeatureIndex {
 let LINE_NO = 0;
 function* lines(text) { let p = 0; LINE_NO = 0; while (p < text.length) { LINE_NO++; let e = text.indexOf('\n', p); if (e < 0) e = text.length; const l = text.charCodeAt(e - 1) === 13 ? text.slice(p, e - 1) : text.slice(p, e); p = e + 1; yield l; } }
 
-// BED 3–12: chrom start end [name score strand thickStart thickEnd itemRgb blockCount blockSizes blockStarts]
+// BED 3–12 columns as a feature, or null when they do not parse: chrom start end [name score strand
+// thickStart thickEnd itemRgb blockCount blockSizes blockStarts]. Also used for bigBed records.
+function bedFeature(f) {
+  const start = intField(f[1]), end = intField(f[2]);
+  if (f.length < 3 || !f[0] || start < 0 || end < start) return null;
+  const ft = { start, end: Math.max(end, start + 1), name: f[3] && f[3] !== '.' ? f[3].slice(0, 200) : '', strand: f[5] === '-' ? -1 : f[5] === '+' ? 1 : 0, chr: f[0] };
+  if (f[4] !== undefined && f[4] !== '.' && isFinite(+f[4])) ft.score = +f[4];
+  const ts = intField(f[6]), te = intField(f[7]);
+  if (ts >= start && te >= ts && te <= end) { ft.cdsStart = ts; ft.cdsEnd = te; }
+  if (f[8] && /^\d{1,3},\d{1,3},\d{1,3}$/.test(f[8])) { const c = f[8].split(',').map(Number); if (c.every(v => v <= 255)) ft.rgb = c; }
+  const n = intField(f[9]);
+  if (n > 0 && n <= TRACK_LIMITS.blocks && f[10] && f[11]) {
+    const sz = f[10].split(',').filter(x => x !== '').map(intField), st = f[11].split(',').filter(x => x !== '').map(intField);
+    // blocks: in order, inside the feature, not overlapping
+    let ok = sz.length === n && st.length === n, prev = 0;
+    const ex = new Int32Array(n * 2);
+    for (let i = 0; ok && i < n; i++) {
+      const a = start + st[i], b = a + sz[i];
+      if (sz[i] < 0 || st[i] < 0 || a < start + prev || b > end) ok = false;
+      ex[2 * i] = a; ex[2 * i + 1] = b; prev = st[i] + sz[i];
+    }
+    if (ok) ft.exons = ex;
+  }
+  return ft;
+}
 function parseBed(text, name) {
   const ix = new FeatureIndex(); ix.name = name;
   for (const line of lines(text)) {
     if (!line || line[0] === '#' || /^(track|browser)\b/.test(line)) continue;
     const f = line.includes('\t') ? line.split('\t') : line.trim().split(/\s+/);
-    const start = intField(f[1]), end = intField(f[2]);
-    if (f.length < 3 || !f[0] || start < 0 || end < start) { ix.bad(line); continue; }
-    const ft = { start, end: Math.max(end, start + 1), name: f[3] && f[3] !== '.' ? f[3].slice(0, 200) : '', strand: f[5] === '-' ? -1 : f[5] === '+' ? 1 : 0, chr: f[0] };
-    if (f[4] !== undefined && f[4] !== '.' && isFinite(+f[4])) ft.score = +f[4];
-    const ts = intField(f[6]), te = intField(f[7]);
-    if (ts >= start && te >= ts && te <= end) { ft.cdsStart = ts; ft.cdsEnd = te; }
-    if (f[8] && /^\d{1,3},\d{1,3},\d{1,3}$/.test(f[8])) { const c = f[8].split(',').map(Number); if (c.every(v => v <= 255)) ft.rgb = c; }
-    const n = intField(f[9]);
-    if (n > 0 && n <= TRACK_LIMITS.blocks && f[10] && f[11]) {
-      const sz = f[10].split(',').filter(x => x !== '').map(intField), st = f[11].split(',').filter(x => x !== '').map(intField);
-      // blocks: in order, inside the feature, not overlapping
-      let ok = sz.length === n && st.length === n, prev = 0;
-      const ex = new Int32Array(n * 2);
-      for (let i = 0; ok && i < n; i++) {
-        const a = start + st[i], b = a + sz[i];
-        if (sz[i] < 0 || st[i] < 0 || a < start + prev || b > end) ok = false;
-        ex[2 * i] = a; ex[2 * i + 1] = b; prev = st[i] + sz[i];
-      }
-      if (ok) ft.exons = ex;
-    }
+    const ft = bedFeature(f);
+    if (!ft) { ix.bad(line); continue; }
     ix.add(f[0], ft);
   }
   return ix.finish();
@@ -215,4 +221,4 @@ async function loadTrack(src) {
   return ix;
 }
 
-if (typeof module !== 'undefined') module.exports = { gunzipTrack, TRACK_LIMITS, trackKind, isTrackFile, FeatureIndex, parseBed, parseBedGraph, parseVcf, vcfGenotype, vcfInfo, parseGtfGff, loadTrack };
+if (typeof module !== 'undefined') module.exports = { gunzipTrack, TRACK_LIMITS, trackKind, isTrackFile, FeatureIndex, bedFeature, parseBed, parseBedGraph, parseVcf, vcfGenotype, vcfInfo, parseGtfGff, loadTrack };

@@ -17,6 +17,7 @@ const DEFAULT_PROFILE = {
   coverage: { height: 56, alleleThreshold: 0.2 },
   trackMinHeight: 240,
   showGenes: true,               // MANE transcripts under the reference (GRCh38 only)
+  geneSets: { canonical: false, all: false }, // Ensembl gene tracks (bigBed, read by region from LGV's site)
   startReference: 'hg38',        // opened at start: hg38 | hg19 | chm13 | demo | none           // px: with many samples each keeps at least this height; the view scrolls
   downsample: { enabled: true, maxReads: 100, window: 50 }, // like IGV: reads kept per window; coverage counts all
   maxReads: 300000,
@@ -1469,6 +1470,18 @@ function findInTracks(q) {
   }
   return null;
 }
+async function findInBigBeds(q) {
+  for (const a of ANN.tracks) {
+    if (!a.bigbed || !a.bigbed.extra.length) continue;
+    let hits = []; try { hits = await a.bigbed.findName(q); } catch (e) { continue; }
+    if (!hits.length) continue;
+    const id = contigId(hits[0].chr); if (id < 0) continue;
+    const on = hits.filter(h => h.chr === hits[0].chr), s = Math.min(...on.map(h => h.start)), e = Math.max(...on.map(h => h.end));
+    const pad = Math.max(50, Math.round((e - s) * 0.05));
+    return { id, s: Math.max(0, s - pad), e: Math.min(S.contigs[id].len, e + pad) };
+  }
+  return null;
+}
 function parseLocus(str) {
   if (typeof str !== 'string' || str.length > 300) return null;
   str = str.trim().replace(/[  \s]/g, '').replace(/[–—]/g, '-');
@@ -2265,6 +2278,7 @@ async function openReference(ref, opts) {
     // a new genome means a new coordinate system: the old view no longer applies
     S.view.refId = 0; S.view.start = 0; S.viewSet = false; NAV.back = []; NAV.fwd = []; updateNavBtns();
     if (!opts.noGoto) { goto(0, 0, Math.min(S.contigs[0].len, 1000)); S.viewSet = true; }
+    applyGeneSets(); // Ensembl gene tracks follow the genome (GRCh38 only)
     return true;
   } catch (e) { toast(t('ref.failed', { msg: errText(e) })); return false; }
   finally { refBusy = false; }
@@ -2442,10 +2456,12 @@ stage.addEventListener('drop', async e => {
 });
 
 // Go to the typed locus: Enter in the field or the Go button.
-function goLocus() {
+async function goLocus() {
   if (!S.contigs) return;
-  const el = $('locus'), l = parseLoci(el.value);
+  const el = $('locus'); let l = parseLoci(el.value);
   if (!l) { toast(t('locus.bad')); return; }
+  // a single name not found so far: the name indexes of open bigBed tracks (read from the file)
+  if (l.error && !/\s/.test(el.value.trim())) { const f = await findInBigBeds(el.value.trim()); if (f) l = [f]; }
   if (l.error) { toast(l.error); return; }
   if (l.length > maxPanels()) toast(t('split.full', { n: maxPanels() }));
   el.blur(); navPush(); setPanels(l);
@@ -2483,7 +2499,7 @@ const CONTROLS = [
   ['hideSec', 'filters.hideSecondary', 'bool', 'reload'], ['hideSupp', 'filters.hideSupplementary', 'bool', 'reload'], ['hideQc', 'filters.hideQcFail', 'bool', 'reload'],
   ['readWin', 'readWindowKb', 'num', 'reload'], ['dsOn', 'downsample.enabled', 'bool', 'reload'], ['dsMax', 'downsample.maxReads', 'num', 'reload'], ['dsWin', 'downsample.window', 'num', 'reload'],
   ['covHeight', 'coverage.height', 'num', 'draw'], ['trackMinH', 'trackMinHeight', 'num', 'draw'], ['alleleThr', 'coverage.alleleThreshold', 'num', 'rebuild'],
-  ['hideToolbar', 'hideToolbar', 'bool', 'chrome'], ['showGenes', 'showGenes', 'bool', 'draw'], ['startRef', 'startReference', 'str', 'none'], ['language', 'language', 'str', 'lang'],
+  ['hideToolbar', 'hideToolbar', 'bool', 'chrome'], ['showGenes', 'showGenes', 'bool', 'draw'], ['geneCanon', 'geneSets.canonical', 'bool', 'genesets'], ['geneAll', 'geneSets.all', 'bool', 'genesets'], ['startRef', 'startReference', 'str', 'none'], ['language', 'language', 'str', 'lang'],
 ];
 const getPath = (o, p) => p.split('.').reduce((a, k) => a[k], o);
 const setPath = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k], o)[last] = v; };
@@ -2506,6 +2522,7 @@ for (const [id, path, type, effect] of CONTROLS) {
     setPath(P, path, v); saveProfile(); syncPanel();
     if (effect === 'draw') { clampScroll(); draw(); }
     else if (effect === 'chrome') applyChrome();
+    else if (effect === 'genesets') applyGeneSets();
     else if (effect === 'lang') applyLanguage();
     else if (effect === 'reload') { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(reloadData, 250); }
     else { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => { usePanel(S.active); if (id === 'sortBy' && S.sortPos == null) S.sortPos = Math.floor(viewCenter()); rebuild(); draw(); }, 30); }
@@ -2639,9 +2656,9 @@ function annHeight(a) {
 // ---- Track types switched on and off for all samples at once (this session only) ----
 // Switching samples (BAM / CRAM) off stops reading reads, so a whole chromosome opens at once with
 // the other tracks; the samples are kept aside and come back as they were.
-const SHOW = { bam: true, vcf: true, bed: true, gff: true, bedgraph: true, tdf: true, bigwig: true };
-const TYPE_LABEL = { bam: 'BAM', vcf: 'VCF', bed: 'BED', gff: 'GFF', bedgraph: 'bedGraph', tdf: 'TDF', bigwig: 'bigWig' };
-const typeOf = a => a.kind === 'signal' ? (/\.tdf$/i.test(a.name) ? 'tdf' : 'bigwig') : (a.kind === 'gtf' || a.kind === 'gff') ? 'gff' : a.kind;
+const SHOW = { bam: true, vcf: true, bed: true, gff: true, bedgraph: true, tdf: true, bigwig: true, bigbed: true, genes: true };
+const TYPE_LABEL = { bam: 'BAM', vcf: 'VCF', bed: 'BED', gff: 'GFF', bedgraph: 'bedGraph', tdf: 'TDF', bigwig: 'bigWig', bigbed: 'bigBed' };
+const typeOf = a => a.type ? a.type : a.kind === 'signal' ? (/\.tdf$/i.test(a.name) ? 'tdf' : 'bigwig') : (a.kind === 'gtf' || a.kind === 'gff') ? 'gff' : a.kind;
 function annVis() { return ANN.tracks.filter(a => SHOW[typeOf(a)] !== false); }
 function toggleType(k) {
   SHOW[k] = !SHOW[k];
@@ -2674,6 +2691,7 @@ async function openTracks(srcs) {
     if (ANN.tracks.some(a => a.key === key)) { toast(t('sample.already', { name: src.name })); continue; }
     try {
       if (signalKind(src.name)) { ANN.tracks.push(await openSignalTrack(src, key)); continue; } // TDF, bigWig: read by region
+      if (isBigBed(src.name)) { ANN.tracks.push(await openBigBedTrack(src, key)); continue; } // bigBed: read by region
       const ix = await loadTrack(src);
       ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix, src });
       // most lines unreadable: the file is probably not what its name says; show the first such line
@@ -2682,6 +2700,29 @@ async function openTracks(srcs) {
     } catch (e) { toast(t('track.failed', { name: src.name, msg: errText(e) }), true); }
   }
   renderTypeChips(); clampScroll(); draw();
+}
+// ---- Ensembl gene tracks: bigBed files published next to LGV (tools/make-genes.js), read by region,
+// GRCh38 only. On LGV's own site they come from the same site; elsewhere (a saved LGV.html) from it by
+// link. Only parts of these public files are requested; nothing about the user's data is sent.
+const GENE_SITE = 'https://avlavrov.github.io/LGV/genes/';
+const GENE_SETS = { canonical: { file: 'ensembl.canonical.grch38.bb', label: 'gene.canonical' }, all: { file: 'ensembl.all.grch38.bb', label: 'gene.all' } };
+function geneSetUrl(k) { const here = typeof location !== 'undefined' && location.protocol === 'https:' && location.hostname === 'avlavrov.github.io'; return (here ? new URL('genes/', location.href).href : GENE_SITE) + GENE_SETS[k].file; }
+async function applyGeneSets() {
+  for (const k of Object.keys(GENE_SETS)) {
+    const want = !!P.geneSets[k] && genesActive(), have = ANN.tracks.find(a => a.geneSet === k);
+    if (want && !have) {
+      try { ANN.tracks.push(await openBigBedTrack(new UrlSource(geneSetUrl(k)), 'geneset:' + k, { geneSet: k, type: 'genes', name: t(GENE_SETS[k].label) })); }
+      catch (e) { toast(t('track.failed', { name: t(GENE_SETS[k].label), msg: errText(e) }), true); }
+    } else if (!want && have) closeAnn(have);
+  }
+  renderTypeChips(); clampScroll(); draw();
+}
+// A bigBed as a BED track: features come by region (BigBedIndex), the view redraws when they arrive.
+async function openBigBedTrack(src, key, extra) {
+  const f = await openBigBed(src), ix = new BigBedIndex(f);
+  const a = Object.assign({ id: ++ANN.seq, key, name: src.name, kind: 'bed', type: 'bigbed', ix, src, bigbed: f }, extra || {});
+  ix.onData = e => { if (e && !a.err) { a.err = e; toast(t('track.failed', { name: a.name, msg: errText(e) }), true); } draw(); };
+  return a;
 }
 function closeAnn(a) { ANN.tracks = ANN.tracks.filter(x => x !== a); renderTypeChips(); if (a.ix && a.ix.loader) a.ix.onData = null; if (cardState && cardState.ann === a) hideCard(); clampScroll(); draw(); }
 const GT_COL = ['', '#c3c8cf', '#2a5fd6', '#14a3b8'];
@@ -2696,6 +2737,7 @@ function drawAnnTracks(pn) {
     ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, h); ctx.clip();
     const fy = y0 + ANN_HDR, fh = h - ANN_HDR, list = a.kind === 'signal' ? null : a.ix.query(name, Math.floor(vs), Math.ceil(ve));
     let extra = '';
+    if (a.bigbed && a.ix.tooMuch) extra = t('sig.tooMuch');
     if (a.kind === 'signal') extra = drawSignal(a, fy, fh);
     else if (a.kind === 'bedgraph') {
       // one bar per pixel column: the largest value under it; scale from the visible values
@@ -2735,7 +2777,7 @@ function drawFeatRows(list, y0, hits, colorOf) {
   ctx.font = '600 9.5px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   for (const f of list) {
     const x0 = px(f.start), x1 = px(f.end), a = Math.max(x0, 0), b = Math.min(x1, W);
-    const label = f.name || '', lw = label ? ctx.measureText(label).width : 0;
+    const label = f.label || f.name || '', lw = label ? ctx.measureText(label).width : 0;
     const cx = Math.max(lw / 2 + 2, Math.min(W - lw / 2 - 2, (a + b) / 2));
     const e0 = Math.min(a, cx - lw / 2), e1 = Math.max(b, cx + lw / 2);
     let row = ends.findIndex(e => e + 6 <= e0), withLabel = !!label;

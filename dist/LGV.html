@@ -291,6 +291,8 @@ body.bare .side { top: 0; }
       <div class="field"><label for="language" data-i18n="view.language">Language</label><select id="language"></select></div>
       <div class="check"><input id="hideToolbar" type="checkbox"><label for="hideToolbar" data-i18n="view.hideToolbar"></label></div>
       <div class="check"><input id="showGenes" type="checkbox"><label for="showGenes" data-i18n-title="tip.showGenes" data-i18n="view.showGenes"></label></div>
+      <div class="check"><input id="geneCanon" type="checkbox"><label for="geneCanon" data-i18n-title="tip.geneCanon" data-i18n="view.geneCanon"></label></div>
+      <div class="check"><input id="geneAll" type="checkbox"><label for="geneAll" data-i18n-title="tip.geneAll" data-i18n="view.geneAll"></label></div>
       <div class="field"><label for="startRef" data-i18n-title="tip.startRef" data-i18n="view.startRef">At start open</label>
         <select id="startRef"><option value="hg38">GRCh38 / hg38</option><option value="hg19">GRCh37 / hg19</option><option value="chm13">T2T-CHM13 v2.0</option><option value="demo" data-i18n="start.demo"></option><option value="none" data-i18n="start.none"></option></select></div>
     </section>
@@ -417,7 +419,7 @@ const STRINGS = {
     'profile.copied': 'Profile copied', 'profile.applied': 'Profile applied', 'profile.reset': 'Profile reset', 'profile.bad': 'The profile has a JSON error: {msg}',
     'card.name': 'Name', 'card.pos': 'Position', 'card.flag': 'Flag', 'card.len': 'Length', 'card.mate': 'Mate', 'card.mateUnmapped': 'unmapped', 'card.tlen': 'Insert (TLEN)',
     'cov.relative': '≈ relative (index)', 'tip.covEst': 'Depth estimated from the index (bytes of reads per 16 kb, scaled by windows already read in detail); mean over 16 kb, not the peak. Click for exact counts at a base', 'reads.wideEst': 'Coverage here is estimated from the index: exact depth is counted in windows up to {exact}, reads are shown up to {span}.', 'view.readWin': 'Load reads up to, kb', 'tip.readWin': 'Reads are loaded in windows up to this wide (the window loaded, a little wider than the screen). In wider windows only the coverage depth is read, and a message offers to load the reads, with the expected time. How many reads come in: depth × window ÷ read length, at most the downsampling cap (reads per window × window ÷ its width)', 'reads.limit': 'Reads are loaded in windows up to {span} (View → Load reads up to).', 'reads.ask': 'Window {span} is wider than the read window ({lim}): coverage only. About {n} reads here.', 'reads.askBtn': 'Load reads ({size})', 'reads.askBtnT': 'Load reads (~{s} s)', 
-    'card.toMate': 'Go to mate', 'tip.typeOff': 'Switch {type} tracks off for all samples (BAM: reads stop loading)', 'tip.typeOn': 'Switch {type} tracks back on', 'btn.snap': 'PNG', 'btn.link': 'Link', 'tip.snap': 'Save the view as a PNG picture', 'tip.link': 'Copy a link that opens this view (reference, samples and tracks opened by link, loci)', 'tip.about': 'About LGV', 'link.copied': 'Link copied', 'link.copiedSkipped': 'Link copied. Not in it (opened from this computer): {names}', 'launch.bad': '{n} link(s) were not opened: only https links are read', 'start.refFailedLink': 'Could not load the reference {name}', 'snap.saved': 'Saved {name}', 'snap.fail': 'Could not make the picture', 'about.version': 'Version {v}', 'about.built': 'Built with Claude, an AI model by Anthropic.', 'about.asis': 'Provided as is, without warranty of any kind.', 'about.third': 'Third-party code and data', 'about.htscodecs': 'CRAM codecs adapted from htscodecs (Genome Research Ltd), BSD 3-Clause license.', 'about.mane': 'MANE Select and Plus Clinical v1.5 transcripts with their exons (NCBI, EMBL-EBI).', 'about.bands': 'GRCh38 chromosome bands from ideogram by Eric Weitz (CC0).', 'about.refs': 'Reference genome presets: public copies hosted by the IGV team (Broad Institute).', 'about.guide': 'The user guide is docs/USER_GUIDE.md (Russian: docs/USER_GUIDE.ru.md) in the LGV repository.', 'ins.title': 'Insertion', 'ins.len': 'Length', 'ins.seq': 'Inserted bases', 'ins.qual': 'Base qualities', 'tip.copyIns': 'Copy the inserted bases (FASTA, with the read name and position)', 'track.skipped': '{name}: {n} lines could not be read and were skipped; {ok} features loaded', 'track.failed': 'Track {name} not opened: {msg}', 'track.nSamples': '{n} samples, first {shown} shown', 'track.moreSamples': '… {n} more samples', 'track.name': 'Name', 'track.type': 'Type', 'track.value': 'Value', 'track.score': 'Score', 'track.blocks': 'Blocks', 'track.thick': 'Thick part', 'tip.ann': 'Annotation track: click a feature for its details', 'tip.closeTrack': 'Close this track', 'tip.go': "Go to the locus or gene (Enter)", 'tip.open': "Open BAM / CRAM files, links or a reference", 'tip.view': "Display settings", 'tip.locus': "chr7:117,559,500-117,560,000, a position, a gene (CFTR) or a MANE transcript; several separated by spaces open side by side", 'tip.ideo': "Chromosome map: click or drag to move the active panel there", 'tip.ruler': "Drag to zoom to a region; click to center the view there", 'tip.genes': "MANE transcripts: click one for its details", 'tip.cov': "Click for base counts at this position (all reads, before downsampling)", 'tip.closeSample': "Close this sample", 'tip.showRead': "Details of the clicked read only", 'tip.showPair': "The read and its mate side by side", 'tip.toMate': "Move the view to the mate", 'tip.mateSplit': "Open the mate in a new panel next to this one", 'tip.copyCard': "Copy the text of this card", 'tip.mqvLine': "Reads with this base (share of all; + forward, − reverse strand). mQV: mean base quality (Phred) of this base in these reads", 'tip.baseLine': "Reads with this base (share of all; + forward, − reverse strand)", 'tip.total': "A + C + G + T + N; deletions are counted separately", 'tip.del': "Reads with a deletion at this position", 'tip.ins': "Reads with an insertion right after this base", 'tip.bqShade': "Mismatches of bases below Q20 are paler: 20% below Q5, full at Q20", 'tip.softClips': "Show the clipped ends of reads in the read’s color; clipped mismatches are colored", 'tip.mqTransp': "How transparent reads with MAPQ at or below \"From MQ\" are; at 100% only their outline is left. Mismatches and insertions keep their colors (only base quality pales them)", 'tip.minMapq': "Reads below this mapping quality are not read at all (coverage too)", 'tip.downsample': "Keep at most N reads starting in each window; coverage still counts every read", 'tip.dsMax': "Reads kept per window", 'tip.trackMinH': "With many samples each keeps this height and the view scrolls", 'tip.covHeight': "Height of each coverage track", 'tip.alleleThr': "Coverage bars are split by base where non-reference bases reach this share of reads", 'tip.showGenes': "MANE Select and Plus Clinical transcripts on GRCh38, built into LGV", 'tip.startRef': "Reference (or demo) opened when LGV starts", 'nav.back': 'Back to the previous place', 'nav.fwd': 'Forward', 'nav.zoomIn': 'Zoom in (all panels)', 'nav.zoomOut': 'Zoom out (all panels)', 'cov.title': 'Coverage', 'cov.total': 'Total count', 'cov.ref': 'reference', 'cov.meanQ': 'Mean base quality', 'cov.note': 'All reads at this position, before downsampling; filters from View apply. INS: insertions right after this base.', 'menu.copySeq': 'Copy read sequence', 'menu.copyRc': 'Copy read sequence, reverse complement', 'menu.copyLeft': 'Copy left soft-clipped sequence', 'menu.copyRight': 'Copy right soft-clipped sequence', 'menu.copyPair': 'Copy read pair (FASTA)', 'menu.copyPairNo': 'Copy read pair (mate not loaded)', 'copied.seq': 'Copied: {n} bases', 'card.mateSplit': 'Mate in split screen', 'menu.mateSplit': 'View mate region in split screen', 'split.full': 'No room for more panels ({n}). Close one with × in its header', 'card.copy': 'Copy',
+    'card.toMate': 'Go to mate', 'view.geneCanon': 'Ensembl genes: canonical', 'view.geneAll': 'Ensembl genes: all transcripts', 'tip.geneCanon': 'One transcript per gene, every gene (coding, non-coding, immunoglobulin, pseudogenes): read by region from LGV\'s site; only parts of a public gene file are requested. GRCh38', 'tip.geneAll': 'Every Ensembl transcript: read by region from LGV\'s site, shown when zoomed in enough. GRCh38', 'gene.canonical': 'Ensembl canonical', 'gene.all': 'Ensembl, all transcripts', 'tip.typeOff': 'Switch {type} tracks off for all samples (BAM: reads stop loading)', 'tip.typeOn': 'Switch {type} tracks back on', 'btn.snap': 'PNG', 'btn.link': 'Link', 'tip.snap': 'Save the view as a PNG picture', 'tip.link': 'Copy a link that opens this view (reference, samples and tracks opened by link, loci)', 'tip.about': 'About LGV', 'link.copied': 'Link copied', 'link.copiedSkipped': 'Link copied. Not in it (opened from this computer): {names}', 'launch.bad': '{n} link(s) were not opened: only https links are read', 'start.refFailedLink': 'Could not load the reference {name}', 'snap.saved': 'Saved {name}', 'snap.fail': 'Could not make the picture', 'about.version': 'Version {v}', 'about.built': 'Built with Claude, an AI model by Anthropic.', 'about.asis': 'Provided as is, without warranty of any kind.', 'about.third': 'Third-party code and data', 'about.htscodecs': 'CRAM codecs adapted from htscodecs (Genome Research Ltd), BSD 3-Clause license.', 'about.mane': 'MANE Select and Plus Clinical v1.5 transcripts with their exons (NCBI, EMBL-EBI).', 'about.bands': 'GRCh38 chromosome bands from ideogram by Eric Weitz (CC0).', 'about.refs': 'Reference genome presets: public copies hosted by the IGV team (Broad Institute).', 'about.guide': 'The user guide is docs/USER_GUIDE.md (Russian: docs/USER_GUIDE.ru.md) in the LGV repository.', 'ins.title': 'Insertion', 'ins.len': 'Length', 'ins.seq': 'Inserted bases', 'ins.qual': 'Base qualities', 'tip.copyIns': 'Copy the inserted bases (FASTA, with the read name and position)', 'track.skipped': '{name}: {n} lines could not be read and were skipped; {ok} features loaded', 'track.failed': 'Track {name} not opened: {msg}', 'track.nSamples': '{n} samples, first {shown} shown', 'track.moreSamples': '… {n} more samples', 'track.name': 'Name', 'track.type': 'Type', 'track.value': 'Value', 'track.score': 'Score', 'track.blocks': 'Blocks', 'track.thick': 'Thick part', 'tip.ann': 'Annotation track: click a feature for its details', 'tip.closeTrack': 'Close this track', 'tip.go': "Go to the locus or gene (Enter)", 'tip.open': "Open BAM / CRAM files, links or a reference", 'tip.view': "Display settings", 'tip.locus': "chr7:117,559,500-117,560,000, a position, a gene (CFTR) or a MANE transcript; several separated by spaces open side by side", 'tip.ideo': "Chromosome map: click or drag to move the active panel there", 'tip.ruler': "Drag to zoom to a region; click to center the view there", 'tip.genes': "MANE transcripts: click one for its details", 'tip.cov': "Click for base counts at this position (all reads, before downsampling)", 'tip.closeSample': "Close this sample", 'tip.showRead': "Details of the clicked read only", 'tip.showPair': "The read and its mate side by side", 'tip.toMate': "Move the view to the mate", 'tip.mateSplit': "Open the mate in a new panel next to this one", 'tip.copyCard': "Copy the text of this card", 'tip.mqvLine': "Reads with this base (share of all; + forward, − reverse strand). mQV: mean base quality (Phred) of this base in these reads", 'tip.baseLine': "Reads with this base (share of all; + forward, − reverse strand)", 'tip.total': "A + C + G + T + N; deletions are counted separately", 'tip.del': "Reads with a deletion at this position", 'tip.ins': "Reads with an insertion right after this base", 'tip.bqShade': "Mismatches of bases below Q20 are paler: 20% below Q5, full at Q20", 'tip.softClips': "Show the clipped ends of reads in the read’s color; clipped mismatches are colored", 'tip.mqTransp': "How transparent reads with MAPQ at or below \"From MQ\" are; at 100% only their outline is left. Mismatches and insertions keep their colors (only base quality pales them)", 'tip.minMapq': "Reads below this mapping quality are not read at all (coverage too)", 'tip.downsample': "Keep at most N reads starting in each window; coverage still counts every read", 'tip.dsMax': "Reads kept per window", 'tip.trackMinH': "With many samples each keeps this height and the view scrolls", 'tip.covHeight': "Height of each coverage track", 'tip.alleleThr': "Coverage bars are split by base where non-reference bases reach this share of reads", 'tip.showGenes': "MANE Select and Plus Clinical transcripts on GRCh38, built into LGV", 'tip.startRef': "Reference (or demo) opened when LGV starts", 'nav.back': 'Back to the previous place', 'nav.fwd': 'Forward', 'nav.zoomIn': 'Zoom in (all panels)', 'nav.zoomOut': 'Zoom out (all panels)', 'cov.title': 'Coverage', 'cov.total': 'Total count', 'cov.ref': 'reference', 'cov.meanQ': 'Mean base quality', 'cov.note': 'All reads at this position, before downsampling; filters from View apply. INS: insertions right after this base.', 'menu.copySeq': 'Copy read sequence', 'menu.copyRc': 'Copy read sequence, reverse complement', 'menu.copyLeft': 'Copy left soft-clipped sequence', 'menu.copyRight': 'Copy right soft-clipped sequence', 'menu.copyPair': 'Copy read pair (FASTA)', 'menu.copyPairNo': 'Copy read pair (mate not loaded)', 'copied.seq': 'Copied: {n} bases', 'card.mateSplit': 'Mate in split screen', 'menu.mateSplit': 'View mate region in split screen', 'split.full': 'No room for more panels ({n}). Close one with × in its header', 'card.copy': 'Copy',
     'card.clicked': 'Base', 'card.bq': 'Base quality', 'card.ref': 'ref', 'card.del': 'deletion',
     'flag.1': 'paired', 'flag.2': 'proper pair', 'flag.4': 'unmapped', 'flag.8': 'mate unmapped', 'flag.16': 'reverse strand', 'flag.32': 'mate reverse',
     'flag.64': 'first in pair', 'flag.128': 'second in pair', 'flag.256': 'secondary', 'flag.512': 'QC fail', 'flag.1024': 'duplicate', 'flag.2048': 'supplementary',
@@ -453,7 +455,7 @@ const STRINGS = {
     'sig.graph': 'Draw as', 'sig.g.bar': 'Bars', 'sig.g.points': 'Points', 'sig.g.line': 'Line', 'sig.g.heatmap': 'Heatmap',
     'sig.windowing': 'Windowing function', 'sig.scale': 'Scale', 'sig.s.auto': 'Auto (values in view)', 'sig.s.01': '0 – 1', 'sig.s.file': 'From the file ({lo} – {hi})',
     'sig.zero': 'Always include zero', 'sig.log': 'Log scale: ln(1 + x)', 'sig.height': 'Row height', 'sig.h.less': 'Lower', 'sig.h.more': 'Higher', 'sig.reset': 'Back to the file’s settings',
-    'err.tdfBad': 'The TDF file is damaged or not TDF: {what}', 'err.bwBad': 'The bigWig file is damaged or not bigWig: {what}', 'err.bwBigBed': '{name} is a bigBed file (features); LGV reads bigWig (values) from this family',
+    'err.tdfBad': 'The TDF file is damaged or not TDF: {what}', 'err.bwBad': 'The bigWig file is damaged or not bigWig: {what}', 'err.bbBad': 'The bigBed file is damaged or not bigBed: {what}', 'err.bwBigBed': '{name} is a bigBed file (features); LGV reads bigWig (values) from this family',
     'err.trackFormat': 'Unknown track format: {name}. LGV reads BED, bedGraph, VCF, GTF, GFF3, TDF and bigWig', 'err.trackEmpty': 'No features found in {name}', 'err.trackBig': '{name} is larger than LGV reads at once ({size})', 'err.trackBigGz': '{name} ({packed}) unpacks to more than LGV reads at once ({size}). Open a part of it (for example the lines of the genes you need), or a smaller annotation', 'err.trackMany': '{name} has more than {n} features',
   },
   ru: {
@@ -548,7 +550,7 @@ const STRINGS = {
     'profile.copied': 'Профиль скопирован', 'profile.applied': 'Профиль применён', 'profile.reset': 'Профиль сброшен', 'profile.bad': 'В профиле ошибка JSON: {msg}',
     'card.name': 'Имя', 'card.pos': 'Позиция', 'card.flag': 'Флаг', 'card.len': 'Длина', 'card.mate': 'Мейт', 'card.mateUnmapped': 'не выровнен', 'card.tlen': 'Вставка (TLEN)',
     'cov.relative': '≈ относительное (индекс)', 'tip.covEst': 'Глубина оценена по индексу (байты ридов на 16 кб, пересчитанные по окнам, уже прочитанным подробно); среднее за 16 кб, а не пик. Клик — точный счёт в основании', 'reads.wideEst': 'Покрытие здесь оценено по индексу: точная глубина считается в окнах до {exact}, риды показываются до {span}.', 'view.readWin': 'Грузить риды до, кб', 'tip.readWin': 'Риды загружаются в окнах не шире этого (загружаемое окно чуть шире экрана). В более широких читается только глубина покрытия, а сообщение предлагает загрузить риды и называет ожидаемое время. Сколько ридов придёт: глубина × окно ÷ длина рида, но не больше предела даунсэмплинга (ридов на окно × окно ÷ его ширина)', 'reads.limit': 'Риды загружаются в окнах до {span} (Вид → Грузить риды до).', 'reads.ask': 'Окно {span} шире окна ридов ({lim}): только покрытие. Ридов здесь около {n}.', 'reads.askBtn': 'Загрузить риды ({size})', 'reads.askBtnT': 'Загрузить риды (~{s} с)', 
-    'card.toMate': 'К мейту', 'tip.typeOff': 'Отключить дорожки {type} у всех образцов (BAM: риды перестают загружаться)', 'tip.typeOn': 'Включить дорожки {type} обратно', 'btn.snap': 'PNG', 'btn.link': 'Ссылка', 'tip.snap': 'Сохранить вид картинкой PNG', 'tip.link': 'Скопировать ссылку, открывающую этот вид (референс, образцы и дорожки по ссылкам, локусы)', 'tip.about': 'О программе LGV', 'link.copied': 'Ссылка скопирована', 'link.copiedSkipped': 'Ссылка скопирована. В неё не вошли (открыты с этого компьютера): {names}', 'launch.bad': 'Ссылок не открыто: {n} — читаются только https-ссылки', 'start.refFailedLink': 'Не удалось загрузить референс {name}', 'snap.saved': 'Сохранено: {name}', 'snap.fail': 'Не удалось сделать картинку', 'about.version': 'Версия {v}', 'about.built': 'Сделано с помощью Claude — модели ИИ компании Anthropic.', 'about.asis': 'Предоставляется как есть, без каких-либо гарантий.', 'about.third': 'Сторонний код и данные', 'about.htscodecs': 'Кодеки CRAM на основе htscodecs (Genome Research Ltd), лицензия BSD 3-Clause.', 'about.mane': 'Транскрипты MANE Select и Plus Clinical v1.5 с их экзонами (NCBI, EMBL-EBI).', 'about.bands': 'Полосы хромосом GRCh38 из ideogram, Eric Weitz (CC0).', 'about.refs': 'Готовые референсы: публичные копии из хранилища команды IGV (Broad Institute).', 'about.guide': 'Руководство пользователя — docs/USER_GUIDE.ru.md в репозитории LGV.', 'ins.title': 'Инсерция', 'ins.len': 'Длина', 'ins.seq': 'Вставленные основания', 'ins.qual': 'Качество оснований', 'tip.copyIns': 'Скопировать вставленные основания (FASTA, с именем рида и позицией)', 'track.skipped': '{name}: {n} строк не прочитаны и пропущены; загружено объектов: {ok}', 'track.failed': 'Дорожка {name} не открыта: {msg}', 'track.nSamples': 'образцов: {n}, показаны первые {shown}', 'track.moreSamples': '… ещё образцов: {n}', 'track.name': 'Имя', 'track.type': 'Тип', 'track.value': 'Значение', 'track.score': 'Score', 'track.blocks': 'Блоков', 'track.thick': 'Толстая часть', 'tip.ann': 'Дорожка аннотации: клик по объекту — его карточка', 'tip.closeTrack': 'Закрыть эту дорожку', 'tip.go': "Перейти к локусу или гену (Enter)", 'tip.open': "Открыть BAM / CRAM, ссылки или референс", 'tip.view': "Настройки отображения", 'tip.locus': "chr7:117,559,500-117,560,000, позиция, ген (CFTR) или транскрипт MANE; несколько через пробел — окна рядом", 'tip.ideo': "Карта хромосомы: клик или перетаскивание переносит туда активное окно", 'tip.ruler': "Протяните, чтобы приблизить участок; клик центрирует", 'tip.genes': "Транскрипты MANE: клик — карточка транскрипта", 'tip.cov': "Клик — счёт оснований в позиции (все риды, без даунсэмплинга)", 'tip.closeSample': "Закрыть этот образец", 'tip.showRead': "Карточка только кликнутого рида", 'tip.showPair': "Рид и его мейт рядом", 'tip.toMate': "Перейти к мейту", 'tip.mateSplit': "Открыть мейта в новом окне рядом", 'tip.copyCard': "Скопировать текст карточки", 'tip.mqvLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь). mQV — среднее качество (Phred) этого основания в этих ридах", 'tip.baseLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь)", 'tip.total': "A + C + G + T + N; делеции считаются отдельно", 'tip.del': "Риды с делецией в этой позиции", 'tip.ins': "Риды с инсерцией сразу после этого основания", 'tip.bqShade': "Несовпадения с качеством ниже Q20 бледнее: 20% ниже Q5, полностью с Q20", 'tip.softClips': "Показывать клипированные концы ридов цветом рида; несовпадения в клипах раскрашены", 'tip.mqTransp': "Насколько прозрачны риды с MAPQ не выше «От MQ»; при 100% остаётся только контур. Несовпадения и инсерции сохраняют цвет (бледнеют только от качества основания)", 'tip.minMapq': "Риды с качеством картирования ниже не читаются вовсе (и в покрытии тоже)", 'tip.downsample': "Не больше N ридов, начинающихся в каждом окне; покрытие считает все риды", 'tip.dsMax': "Сколько ридов оставлять на окно", 'tip.trackMinH': "Если образцов много, каждый сохраняет эту высоту, а экран прокручивается", 'tip.covHeight': "Высота дорожки покрытия", 'tip.alleleThr': "Столбик покрытия делится по основаниям, если не-референсные основания набирают эту долю ридов", 'tip.showGenes': "Транскрипты MANE Select и Plus Clinical на GRCh38, встроены в LGV", 'tip.startRef': "Референс (или демо), который открывается при запуске LGV", 'nav.back': 'Назад к предыдущему месту', 'nav.fwd': 'Вперёд', 'nav.zoomIn': 'Приблизить (все окна)', 'nav.zoomOut': 'Отдалить (все окна)', 'cov.title': 'Покрытие', 'cov.total': 'Всего', 'cov.ref': 'референс', 'cov.meanQ': 'Среднее качество основания', 'cov.note': 'Все риды в этой позиции, без даунсэмплинга; фильтры из «Вид» действуют. INS — инсерции сразу после этого основания.', 'menu.copySeq': 'Копировать последовательность рида', 'menu.copyRc': 'Копировать реверс-комплемент рида', 'menu.copyLeft': 'Копировать левый soft clip', 'menu.copyRight': 'Копировать правый soft clip', 'menu.copyPair': 'Копировать пару ридов (FASTA)', 'menu.copyPairNo': 'Копировать пару ридов (мейт не загружен)', 'copied.seq': 'Скопировано оснований: {n}', 'card.mateSplit': 'Мейт в соседнем окне', 'menu.mateSplit': 'Показать регион мейта в соседнем окне', 'split.full': 'Больше окон не помещается ({n}). Закройте одно крестиком в его заголовке', 'card.copy': 'Копировать',
+    'card.toMate': 'К мейту', 'view.geneCanon': 'Гены Ensembl: canonical', 'view.geneAll': 'Гены Ensembl: все транскрипты', 'tip.geneCanon': 'Один транскрипт на ген, все гены (кодирующие, некодирующие, иммуноглобулиновые, псевдогены): читается по участкам с сайта LGV; запрашиваются только части открытого файла генов. GRCh38', 'tip.geneAll': 'Все транскрипты Ensembl: читаются по участкам с сайта LGV, видны при достаточном приближении. GRCh38', 'gene.canonical': 'Ensembl canonical', 'gene.all': 'Ensembl, все транскрипты', 'tip.typeOff': 'Отключить дорожки {type} у всех образцов (BAM: риды перестают загружаться)', 'tip.typeOn': 'Включить дорожки {type} обратно', 'btn.snap': 'PNG', 'btn.link': 'Ссылка', 'tip.snap': 'Сохранить вид картинкой PNG', 'tip.link': 'Скопировать ссылку, открывающую этот вид (референс, образцы и дорожки по ссылкам, локусы)', 'tip.about': 'О программе LGV', 'link.copied': 'Ссылка скопирована', 'link.copiedSkipped': 'Ссылка скопирована. В неё не вошли (открыты с этого компьютера): {names}', 'launch.bad': 'Ссылок не открыто: {n} — читаются только https-ссылки', 'start.refFailedLink': 'Не удалось загрузить референс {name}', 'snap.saved': 'Сохранено: {name}', 'snap.fail': 'Не удалось сделать картинку', 'about.version': 'Версия {v}', 'about.built': 'Сделано с помощью Claude — модели ИИ компании Anthropic.', 'about.asis': 'Предоставляется как есть, без каких-либо гарантий.', 'about.third': 'Сторонний код и данные', 'about.htscodecs': 'Кодеки CRAM на основе htscodecs (Genome Research Ltd), лицензия BSD 3-Clause.', 'about.mane': 'Транскрипты MANE Select и Plus Clinical v1.5 с их экзонами (NCBI, EMBL-EBI).', 'about.bands': 'Полосы хромосом GRCh38 из ideogram, Eric Weitz (CC0).', 'about.refs': 'Готовые референсы: публичные копии из хранилища команды IGV (Broad Institute).', 'about.guide': 'Руководство пользователя — docs/USER_GUIDE.ru.md в репозитории LGV.', 'ins.title': 'Инсерция', 'ins.len': 'Длина', 'ins.seq': 'Вставленные основания', 'ins.qual': 'Качество оснований', 'tip.copyIns': 'Скопировать вставленные основания (FASTA, с именем рида и позицией)', 'track.skipped': '{name}: {n} строк не прочитаны и пропущены; загружено объектов: {ok}', 'track.failed': 'Дорожка {name} не открыта: {msg}', 'track.nSamples': 'образцов: {n}, показаны первые {shown}', 'track.moreSamples': '… ещё образцов: {n}', 'track.name': 'Имя', 'track.type': 'Тип', 'track.value': 'Значение', 'track.score': 'Score', 'track.blocks': 'Блоков', 'track.thick': 'Толстая часть', 'tip.ann': 'Дорожка аннотации: клик по объекту — его карточка', 'tip.closeTrack': 'Закрыть эту дорожку', 'tip.go': "Перейти к локусу или гену (Enter)", 'tip.open': "Открыть BAM / CRAM, ссылки или референс", 'tip.view': "Настройки отображения", 'tip.locus': "chr7:117,559,500-117,560,000, позиция, ген (CFTR) или транскрипт MANE; несколько через пробел — окна рядом", 'tip.ideo': "Карта хромосомы: клик или перетаскивание переносит туда активное окно", 'tip.ruler': "Протяните, чтобы приблизить участок; клик центрирует", 'tip.genes': "Транскрипты MANE: клик — карточка транскрипта", 'tip.cov': "Клик — счёт оснований в позиции (все риды, без даунсэмплинга)", 'tip.closeSample': "Закрыть этот образец", 'tip.showRead': "Карточка только кликнутого рида", 'tip.showPair': "Рид и его мейт рядом", 'tip.toMate': "Перейти к мейту", 'tip.mateSplit': "Открыть мейта в новом окне рядом", 'tip.copyCard': "Скопировать текст карточки", 'tip.mqvLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь). mQV — среднее качество (Phred) этого основания в этих ридах", 'tip.baseLine': "Риды с этим основанием (доля от всех; + прямая, − обратная цепь)", 'tip.total': "A + C + G + T + N; делеции считаются отдельно", 'tip.del': "Риды с делецией в этой позиции", 'tip.ins': "Риды с инсерцией сразу после этого основания", 'tip.bqShade': "Несовпадения с качеством ниже Q20 бледнее: 20% ниже Q5, полностью с Q20", 'tip.softClips': "Показывать клипированные концы ридов цветом рида; несовпадения в клипах раскрашены", 'tip.mqTransp': "Насколько прозрачны риды с MAPQ не выше «От MQ»; при 100% остаётся только контур. Несовпадения и инсерции сохраняют цвет (бледнеют только от качества основания)", 'tip.minMapq': "Риды с качеством картирования ниже не читаются вовсе (и в покрытии тоже)", 'tip.downsample': "Не больше N ридов, начинающихся в каждом окне; покрытие считает все риды", 'tip.dsMax': "Сколько ридов оставлять на окно", 'tip.trackMinH': "Если образцов много, каждый сохраняет эту высоту, а экран прокручивается", 'tip.covHeight': "Высота дорожки покрытия", 'tip.alleleThr': "Столбик покрытия делится по основаниям, если не-референсные основания набирают эту долю ридов", 'tip.showGenes': "Транскрипты MANE Select и Plus Clinical на GRCh38, встроены в LGV", 'tip.startRef': "Референс (или демо), который открывается при запуске LGV", 'nav.back': 'Назад к предыдущему месту', 'nav.fwd': 'Вперёд', 'nav.zoomIn': 'Приблизить (все окна)', 'nav.zoomOut': 'Отдалить (все окна)', 'cov.title': 'Покрытие', 'cov.total': 'Всего', 'cov.ref': 'референс', 'cov.meanQ': 'Среднее качество основания', 'cov.note': 'Все риды в этой позиции, без даунсэмплинга; фильтры из «Вид» действуют. INS — инсерции сразу после этого основания.', 'menu.copySeq': 'Копировать последовательность рида', 'menu.copyRc': 'Копировать реверс-комплемент рида', 'menu.copyLeft': 'Копировать левый soft clip', 'menu.copyRight': 'Копировать правый soft clip', 'menu.copyPair': 'Копировать пару ридов (FASTA)', 'menu.copyPairNo': 'Копировать пару ридов (мейт не загружен)', 'copied.seq': 'Скопировано оснований: {n}', 'card.mateSplit': 'Мейт в соседнем окне', 'menu.mateSplit': 'Показать регион мейта в соседнем окне', 'split.full': 'Больше окон не помещается ({n}). Закройте одно крестиком в его заголовке', 'card.copy': 'Копировать',
     'card.clicked': 'Основание', 'card.bq': 'Качество основания', 'card.ref': 'реф.', 'card.del': 'делеция',
     'flag.1': 'парный', 'flag.2': 'правильная пара', 'flag.4': 'не выровнен', 'flag.8': 'мейт не выровнен', 'flag.16': 'обратная цепь', 'flag.32': 'мейт на обратной',
     'flag.64': 'первый в паре', 'flag.128': 'второй в паре', 'flag.256': 'вторичное', 'flag.512': 'не прошёл QC', 'flag.1024': 'дубликат', 'flag.2048': 'дополнительное',
@@ -584,7 +586,7 @@ const STRINGS = {
     'sig.graph': 'Рисовать', 'sig.g.bar': 'Столбиками', 'sig.g.points': 'Точками', 'sig.g.line': 'Линией', 'sig.g.heatmap': 'Тепловой картой',
     'sig.windowing': 'Оконная функция', 'sig.scale': 'Шкала', 'sig.s.auto': 'Авто (по видимым значениям)', 'sig.s.01': '0 – 1', 'sig.s.file': 'Из файла ({lo} – {hi})',
     'sig.zero': 'Всегда включать ноль', 'sig.log': 'Логарифмическая: ln(1 + x)', 'sig.height': 'Высота ряда', 'sig.h.less': 'Ниже', 'sig.h.more': 'Выше', 'sig.reset': 'Вернуть настройки файла',
-    'err.tdfBad': 'Файл TDF повреждён или это не TDF: {what}', 'err.bwBad': 'Файл bigWig повреждён или это не bigWig: {what}', 'err.bwBigBed': '{name} — файл bigBed (объекты); из этого семейства LGV читает bigWig (значения)',
+    'err.tdfBad': 'Файл TDF повреждён или это не TDF: {what}', 'err.bbBad': 'Файл bigBed повреждён или это не bigBed: {what}', 'err.bwBad': 'Файл bigWig повреждён или это не bigWig: {what}', 'err.bwBigBed': '{name} — файл bigBed (объекты); из этого семейства LGV читает bigWig (значения)',
     'err.trackFormat': 'Неизвестный формат дорожки: {name}. LGV читает BED, bedGraph, VCF, GTF, GFF3, TDF и bigWig', 'err.trackEmpty': 'В {name} не найдено объектов', 'err.trackBig': '{name} больше, чем LGV читает за раз ({size})', 'err.trackBigGz': 'В распакованном виде {name} ({packed}) больше, чем LGV читает за раз ({size}). Откройте его часть (например, строки нужных генов) или аннотацию поменьше', 'err.trackMany': 'В {name} больше {n} объектов',
   },
 };
@@ -4750,7 +4752,7 @@ function trackKind(name) {
   if (/\.(gff|gff3)$/.test(n)) return 'gff';
   return null;
 }
-const isTrackFile = name => !!trackKind(name) || /\.(tdf|bw|bigwig)$/i.test(String(name)); // signal files: src/signal.js
+const isTrackFile = name => !!trackKind(name) || /\.(tdf|bw|bigwig|bb|bigbed)$/i.test(String(name)); // signal and bigBed files: src/signal.js
 
 // Whole, plain-number coordinate (no signs, decimals or exponents); -1 when it is not one.
 const intField = s => /^\d{1,12}$/.test(s) ? +s : -1;
@@ -4781,32 +4783,38 @@ class FeatureIndex {
 let LINE_NO = 0;
 function* lines(text) { let p = 0; LINE_NO = 0; while (p < text.length) { LINE_NO++; let e = text.indexOf('\n', p); if (e < 0) e = text.length; const l = text.charCodeAt(e - 1) === 13 ? text.slice(p, e - 1) : text.slice(p, e); p = e + 1; yield l; } }
 
-// BED 3–12: chrom start end [name score strand thickStart thickEnd itemRgb blockCount blockSizes blockStarts]
+// BED 3–12 columns as a feature, or null when they do not parse: chrom start end [name score strand
+// thickStart thickEnd itemRgb blockCount blockSizes blockStarts]. Also used for bigBed records.
+function bedFeature(f) {
+  const start = intField(f[1]), end = intField(f[2]);
+  if (f.length < 3 || !f[0] || start < 0 || end < start) return null;
+  const ft = { start, end: Math.max(end, start + 1), name: f[3] && f[3] !== '.' ? f[3].slice(0, 200) : '', strand: f[5] === '-' ? -1 : f[5] === '+' ? 1 : 0, chr: f[0] };
+  if (f[4] !== undefined && f[4] !== '.' && isFinite(+f[4])) ft.score = +f[4];
+  const ts = intField(f[6]), te = intField(f[7]);
+  if (ts >= start && te >= ts && te <= end) { ft.cdsStart = ts; ft.cdsEnd = te; }
+  if (f[8] && /^\d{1,3},\d{1,3},\d{1,3}$/.test(f[8])) { const c = f[8].split(',').map(Number); if (c.every(v => v <= 255)) ft.rgb = c; }
+  const n = intField(f[9]);
+  if (n > 0 && n <= TRACK_LIMITS.blocks && f[10] && f[11]) {
+    const sz = f[10].split(',').filter(x => x !== '').map(intField), st = f[11].split(',').filter(x => x !== '').map(intField);
+    // blocks: in order, inside the feature, not overlapping
+    let ok = sz.length === n && st.length === n, prev = 0;
+    const ex = new Int32Array(n * 2);
+    for (let i = 0; ok && i < n; i++) {
+      const a = start + st[i], b = a + sz[i];
+      if (sz[i] < 0 || st[i] < 0 || a < start + prev || b > end) ok = false;
+      ex[2 * i] = a; ex[2 * i + 1] = b; prev = st[i] + sz[i];
+    }
+    if (ok) ft.exons = ex;
+  }
+  return ft;
+}
 function parseBed(text, name) {
   const ix = new FeatureIndex(); ix.name = name;
   for (const line of lines(text)) {
     if (!line || line[0] === '#' || /^(track|browser)\b/.test(line)) continue;
     const f = line.includes('\t') ? line.split('\t') : line.trim().split(/\s+/);
-    const start = intField(f[1]), end = intField(f[2]);
-    if (f.length < 3 || !f[0] || start < 0 || end < start) { ix.bad(line); continue; }
-    const ft = { start, end: Math.max(end, start + 1), name: f[3] && f[3] !== '.' ? f[3].slice(0, 200) : '', strand: f[5] === '-' ? -1 : f[5] === '+' ? 1 : 0, chr: f[0] };
-    if (f[4] !== undefined && f[4] !== '.' && isFinite(+f[4])) ft.score = +f[4];
-    const ts = intField(f[6]), te = intField(f[7]);
-    if (ts >= start && te >= ts && te <= end) { ft.cdsStart = ts; ft.cdsEnd = te; }
-    if (f[8] && /^\d{1,3},\d{1,3},\d{1,3}$/.test(f[8])) { const c = f[8].split(',').map(Number); if (c.every(v => v <= 255)) ft.rgb = c; }
-    const n = intField(f[9]);
-    if (n > 0 && n <= TRACK_LIMITS.blocks && f[10] && f[11]) {
-      const sz = f[10].split(',').filter(x => x !== '').map(intField), st = f[11].split(',').filter(x => x !== '').map(intField);
-      // blocks: in order, inside the feature, not overlapping
-      let ok = sz.length === n && st.length === n, prev = 0;
-      const ex = new Int32Array(n * 2);
-      for (let i = 0; ok && i < n; i++) {
-        const a = start + st[i], b = a + sz[i];
-        if (sz[i] < 0 || st[i] < 0 || a < start + prev || b > end) ok = false;
-        ex[2 * i] = a; ex[2 * i + 1] = b; prev = st[i] + sz[i];
-      }
-      if (ok) ft.exons = ex;
-    }
+    const ft = bedFeature(f);
+    if (!ft) { ix.bad(line); continue; }
     ix.add(f[0], ft);
   }
   return ix.finish();
@@ -4939,7 +4947,7 @@ async function loadTrack(src) {
   return ix;
 }
 
-if (typeof module !== 'undefined') module.exports = { gunzipTrack, TRACK_LIMITS, trackKind, isTrackFile, FeatureIndex, parseBed, parseBedGraph, parseVcf, vcfGenotype, vcfInfo, parseGtfGff, loadTrack };
+if (typeof module !== 'undefined') module.exports = { gunzipTrack, TRACK_LIMITS, trackKind, isTrackFile, FeatureIndex, bedFeature, parseBed, parseBedGraph, parseVcf, vcfGenotype, vcfInfo, parseGtfGff, loadTrack };
 
 // LGV: signal tracks — numeric values along the genome, read by region with range reads:
 //  - TDF, the tiled format written by igvtools. There is no published specification; the layout here
@@ -4955,6 +4963,7 @@ if (typeof module !== 'undefined') module.exports = { gunzipTrack, TRACK_LIMITS,
 // a network (coarser data is used instead), so a large file cannot keep the page busy.
 'use strict';
 if (typeof contigKey === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./core.js'));
+if (typeof bedFeature === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./tracks.js'));
 
 const SIG_LIMITS = {
   header: 16 << 20, index: 64 << 20, block: 64 << 20, string: 100000, items: 1e8, depth: 24, nodes: 100000,
@@ -4963,7 +4972,8 @@ const SIG_LIMITS = {
 Object.assign(CGV_ERR_EN, {
   tdfBad: 'The TDF file is damaged or not TDF: {what}',
   bwBad: 'The bigWig file is damaged or not bigWig: {what}',
-  bwBigBed: '{name} is a bigBed file (features); LGV reads bigWig (values) from this family',
+  bwBigBed: '{name} is a bigBed file (features), not bigWig (values)',
+  bbBad: 'the bigBed file is damaged: {what}',
 });
 
 // ---- binary reading with bounds checks ----
@@ -5398,6 +5408,150 @@ class BigWigFile {
   }
 }
 
+// ======================= bigBed =======================
+// Features (BED records) in the bbi container (UCSC bbiFile.h): same header, contig tree and R tree as
+// bigWig; data blocks hold records chromId, start, end, then the remaining BED columns as text. Read
+// by region; optional extra indexes (B+ trees on a column, e.g. the name) find a feature by name.
+const BB_LIMITS = { viewBytes: 8 << 20, sql: 1 << 16, names: 64, blocks: 2000 };
+class BigBedFile extends BigWigFile {
+  constructor(src) { super(src); this.format = 'bigbed'; this.blockCache = new Map(); }
+  bad(what) { return new CgvError('bbBad', { what }); }
+  bin(u8) { return new SigBin(u8, this.le, 'bbBad'); }
+  async open() {
+    const h = await this.src.read(0, 64);
+    if (h.length < 64) throw this.bad('cut short');
+    const dv = new DataView(h.buffer, h.byteOffset, 64);
+    if (dv.getUint32(0, true) === BB_MAGIC) this.le = true;
+    else if (dv.getUint32(0, false) === BB_MAGIC) this.le = false;
+    else throw this.bad('no bigBed signature');
+    const r = this.bin(h); r.p = 4;
+    this.version = r.u16(); r.u16();
+    this.chromTreeOffset = r.i64(); this.fullDataOffset = r.i64(); this.fullIndexOffset = r.i64();
+    this.fieldCount = r.u16(); this.definedFieldCount = r.u16();
+    const sqlOff = r.i64(); r.i64(); this.uncompressBufSize = r.u32(); const extOff = this.version >= 4 ? r.i64() : 0;
+    if (this.uncompressBufSize > SIG_LIMITS.block) throw this.bad('the block size is too large');
+    // column names from the autoSql text (fields after the BED ones are shown in the card)
+    this.fields = [];
+    if (sqlOff > 0) {
+      const t = new TextDecoder().decode(await this.src.read(sqlOff, BB_LIMITS.sql)).split('\0')[0];
+      // "table name "comment" ( type field; "comment" ... )": the last word before each ';'
+      const body = t.slice(t.indexOf('(') + 1).replace(/"[^"]*"/g, ' ');
+      for (const part of body.split(';').slice(0, -1)) { const w = part.trim().split(/\s+/); this.fields.push(w[w.length - 1].replace(/\W/g, '')); }
+    }
+    // extra indexes: [{ field, offset }]
+    this.extra = [];
+    if (extOff > 0) {
+      const e = this.bin(await sigRead(this.src, extOff, 12, 12, 'bbBad')); e.u16(); const n = e.u16(), listOff = e.i64();
+      if (n > BB_LIMITS.names) throw this.bad('extra indexes');
+      if (n && listOff > 0) {
+        const l = this.bin(await sigRead(this.src, listOff, n * 20, n * 20 + 64, 'bbBad'));
+        for (let i = 0; i < n; i++) { l.p = i * 20; l.u16(); const fc = l.u16(), off = l.i64(); l.u32(); const field = l.u16(); if (fc >= 1 && off > 0) this.extra.push({ field, offset: off }); }
+      }
+    }
+    await this.readChromTree();
+    this.tracks = [this.name.replace(/\.(bb|bigbed)$/i, '')];
+    return this;
+  }
+  // records of one block, decoded once and kept (a few hundred blocks)
+  async block(lf) {
+    const k = lf.off; let b = this.blockCache.get(k); if (b) return b;
+    let u8 = await sigRead(this.src, lf.off, lf.size, SIG_LIMITS.block, 'bbBad');
+    if (this.uncompressBufSize > 0) u8 = await inflateStream(u8, 'deflate', Math.max(this.uncompressBufSize, 1 << 20), 'bbBad', { what: 'a block does not decompress' });
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), td = new TextDecoder(), out = [];
+    for (let p = 0; p + 12 <= u8.length;) {
+      const cid = dv.getUint32(p, this.le), s = dv.getUint32(p + 4, this.le), e = dv.getUint32(p + 8, this.le); p += 12;
+      let z = p; while (z < u8.length && u8[z] !== 0) z++;
+      if (z >= u8.length) throw this.bad('a record is cut short');
+      out.push({ cid, s, e, rest: td.decode(u8.subarray(p, z)) }); p = z + 1;
+    }
+    if (this.blockCache.size > BB_LIMITS.blocks) this.blockCache.clear();
+    this.blockCache.set(k, out); return out;
+  }
+  feature(rec) {
+    const chr = this.chrById.get(rec.cid) || '';
+    const f = [chr, String(rec.s), String(rec.e), ...(rec.rest ? rec.rest.split('\t') : [])];
+    const ft = bedFeature(f); if (!ft) return null;
+    // columns past BED 12 (or past the defined ones): named by the autoSql text
+    const from = Math.min(12, this.definedFieldCount || 12);
+    if (f.length > from) { ft.attrs = {}; for (let i = from; i < f.length; i++) if (f[i] !== '') ft.attrs[this.fields[i] || 'field' + (i + 1)] = f[i]; }
+    // gene tracks (bigGenePred and the like): the gene symbol as the label, the transcript in the card
+    const g = ft.attrs && (ft.attrs.geneName || ft.attrs.name2 || ft.attrs.geneSymbol || ft.attrs.gene_name);
+    if (g) ft.label = g;
+    return ft;
+  }
+  // features overlapping [a, b) of a contig; { tooMuch } when the view would read more than allowed
+  async features(contig, a, b) {
+    const c = this.chrs.get(contigKey(contig)); if (!c) return [];
+    const L = await this.leaves(this.fullIndexOffset, c.id, Math.floor(a), Math.ceil(b));
+    let bytes = 0; for (const x of L) bytes += x.size;
+    if (bytes > BB_LIMITS.viewBytes || L.length > SIG_LIMITS.viewBlocks) return { tooMuch: true };
+    const out = [];
+    for (const lf of L) for (const r of await this.block(lf)) if (r.cid === c.id && r.s < b && r.e > a) { const ft = this.feature(r); if (ft) out.push(ft); }
+    return out;
+  }
+  // features whose indexed column equals a name (any case), through the extra B+ tree indexes
+  async findName(q) {
+    const want = String(q).trim(); if (!want || !this.extra.length) return [];
+    const out = [];
+    for (const ex of this.extra) {
+      const bare = want.replace(/\.\d+$/, ''), blocks = await this.bptFind(ex.offset, [want, want.toUpperCase(), bare, bare.toUpperCase()]);
+      for (const lf of blocks) for (const r of await this.block(lf)) {
+        const f = [String(r.cid), String(r.s), String(r.e), ...r.rest.split('\t')];
+        const v = f[ex.field]; if (v === undefined) continue;
+        if (v.toUpperCase() === want.toUpperCase() || v.replace(/\.\d+$/, '').toUpperCase() === want.toUpperCase()) { const ft = this.feature(r); if (ft) out.push(ft); }
+      }
+      if (out.length) break;
+    }
+    return out;
+  }
+  // B+ tree (bPlusTree.h) lookup: values (block offset, size) of every item whose key is one of keys
+  async bptFind(off, keys) {
+    const hr = this.bin(await sigRead(this.src, off, 32, 32, 'bbBad'));
+    if (hr.u32() !== BPT_MAGIC) throw this.bad('name index');
+    const blockSize = hr.u32(), keySize = hr.u32(), valSize = hr.u32();
+    if (!(keySize >= 1 && keySize <= 1024) || valSize !== 16 || !(blockSize >= 2 && blockSize <= 65536)) throw this.bad('name index');
+    const ks = [...new Set(keys.filter(k => k.length <= keySize))]; if (!ks.length) return [];
+    const found = new Map(); let nodes = 0;
+    const walk = async (p, depth) => {
+      if (depth > SIG_LIMITS.depth || ++nodes > 200) throw this.bad('name index');
+      const head = this.bin(await sigRead(this.src, p, 4, 4, 'bbBad')); const leaf = head.u8v(); head.u8v(); const n = head.u16();
+      if (n > blockSize) throw this.bad('name index');
+      const r = this.bin(await sigRead(this.src, p + 4, n * (keySize + (leaf ? 16 : 8)), SIG_LIMITS.header, 'bbBad'));
+      const items = [];
+      for (let i = 0; i < n; i++) { const key = r.fixedStr(keySize); if (leaf) { const o = r.i64(), sz = r.i64(); items.push({ key, o, sz }); } else items.push({ key, o: r.i64() }); }
+      if (leaf) { for (const it of items) if (ks.includes(it.key)) found.set(it.o, { off: it.o, size: it.sz }); return; }
+      // a child may hold a key when its first key is not past it and the next child's is not before it
+      for (let i = 0; i < n; i++) if (ks.some(k => items[i].key <= k && (i + 1 === n || items[i + 1].key >= k))) await walk(items[i].o, depth + 1);
+    };
+    await walk(off + 32, 0);
+    return [...found.values()];
+  }
+}
+// A bigBed as an annotation track's index: query() answers from the window read last and asks for a
+// new one when the view leaves it (onData redraws when it arrives).
+class BigBedIndex {
+  constructor(file) { this.file = file; this.win = null; this.busy = null; this.onData = null; this.byChr = null; this.count = 0; this.skipped = 0; }
+  query(contig, a, b) {
+    const w = this.win, k = contigKey(contig);
+    if (!w || w.k !== k || a < w.a || b > w.b) this.load(contig, a, b);
+    if (!w || w.k !== k || w.tooMuch) { this.tooMuch = !!(w && w.k === k && w.tooMuch && a >= w.a && b <= w.b); return []; }
+    this.tooMuch = false;
+    return w.list.filter(f => f.start < b && f.end > a);
+  }
+  load(contig, a, b) {
+    const k = contigKey(contig), span = b - a, A = Math.max(0, Math.floor(a - span)), B = Math.ceil(b + span);
+    if (this.busy && this.busy.k === k && a >= this.busy.a && b <= this.busy.b) return;
+    const job = this.busy = { k, a: A, b: B };
+    this.file.features(contig, A, B).then(r => {
+      if (this.busy !== job) return;
+      this.busy = null;
+      this.win = r && r.tooMuch ? { k, a: A, b: B, tooMuch: true, list: [] } : { k, a: A, b: B, list: r };
+      if (this.onData) this.onData();
+    }, e => { if (this.busy === job) this.busy = null; if (this.onData) this.onData(e); });
+  }
+}
+async function openBigBed(src) { return new BigBedFile(src).open(); }
+
 // bigWig data section: chromId, start, end, step, span, type (1 bedGraph, 2 variableStep, 3 fixedStep),
 // reserved, item count; then the items. A block may hold several sections; only contig id is kept.
 function decodeBwData(u8, le, id) {
@@ -5436,6 +5590,7 @@ function decodeBwZoom(u8, le, id) {
 
 // Opens a signal file by name: .tdf or .bw / .bigwig.
 function signalKind(name) { const n = String(name).toLowerCase(); return /\.tdf$/.test(n) ? 'tdf' : /\.(bw|bigwig)$/.test(n) ? 'bigwig' : null; }
+const isBigBed = name => /\.(bb|bigbed)$/i.test(String(name));
 async function openSignal(src) {
   const k = signalKind(src.name);
   const f = k === 'tdf' ? new TdfFile(src) : new BigWigFile(src);
@@ -5474,7 +5629,7 @@ async function signalDefaults(f) {
   return d;
 }
 
-if (typeof module !== 'undefined') module.exports = { SIG_LIMITS, SigBin, parseTrackLine, TdfFile, BigWigFile, decodeTdfTile, decodeBwData, decodeBwZoom, signalKind, openSignal, signalDefaults, SIG_CACHE };
+if (typeof module !== 'undefined') module.exports = { SIG_LIMITS, SigBin, parseTrackLine, TdfFile, BigWigFile, BigBedFile, BigBedIndex, openBigBed, isBigBed, decodeTdfTile, decodeBwData, decodeBwZoom, signalKind, openSignal, signalDefaults, SIG_CACHE };
 
 // CGV app: state, loading, WebGL read rendering, Canvas2D for ruler/coverage, UI.
 'use strict';
@@ -5495,6 +5650,7 @@ const DEFAULT_PROFILE = {
   coverage: { height: 56, alleleThreshold: 0.2 },
   trackMinHeight: 240,
   showGenes: true,               // MANE transcripts under the reference (GRCh38 only)
+  geneSets: { canonical: false, all: false }, // Ensembl gene tracks (bigBed, read by region from LGV's site)
   startReference: 'hg38',        // opened at start: hg38 | hg19 | chm13 | demo | none           // px: with many samples each keeps at least this height; the view scrolls
   downsample: { enabled: true, maxReads: 100, window: 50 }, // like IGV: reads kept per window; coverage counts all
   maxReads: 300000,
@@ -6947,6 +7103,18 @@ function findInTracks(q) {
   }
   return null;
 }
+async function findInBigBeds(q) {
+  for (const a of ANN.tracks) {
+    if (!a.bigbed || !a.bigbed.extra.length) continue;
+    let hits = []; try { hits = await a.bigbed.findName(q); } catch (e) { continue; }
+    if (!hits.length) continue;
+    const id = contigId(hits[0].chr); if (id < 0) continue;
+    const on = hits.filter(h => h.chr === hits[0].chr), s = Math.min(...on.map(h => h.start)), e = Math.max(...on.map(h => h.end));
+    const pad = Math.max(50, Math.round((e - s) * 0.05));
+    return { id, s: Math.max(0, s - pad), e: Math.min(S.contigs[id].len, e + pad) };
+  }
+  return null;
+}
 function parseLocus(str) {
   if (typeof str !== 'string' || str.length > 300) return null;
   str = str.trim().replace(/[  \s]/g, '').replace(/[–—]/g, '-');
@@ -7743,6 +7911,7 @@ async function openReference(ref, opts) {
     // a new genome means a new coordinate system: the old view no longer applies
     S.view.refId = 0; S.view.start = 0; S.viewSet = false; NAV.back = []; NAV.fwd = []; updateNavBtns();
     if (!opts.noGoto) { goto(0, 0, Math.min(S.contigs[0].len, 1000)); S.viewSet = true; }
+    applyGeneSets(); // Ensembl gene tracks follow the genome (GRCh38 only)
     return true;
   } catch (e) { toast(t('ref.failed', { msg: errText(e) })); return false; }
   finally { refBusy = false; }
@@ -7920,10 +8089,12 @@ stage.addEventListener('drop', async e => {
 });
 
 // Go to the typed locus: Enter in the field or the Go button.
-function goLocus() {
+async function goLocus() {
   if (!S.contigs) return;
-  const el = $('locus'), l = parseLoci(el.value);
+  const el = $('locus'); let l = parseLoci(el.value);
   if (!l) { toast(t('locus.bad')); return; }
+  // a single name not found so far: the name indexes of open bigBed tracks (read from the file)
+  if (l.error && !/\s/.test(el.value.trim())) { const f = await findInBigBeds(el.value.trim()); if (f) l = [f]; }
   if (l.error) { toast(l.error); return; }
   if (l.length > maxPanels()) toast(t('split.full', { n: maxPanels() }));
   el.blur(); navPush(); setPanels(l);
@@ -7961,7 +8132,7 @@ const CONTROLS = [
   ['hideSec', 'filters.hideSecondary', 'bool', 'reload'], ['hideSupp', 'filters.hideSupplementary', 'bool', 'reload'], ['hideQc', 'filters.hideQcFail', 'bool', 'reload'],
   ['readWin', 'readWindowKb', 'num', 'reload'], ['dsOn', 'downsample.enabled', 'bool', 'reload'], ['dsMax', 'downsample.maxReads', 'num', 'reload'], ['dsWin', 'downsample.window', 'num', 'reload'],
   ['covHeight', 'coverage.height', 'num', 'draw'], ['trackMinH', 'trackMinHeight', 'num', 'draw'], ['alleleThr', 'coverage.alleleThreshold', 'num', 'rebuild'],
-  ['hideToolbar', 'hideToolbar', 'bool', 'chrome'], ['showGenes', 'showGenes', 'bool', 'draw'], ['startRef', 'startReference', 'str', 'none'], ['language', 'language', 'str', 'lang'],
+  ['hideToolbar', 'hideToolbar', 'bool', 'chrome'], ['showGenes', 'showGenes', 'bool', 'draw'], ['geneCanon', 'geneSets.canonical', 'bool', 'genesets'], ['geneAll', 'geneSets.all', 'bool', 'genesets'], ['startRef', 'startReference', 'str', 'none'], ['language', 'language', 'str', 'lang'],
 ];
 const getPath = (o, p) => p.split('.').reduce((a, k) => a[k], o);
 const setPath = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k], o)[last] = v; };
@@ -7984,6 +8155,7 @@ for (const [id, path, type, effect] of CONTROLS) {
     setPath(P, path, v); saveProfile(); syncPanel();
     if (effect === 'draw') { clampScroll(); draw(); }
     else if (effect === 'chrome') applyChrome();
+    else if (effect === 'genesets') applyGeneSets();
     else if (effect === 'lang') applyLanguage();
     else if (effect === 'reload') { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(reloadData, 250); }
     else { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(() => { usePanel(S.active); if (id === 'sortBy' && S.sortPos == null) S.sortPos = Math.floor(viewCenter()); rebuild(); draw(); }, 30); }
@@ -8117,9 +8289,9 @@ function annHeight(a) {
 // ---- Track types switched on and off for all samples at once (this session only) ----
 // Switching samples (BAM / CRAM) off stops reading reads, so a whole chromosome opens at once with
 // the other tracks; the samples are kept aside and come back as they were.
-const SHOW = { bam: true, vcf: true, bed: true, gff: true, bedgraph: true, tdf: true, bigwig: true };
-const TYPE_LABEL = { bam: 'BAM', vcf: 'VCF', bed: 'BED', gff: 'GFF', bedgraph: 'bedGraph', tdf: 'TDF', bigwig: 'bigWig' };
-const typeOf = a => a.kind === 'signal' ? (/\.tdf$/i.test(a.name) ? 'tdf' : 'bigwig') : (a.kind === 'gtf' || a.kind === 'gff') ? 'gff' : a.kind;
+const SHOW = { bam: true, vcf: true, bed: true, gff: true, bedgraph: true, tdf: true, bigwig: true, bigbed: true, genes: true };
+const TYPE_LABEL = { bam: 'BAM', vcf: 'VCF', bed: 'BED', gff: 'GFF', bedgraph: 'bedGraph', tdf: 'TDF', bigwig: 'bigWig', bigbed: 'bigBed' };
+const typeOf = a => a.type ? a.type : a.kind === 'signal' ? (/\.tdf$/i.test(a.name) ? 'tdf' : 'bigwig') : (a.kind === 'gtf' || a.kind === 'gff') ? 'gff' : a.kind;
 function annVis() { return ANN.tracks.filter(a => SHOW[typeOf(a)] !== false); }
 function toggleType(k) {
   SHOW[k] = !SHOW[k];
@@ -8152,6 +8324,7 @@ async function openTracks(srcs) {
     if (ANN.tracks.some(a => a.key === key)) { toast(t('sample.already', { name: src.name })); continue; }
     try {
       if (signalKind(src.name)) { ANN.tracks.push(await openSignalTrack(src, key)); continue; } // TDF, bigWig: read by region
+      if (isBigBed(src.name)) { ANN.tracks.push(await openBigBedTrack(src, key)); continue; } // bigBed: read by region
       const ix = await loadTrack(src);
       ANN.tracks.push({ id: ++ANN.seq, key, name: src.name, kind: ix.kind, ix, src });
       // most lines unreadable: the file is probably not what its name says; show the first such line
@@ -8160,6 +8333,29 @@ async function openTracks(srcs) {
     } catch (e) { toast(t('track.failed', { name: src.name, msg: errText(e) }), true); }
   }
   renderTypeChips(); clampScroll(); draw();
+}
+// ---- Ensembl gene tracks: bigBed files published next to LGV (tools/make-genes.js), read by region,
+// GRCh38 only. On LGV's own site they come from the same site; elsewhere (a saved LGV.html) from it by
+// link. Only parts of these public files are requested; nothing about the user's data is sent.
+const GENE_SITE = 'https://avlavrov.github.io/LGV/genes/';
+const GENE_SETS = { canonical: { file: 'ensembl.canonical.grch38.bb', label: 'gene.canonical' }, all: { file: 'ensembl.all.grch38.bb', label: 'gene.all' } };
+function geneSetUrl(k) { const here = typeof location !== 'undefined' && location.protocol === 'https:' && location.hostname === 'avlavrov.github.io'; return (here ? new URL('genes/', location.href).href : GENE_SITE) + GENE_SETS[k].file; }
+async function applyGeneSets() {
+  for (const k of Object.keys(GENE_SETS)) {
+    const want = !!P.geneSets[k] && genesActive(), have = ANN.tracks.find(a => a.geneSet === k);
+    if (want && !have) {
+      try { ANN.tracks.push(await openBigBedTrack(new UrlSource(geneSetUrl(k)), 'geneset:' + k, { geneSet: k, type: 'genes', name: t(GENE_SETS[k].label) })); }
+      catch (e) { toast(t('track.failed', { name: t(GENE_SETS[k].label), msg: errText(e) }), true); }
+    } else if (!want && have) closeAnn(have);
+  }
+  renderTypeChips(); clampScroll(); draw();
+}
+// A bigBed as a BED track: features come by region (BigBedIndex), the view redraws when they arrive.
+async function openBigBedTrack(src, key, extra) {
+  const f = await openBigBed(src), ix = new BigBedIndex(f);
+  const a = Object.assign({ id: ++ANN.seq, key, name: src.name, kind: 'bed', type: 'bigbed', ix, src, bigbed: f }, extra || {});
+  ix.onData = e => { if (e && !a.err) { a.err = e; toast(t('track.failed', { name: a.name, msg: errText(e) }), true); } draw(); };
+  return a;
 }
 function closeAnn(a) { ANN.tracks = ANN.tracks.filter(x => x !== a); renderTypeChips(); if (a.ix && a.ix.loader) a.ix.onData = null; if (cardState && cardState.ann === a) hideCard(); clampScroll(); draw(); }
 const GT_COL = ['', '#c3c8cf', '#2a5fd6', '#14a3b8'];
@@ -8174,6 +8370,7 @@ function drawAnnTracks(pn) {
     ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, h); ctx.clip();
     const fy = y0 + ANN_HDR, fh = h - ANN_HDR, list = a.kind === 'signal' ? null : a.ix.query(name, Math.floor(vs), Math.ceil(ve));
     let extra = '';
+    if (a.bigbed && a.ix.tooMuch) extra = t('sig.tooMuch');
     if (a.kind === 'signal') extra = drawSignal(a, fy, fh);
     else if (a.kind === 'bedgraph') {
       // one bar per pixel column: the largest value under it; scale from the visible values
@@ -8213,7 +8410,7 @@ function drawFeatRows(list, y0, hits, colorOf) {
   ctx.font = '600 9.5px ' + SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   for (const f of list) {
     const x0 = px(f.start), x1 = px(f.end), a = Math.max(x0, 0), b = Math.min(x1, W);
-    const label = f.name || '', lw = label ? ctx.measureText(label).width : 0;
+    const label = f.label || f.name || '', lw = label ? ctx.measureText(label).width : 0;
     const cx = Math.max(lw / 2 + 2, Math.min(W - lw / 2 - 2, (a + b) / 2));
     const e0 = Math.min(a, cx - lw / 2), e1 = Math.max(b, cx + lw / 2);
     let row = ends.findIndex(e => e + 6 <= e0), withLabel = !!label;

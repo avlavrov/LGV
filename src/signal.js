@@ -12,6 +12,7 @@
 // a network (coarser data is used instead), so a large file cannot keep the page busy.
 'use strict';
 if (typeof contigKey === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./core.js'));
+if (typeof bedFeature === 'undefined' && typeof require !== 'undefined') Object.assign(globalThis, require('./tracks.js'));
 
 const SIG_LIMITS = {
   header: 16 << 20, index: 64 << 20, block: 64 << 20, string: 100000, items: 1e8, depth: 24, nodes: 100000,
@@ -20,7 +21,8 @@ const SIG_LIMITS = {
 Object.assign(CGV_ERR_EN, {
   tdfBad: 'The TDF file is damaged or not TDF: {what}',
   bwBad: 'The bigWig file is damaged or not bigWig: {what}',
-  bwBigBed: '{name} is a bigBed file (features); LGV reads bigWig (values) from this family',
+  bwBigBed: '{name} is a bigBed file (features), not bigWig (values)',
+  bbBad: 'the bigBed file is damaged: {what}',
 });
 
 // ---- binary reading with bounds checks ----
@@ -455,6 +457,150 @@ class BigWigFile {
   }
 }
 
+// ======================= bigBed =======================
+// Features (BED records) in the bbi container (UCSC bbiFile.h): same header, contig tree and R tree as
+// bigWig; data blocks hold records chromId, start, end, then the remaining BED columns as text. Read
+// by region; optional extra indexes (B+ trees on a column, e.g. the name) find a feature by name.
+const BB_LIMITS = { viewBytes: 8 << 20, sql: 1 << 16, names: 64, blocks: 2000 };
+class BigBedFile extends BigWigFile {
+  constructor(src) { super(src); this.format = 'bigbed'; this.blockCache = new Map(); }
+  bad(what) { return new CgvError('bbBad', { what }); }
+  bin(u8) { return new SigBin(u8, this.le, 'bbBad'); }
+  async open() {
+    const h = await this.src.read(0, 64);
+    if (h.length < 64) throw this.bad('cut short');
+    const dv = new DataView(h.buffer, h.byteOffset, 64);
+    if (dv.getUint32(0, true) === BB_MAGIC) this.le = true;
+    else if (dv.getUint32(0, false) === BB_MAGIC) this.le = false;
+    else throw this.bad('no bigBed signature');
+    const r = this.bin(h); r.p = 4;
+    this.version = r.u16(); r.u16();
+    this.chromTreeOffset = r.i64(); this.fullDataOffset = r.i64(); this.fullIndexOffset = r.i64();
+    this.fieldCount = r.u16(); this.definedFieldCount = r.u16();
+    const sqlOff = r.i64(); r.i64(); this.uncompressBufSize = r.u32(); const extOff = this.version >= 4 ? r.i64() : 0;
+    if (this.uncompressBufSize > SIG_LIMITS.block) throw this.bad('the block size is too large');
+    // column names from the autoSql text (fields after the BED ones are shown in the card)
+    this.fields = [];
+    if (sqlOff > 0) {
+      const t = new TextDecoder().decode(await this.src.read(sqlOff, BB_LIMITS.sql)).split('\0')[0];
+      // "table name "comment" ( type field; "comment" ... )": the last word before each ';'
+      const body = t.slice(t.indexOf('(') + 1).replace(/"[^"]*"/g, ' ');
+      for (const part of body.split(';').slice(0, -1)) { const w = part.trim().split(/\s+/); this.fields.push(w[w.length - 1].replace(/\W/g, '')); }
+    }
+    // extra indexes: [{ field, offset }]
+    this.extra = [];
+    if (extOff > 0) {
+      const e = this.bin(await sigRead(this.src, extOff, 12, 12, 'bbBad')); e.u16(); const n = e.u16(), listOff = e.i64();
+      if (n > BB_LIMITS.names) throw this.bad('extra indexes');
+      if (n && listOff > 0) {
+        const l = this.bin(await sigRead(this.src, listOff, n * 20, n * 20 + 64, 'bbBad'));
+        for (let i = 0; i < n; i++) { l.p = i * 20; l.u16(); const fc = l.u16(), off = l.i64(); l.u32(); const field = l.u16(); if (fc >= 1 && off > 0) this.extra.push({ field, offset: off }); }
+      }
+    }
+    await this.readChromTree();
+    this.tracks = [this.name.replace(/\.(bb|bigbed)$/i, '')];
+    return this;
+  }
+  // records of one block, decoded once and kept (a few hundred blocks)
+  async block(lf) {
+    const k = lf.off; let b = this.blockCache.get(k); if (b) return b;
+    let u8 = await sigRead(this.src, lf.off, lf.size, SIG_LIMITS.block, 'bbBad');
+    if (this.uncompressBufSize > 0) u8 = await inflateStream(u8, 'deflate', Math.max(this.uncompressBufSize, 1 << 20), 'bbBad', { what: 'a block does not decompress' });
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), td = new TextDecoder(), out = [];
+    for (let p = 0; p + 12 <= u8.length;) {
+      const cid = dv.getUint32(p, this.le), s = dv.getUint32(p + 4, this.le), e = dv.getUint32(p + 8, this.le); p += 12;
+      let z = p; while (z < u8.length && u8[z] !== 0) z++;
+      if (z >= u8.length) throw this.bad('a record is cut short');
+      out.push({ cid, s, e, rest: td.decode(u8.subarray(p, z)) }); p = z + 1;
+    }
+    if (this.blockCache.size > BB_LIMITS.blocks) this.blockCache.clear();
+    this.blockCache.set(k, out); return out;
+  }
+  feature(rec) {
+    const chr = this.chrById.get(rec.cid) || '';
+    const f = [chr, String(rec.s), String(rec.e), ...(rec.rest ? rec.rest.split('\t') : [])];
+    const ft = bedFeature(f); if (!ft) return null;
+    // columns past BED 12 (or past the defined ones): named by the autoSql text
+    const from = Math.min(12, this.definedFieldCount || 12);
+    if (f.length > from) { ft.attrs = {}; for (let i = from; i < f.length; i++) if (f[i] !== '') ft.attrs[this.fields[i] || 'field' + (i + 1)] = f[i]; }
+    // gene tracks (bigGenePred and the like): the gene symbol as the label, the transcript in the card
+    const g = ft.attrs && (ft.attrs.geneName || ft.attrs.name2 || ft.attrs.geneSymbol || ft.attrs.gene_name);
+    if (g) ft.label = g;
+    return ft;
+  }
+  // features overlapping [a, b) of a contig; { tooMuch } when the view would read more than allowed
+  async features(contig, a, b) {
+    const c = this.chrs.get(contigKey(contig)); if (!c) return [];
+    const L = await this.leaves(this.fullIndexOffset, c.id, Math.floor(a), Math.ceil(b));
+    let bytes = 0; for (const x of L) bytes += x.size;
+    if (bytes > BB_LIMITS.viewBytes || L.length > SIG_LIMITS.viewBlocks) return { tooMuch: true };
+    const out = [];
+    for (const lf of L) for (const r of await this.block(lf)) if (r.cid === c.id && r.s < b && r.e > a) { const ft = this.feature(r); if (ft) out.push(ft); }
+    return out;
+  }
+  // features whose indexed column equals a name (any case), through the extra B+ tree indexes
+  async findName(q) {
+    const want = String(q).trim(); if (!want || !this.extra.length) return [];
+    const out = [];
+    for (const ex of this.extra) {
+      const bare = want.replace(/\.\d+$/, ''), blocks = await this.bptFind(ex.offset, [want, want.toUpperCase(), bare, bare.toUpperCase()]);
+      for (const lf of blocks) for (const r of await this.block(lf)) {
+        const f = [String(r.cid), String(r.s), String(r.e), ...r.rest.split('\t')];
+        const v = f[ex.field]; if (v === undefined) continue;
+        if (v.toUpperCase() === want.toUpperCase() || v.replace(/\.\d+$/, '').toUpperCase() === want.toUpperCase()) { const ft = this.feature(r); if (ft) out.push(ft); }
+      }
+      if (out.length) break;
+    }
+    return out;
+  }
+  // B+ tree (bPlusTree.h) lookup: values (block offset, size) of every item whose key is one of keys
+  async bptFind(off, keys) {
+    const hr = this.bin(await sigRead(this.src, off, 32, 32, 'bbBad'));
+    if (hr.u32() !== BPT_MAGIC) throw this.bad('name index');
+    const blockSize = hr.u32(), keySize = hr.u32(), valSize = hr.u32();
+    if (!(keySize >= 1 && keySize <= 1024) || valSize !== 16 || !(blockSize >= 2 && blockSize <= 65536)) throw this.bad('name index');
+    const ks = [...new Set(keys.filter(k => k.length <= keySize))]; if (!ks.length) return [];
+    const found = new Map(); let nodes = 0;
+    const walk = async (p, depth) => {
+      if (depth > SIG_LIMITS.depth || ++nodes > 200) throw this.bad('name index');
+      const head = this.bin(await sigRead(this.src, p, 4, 4, 'bbBad')); const leaf = head.u8v(); head.u8v(); const n = head.u16();
+      if (n > blockSize) throw this.bad('name index');
+      const r = this.bin(await sigRead(this.src, p + 4, n * (keySize + (leaf ? 16 : 8)), SIG_LIMITS.header, 'bbBad'));
+      const items = [];
+      for (let i = 0; i < n; i++) { const key = r.fixedStr(keySize); if (leaf) { const o = r.i64(), sz = r.i64(); items.push({ key, o, sz }); } else items.push({ key, o: r.i64() }); }
+      if (leaf) { for (const it of items) if (ks.includes(it.key)) found.set(it.o, { off: it.o, size: it.sz }); return; }
+      // a child may hold a key when its first key is not past it and the next child's is not before it
+      for (let i = 0; i < n; i++) if (ks.some(k => items[i].key <= k && (i + 1 === n || items[i + 1].key >= k))) await walk(items[i].o, depth + 1);
+    };
+    await walk(off + 32, 0);
+    return [...found.values()];
+  }
+}
+// A bigBed as an annotation track's index: query() answers from the window read last and asks for a
+// new one when the view leaves it (onData redraws when it arrives).
+class BigBedIndex {
+  constructor(file) { this.file = file; this.win = null; this.busy = null; this.onData = null; this.byChr = null; this.count = 0; this.skipped = 0; }
+  query(contig, a, b) {
+    const w = this.win, k = contigKey(contig);
+    if (!w || w.k !== k || a < w.a || b > w.b) this.load(contig, a, b);
+    if (!w || w.k !== k || w.tooMuch) { this.tooMuch = !!(w && w.k === k && w.tooMuch && a >= w.a && b <= w.b); return []; }
+    this.tooMuch = false;
+    return w.list.filter(f => f.start < b && f.end > a);
+  }
+  load(contig, a, b) {
+    const k = contigKey(contig), span = b - a, A = Math.max(0, Math.floor(a - span)), B = Math.ceil(b + span);
+    if (this.busy && this.busy.k === k && a >= this.busy.a && b <= this.busy.b) return;
+    const job = this.busy = { k, a: A, b: B };
+    this.file.features(contig, A, B).then(r => {
+      if (this.busy !== job) return;
+      this.busy = null;
+      this.win = r && r.tooMuch ? { k, a: A, b: B, tooMuch: true, list: [] } : { k, a: A, b: B, list: r };
+      if (this.onData) this.onData();
+    }, e => { if (this.busy === job) this.busy = null; if (this.onData) this.onData(e); });
+  }
+}
+async function openBigBed(src) { return new BigBedFile(src).open(); }
+
 // bigWig data section: chromId, start, end, step, span, type (1 bedGraph, 2 variableStep, 3 fixedStep),
 // reserved, item count; then the items. A block may hold several sections; only contig id is kept.
 function decodeBwData(u8, le, id) {
@@ -493,6 +639,7 @@ function decodeBwZoom(u8, le, id) {
 
 // Opens a signal file by name: .tdf or .bw / .bigwig.
 function signalKind(name) { const n = String(name).toLowerCase(); return /\.tdf$/.test(n) ? 'tdf' : /\.(bw|bigwig)$/.test(n) ? 'bigwig' : null; }
+const isBigBed = name => /\.(bb|bigbed)$/i.test(String(name));
 async function openSignal(src) {
   const k = signalKind(src.name);
   const f = k === 'tdf' ? new TdfFile(src) : new BigWigFile(src);
@@ -531,4 +678,4 @@ async function signalDefaults(f) {
   return d;
 }
 
-if (typeof module !== 'undefined') module.exports = { SIG_LIMITS, SigBin, parseTrackLine, TdfFile, BigWigFile, decodeTdfTile, decodeBwData, decodeBwZoom, signalKind, openSignal, signalDefaults, SIG_CACHE };
+if (typeof module !== 'undefined') module.exports = { SIG_LIMITS, SigBin, parseTrackLine, TdfFile, BigWigFile, BigBedFile, BigBedIndex, openBigBed, isBigBed, decodeTdfTile, decodeBwData, decodeBwZoom, signalKind, openSignal, signalDefaults, SIG_CACHE };
