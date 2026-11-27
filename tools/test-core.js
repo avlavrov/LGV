@@ -251,6 +251,18 @@ const ok = (cond, msg) => { console.log((cond ? 'OK   ' : 'FAIL ') + msg); if (!
     ok(noOv, `pair layout: no overlaps after the window grows; ${moved} of ${n} units moved (only grown pairs may move)`);
     ok(C.cigarStrRefLen('10S50M2I3D40M5N10M') === 108, 'reference length of an MC cigar');
   }
+  {
+    // the bundled gene table: the packed form gives the same transcripts, field for field, as the text
+    const G = require('../src/genes.js'), zlib = require('zlib'), fs = require('fs'), path = require('path');
+    const tsv = fs.readFileSync(path.join(__dirname, '..', 'data', 'mane.grch38.tsv'), 'utf8'), packed = require('./pack-genes.js').packGenes(tsv);
+    G.parseGenes(tsv); const A = [...G.GENES.byChr.values()].flatMap(c => c.list), vA = G.GENES.version;
+    G.unpackGenes(new Uint8Array(zlib.inflateRawSync(packed))); const B = [...G.GENES.byChr.values()].flatMap(c => c.list);
+    let bad = A.length !== B.length ? 1 : 0;
+    for (let i = 0; i < A.length && !bad; i++) { for (const k of ['sym', 'chr', 'strand', 'start', 'end', 'cdsStart', 'cdsEnd', 'enst', 'nm', 'clinical', 'name', 'hgnc']) if (A[i][k] !== B[i][k]) bad++; if (A[i].exons.join() !== B[i].exons.join()) bad++; }
+    ok(!bad && vA === G.GENES.version && A.length > 19000, `packed gene table = the text table (${B.length} transcripts, ${(packed.length / 1048576).toFixed(2)} MB packed)`);
+    let caught = 0; for (const cut of [10, 1000, packed.length >> 1]) { try { G.unpackGenes(new Uint8Array(zlib.inflateRawSync(packed)).subarray(0, cut)); } catch (e) { caught++; } }
+    ok(caught === 3, 'a cut gene table is refused, not read wrong');
+  }
   console.log(fails ? `\n${fails} FAILED` : '\nAll checks passed');
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

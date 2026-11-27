@@ -13,7 +13,7 @@ FACTS
 What it is
 - LGV (Lavrov Genome Viewer): a viewer of read alignments (BAM, CRAM) against a reference genome,
   for medical and human genetics research. Research use only.
-- One self-contained HTML file (LGV.html, ~3.4 MB): no installation, no server, no build step for
+- One self-contained HTML file (LGV.html, ~2.6 MB): no installation, no server, no build step for
   the user. Works in Chrome, Edge, Firefox, Safari (Chrome/Edge recommended: folder access to find
   an index next to a file is Chromium-only).
 - Files are read in pieces directly from the user's disk or from HTTPS links the user gives

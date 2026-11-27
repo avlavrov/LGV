@@ -8,9 +8,9 @@ const safe = s => s.replace(/<\/script/gi, '<\\/script');
 let html = fs.readFileSync(R('src/index.html'), 'utf8');
 const BUILD_DATE = new Date().toISOString().slice(0, 10);
 html = html.replace('/*DEMO*/', () => demo).replace('/*I18N*/', () => safe(fs.readFileSync(R('src/i18n.js'), 'utf8'))).replace('/*CORE*/', () => safe(fs.readFileSync(R('src/core.js'), 'utf8') + '\n' + fs.readFileSync(R('src/compress.js'), 'utf8') + '\n' + fs.readFileSync(R('src/htscodecs.js'), 'utf8') + '\n' + fs.readFileSync(R('src/cram.js'), 'utf8')))  .replace('/*APP*/', () => safe((fs.readFileSync(R('src/genes.js'), 'utf8') + '\n' + fs.readFileSync(R('src/tracks.js'), 'utf8') + '\n' + fs.readFileSync(R('src/signal.js'), 'utf8') + '\n' + fs.readFileSync(R('src/app.js'), 'utf8') + '\n' + fs.readFileSync(R('src/signalview.js'), 'utf8')).replace('__BUILD_DATE__', BUILD_DATE)))
-  // MANE transcripts (data/mane.grch38.tsv), gzip + base64: read by src/genes.js at start
+  // MANE transcripts (data/mane.grch38.tsv), packed (tools/pack-genes.js) + base64: read by src/genes.js at start
   .replace('/*CYTO*/', () => safe(fs.readFileSync(R('data/cytoband.grch38.tsv'), 'utf8')))
-  .replace('/*MANE*/', () => require('zlib').gzipSync(fs.readFileSync(R('data/mane.grch38.tsv')), { level: 9 }).toString('base64'));
+  .replace('/*MANE*/', () => require('./pack-genes.js').packGenes(fs.readFileSync(R('data/mane.grch38.tsv'), 'utf8')).toString('base64'));
 // every inline script must compile: a syntax error would leave the page blank
 {
   const vm = require('vm');
