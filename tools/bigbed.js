@@ -87,8 +87,8 @@ function cirTree(items, blockSize, itemsPerSlot, endFileOffset, base) {
 function writeBigBed(records, chroms, opts) {
   const itemsPerSlot = opts.itemsPerSlot || 512, blockSize = opts.blockSize || 256, level = opts.level ?? 9;
   const chromIds = new Map(chroms.map(([name], i) => [name, i]));
-  const recs = records.map(r => ({ ...r, cid: chromIds.get(r.chrom) }));
-  for (const r of recs) if (r.cid === undefined) throw new Error('unknown contig ' + r.chrom);
+  const recs = records; // sorted in place (no copies: a full gene set is a few hundred thousand records)
+  for (const r of recs) { r.cid = chromIds.get(r.chrom); if (r.cid === undefined) throw new Error('unknown contig ' + r.chrom); }
   recs.sort((a, b) => a.cid - b.cid || a.start - b.start || a.end - b.end);
   const out = new Out();
   // header placeholder (64), no zoom headers

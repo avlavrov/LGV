@@ -66,10 +66,10 @@ jobs:
       - name: Gene files
         if: steps.latest.outputs.newgenes == '1'
         run: |
-          set -euo pipefail
+          set -euo pipefail -o pipefail
           v=${{ steps.latest.outputs.gencode }}
           curl -fsSL --retry 3 -o gencode.gtf.gz "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/latest_release/gencode.$v.annotation.gtf.gz"
-          node tools/make-genes.js gencode.gtf.gz genes | tee -a report.md
+          node --max-old-space-size=6144 tools/make-genes.js gencode.gtf.gz genes | tee -a report.md
       - name: Checks
         run: |
           set -euo pipefail

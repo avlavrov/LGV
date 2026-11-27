@@ -28,21 +28,24 @@ const strip = id => String(id || '').replace(/\.\d+$/, '');
     const f = line.split('\t'); if (f.length < 9) continue;
     const type = f[2]; if (type !== 'exon' && type !== 'CDS' && type !== 'stop_codon' && type !== 'start_codon') continue;
     const chr = chrName(f[0]); if (!SIZES[chr]) continue;
-    const at = {}; const tags = [];
-    for (const m of f[8].matchAll(/(\w+) "([^"]*)"/g)) { if (m[1] === 'tag') tags.push(m[2]); else if (!(m[1] in at)) at[m[1]] = m[2]; }
-    const id = at.transcript_id; if (!id) continue;
-    let t = tx.get(id);
-    if (!t) tx.set(id, t = { id, chr, strand: f[6], exons: [], cds: [Infinity, -Infinity], gene: at.gene_name || at.gene || '', geneId: at.gene_id || '', type: at.transcript_type || at.transcript_biotype || at.gene_type || at.gene_biotype || '', tags: new Set() });
-    for (const g of tags) t.tags.add(g);
-    if (tags.includes('Ensembl_canonical')) sawCanonTag = true;
+    const tid = (f[8].match(/transcript_id "([^"]*)"/) || [])[1]; if (!tid) continue;
+    let t = tx.get(tid);
+    if (!t) {
+      // attributes are read once per transcript (the first line of it); tags from every line
+      const at = {}; for (const m of f[8].matchAll(/(\w+) "([^"]*)"/g)) if (m[1] !== 'tag' && !(m[1] in at)) at[m[1]] = m[2];
+      tx.set(tid, t = { id: tid, chr, strand: f[6], ex: [], c0: Infinity, c1: -Infinity, gene: at.gene_name || at.gene || '', geneId: at.gene_id || '', type: at.transcript_type || at.transcript_biotype || at.gene_type || at.gene_biotype || '', tags: '' });
+    }
+    for (const m of f[8].matchAll(/tag "([^"]*)"/g)) if (/^(Ensembl_canonical|MANE_Select|MANE_Plus_Clinical|basic|CCDS)$/.test(m[1]) && !t.tags.split(',').includes(m[1])) { t.tags = t.tags ? t.tags + ',' + m[1] : m[1]; if (m[1] === 'Ensembl_canonical') sawCanonTag = true; }
     const s = +f[3] - 1, e = +f[4];
-    if (type === 'exon') t.exons.push([s, e]);
-    else { t.cds[0] = Math.min(t.cds[0], s); t.cds[1] = Math.max(t.cds[1], e); }
+    if (type === 'exon') t.ex.push(s, e);
+    else { if (s < t.c0) t.c0 = s; if (e > t.c1) t.c1 = e; }
   }
   const all = [];
   for (const t of tx.values()) {
-    if (!t.exons.length) continue;
-    t.exons.sort((a, b) => a[0] - b[0]);
+    if (!t.ex.length) continue;
+    const pairs = []; for (let i = 0; i < t.ex.length; i += 2) pairs.push([t.ex[i], t.ex[i + 1]]);
+    t.exons = pairs.sort((a, b) => a[0] - b[0]); t.ex = null; t.cds = [t.c0, t.c1];
+    t.tags = new Set(t.tags ? t.tags.split(',') : []);
     t.start = t.exons[0][0]; t.end = t.exons[t.exons.length - 1][1];
     if (strip(t.id) && maneSelect.has(strip(t.id))) t.tags.add('MANE_Select');
     t.cdsLen = 0; if (t.cds[1] > t.cds[0]) for (const [a, b] of t.exons) t.cdsLen += Math.max(0, Math.min(b, t.cds[1]) - Math.max(a, t.cds[0]));
