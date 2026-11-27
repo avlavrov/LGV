@@ -116,7 +116,7 @@ function writeBigBed(records, chroms, opts) {
     const raw = Buffer.concat(parts); maxUnc = Math.max(maxUnc, raw.length);
     const z = zlib.deflateSync(raw, { level, memLevel: 9 });
     const g = recs.slice(j0, i);
-    leaves.push({ c0: cid, s0: g[0].start, c1: cid, s1: Math.max(...g.map(r => r.end)), off: out.len, size: z.length });
+    leaves.push({ c0: cid, s0: g[0].start, c1: cid, s1: g.reduce((m, r) => Math.max(m, r.end), 0), off: out.len, size: z.length });
     out.push(z);
   }
   // summary over covered bases (validCount), values all 1 here (BED has no values)
@@ -131,7 +131,7 @@ function writeBigBed(records, chroms, opts) {
     const seen = new Set(), items = [];
     recs.forEach((r, k) => { const key = e.key(r); if (!key) return; const id = key + '\t' + blockOf[k]; if (seen.has(id)) return; seen.add(id); items.push([key, leaves[blockOf[k]]]); });
     items.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1].off - b[1].off);
-    const ks = Math.max(1, ...items.map(x => Buffer.byteLength(x[0], 'latin1')));
+    let ks = 1; for (const x of items) ks = Math.max(ks, Buffer.byteLength(x[0], 'latin1'));
     extraOffsets.push(out.len);
     out.push(bPlusTree(items.map(([k, lf]) => { const v = Buffer.alloc(16); v.writeBigUInt64LE(BigInt(lf.off), 0); v.writeBigUInt64LE(BigInt(lf.size), 8); return [k, v]; }), ks, 16, 256, out.len));
   }
